@@ -124,7 +124,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). Changes: 
 
 1. Clone each tended repo into a throwaway directory (the local checkout is only read).
 2. Baseline: `uv sync`, then the full test suite under coverage. Red baseline → skip the repo.
-3. Findings: ruff (bugs first), then modules with little or no test coverage.
+3. Findings, in work order: known vulnerabilities (pip-audit), ruff bugs, modules with
+   little or no test coverage, outdated dependencies (same major), ruff style.
 4. Per finding, up to 3 attempts: a deterministic ruff fix or an LLM patch (Sonnet), then the
    gate — only allowed files touched, changed lines covered before the change, no new lint, no
    `noqa`-style suppressions, full suite green — then an LLM review (Opus).
@@ -161,18 +162,19 @@ systemctl --user daemon-reload && systemctl --user enable --now greenkeep.timer
 
 ## Status and roadmap
 
-Done: ruff + coverage findings, gate, Sonnet patcher + Opus reviewer, issue → PR → merge,
+Done: ruff, coverage and dependency findings (vulnerabilities bypass the daily budget;
+upgrades need 60% coverage), gate, Sonnet patcher + Opus reviewer, issue → PR → merge,
 config, daily timer, digest, pause.
 
 Next, roughly in this order:
 
-1. **Readiness checks**: license, description/topics, README install/usage, CI badge, broken
-   links, each one a finding (and the third finding kind, so kinds become pluggable).
-2. **Revival**: repos with only `requirements.txt` get a PR that moves them to uv +
+1. **Revival**: repos with only `requirements.txt` get a PR that moves them to uv +
    `pyproject.toml` with their existing tests green.
-3. **Auto-pause**: stop and report when a greenkeep merge gets reverted.
-4. **Dashboard** of runs and findings (nicegui-kit).
-5. **Bug hunt**: LLM-found bugs (Hunter → Skeptic → Referee) through the same gate.
+2. **Auto-pause**: stop and report when a greenkeep merge gets reverted.
+3. **Dashboard** of runs and findings (nicegui-kit).
+4. **Bug hunt**: LLM-found bugs (Hunter → Skeptic → Referee) through the same gate.
+5. **Readiness checks** (license, metadata, README sections, CI badge) for new repos; the
+   current public ones already pass them.
 6. JS/TS as a second language plugin.
 
 Design: [CONTEXT.md](CONTEXT.md) (glossary), [docs/adr](docs/adr) (decisions).
