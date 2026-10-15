@@ -6,7 +6,7 @@ import argparse
 import hashlib
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from claude_cli.http_api import HttpLlmError
@@ -30,9 +30,11 @@ from .workspace import (
 
 log = logging.getLogger("greenkeep")
 
-# pinned, not a combo: a combo answers with a different model from run to run.
-# Chosen by a dry-run benchmark on 2026-10-15 (opus = sonnet > grok-4.7 on 3 repos).
-DEFAULT_MODEL = "cc/claude-opus-5-5"
+# pinned models, not combos: a combo answers with a different model from run to run.
+# Benchmark 2026-10-15: opus = sonnet > grok-4.7 as patcher; sonnet writes, opus reviews.
+DEFAULT_MODEL = "cc/claude-sonnet-5-5"
+DEFAULT_REVIEW_MODEL = "cc/claude-opus-5-5"
+DETERMINISTIC = "ruff --fix"  # changes from this producer skip the LLM review
 DEFAULT_BUDGET = 3
 MAX_FINDINGS_PER_REPO = 10
 URGENT_RANK = 2  # S/F/B ruff rules go before characterization tests
@@ -65,6 +67,7 @@ class Options:
     budget: int
     model: str
     keep: bool
+    review_model: str = DEFAULT_REVIEW_MODEL
 
 
 @dataclass(frozen=True)
@@ -72,6 +75,7 @@ class Change:
     paths: list[str]
     model: str
     prompt_sha: str
+    reviewer: str = ""
 
 
 @dataclass(frozen=True)
@@ -129,7 +133,7 @@ def produce(job: Job, f: Finding, feedback: str) -> Change:
         return _write_tests(job, f, feedback)
     if f.fixable and not feedback:
         ruff_fix(job.ws, f.path, f.rule)
-        return Change([f.path], "ruff --fix", "-")
+        return Change([f.path], DETERMINISTIC, "-")
     source = (job.ws.root / f.path).read_text()
     reply = llm.ask(llm.FIX_SYSTEM, llm.fix_prompt(f, source, feedback), job.opts.model)
     edited = apply_edits(job.ws.root, parse_edits(reply.text), job.ws.tracked())
@@ -214,7 +218,8 @@ class Fix:
     def describe(self) -> str:
         f, c = self.finding, self.change
         lines = [f"Finding: `{f.rule}` at `{f.path}:{f.line}`: {f.message}",
-                 f"Patched by: `{c.model}` (prompt `{c.prompt_sha}`)",
+                 f"Patched by: `{c.model}` (prompt `{c.prompt_sha}`)"
+                 + (f", reviewed by: `{c.reviewer}`" if c.reviewer else ""),
                  "Gate: " + GATE_NOTE[f.kind]]
         if self.issue:
             lines.append(f"\nCloses #{self.issue}")
@@ -244,7 +249,18 @@ def _ensure_issue(job: Job, f: Finding) -> int | None:
 def _attempt(job: Job, f: Finding, feedback: str) -> tuple[Change, list[str]]:
     job.ws.reset()
     change = produce(job, f, feedback)
-    return change, gate(job, f)
+    paths = gate(job, f)
+    return _review(job, f, change), paths
+
+
+def _review(job: Job, f: Finding, change: Change) -> Change:
+    """The last, most expensive check: a second model reads the diff that passed the gate."""
+    if change.model == DETERMINISTIC:
+        return change
+    verdict = llm.review(f, job.ws.git("diff", "HEAD"), job.opts.review_model)
+    if not verdict.approve:
+        raise GateFailure(f"reviewer ({verdict.model}) rejected the change: {verdict.reason}")
+    return replace(change, reviewer=verdict.model)
 
 
 def _record_failure(job: Job, f: Finding, reason: str) -> None:
@@ -277,9 +293,16 @@ def work(job: Job, f: Finding) -> bool:
             _land(job, Fix(f, change, paths, issue))
             return True
         except ATTEMPT_FAILURES as exc:
-            feedback = redact(str(exc), job.ws.secrets())[-FEEDBACK_CHARS:]
+            feedback = clip(redact(str(exc), job.ws.secrets()))
             _record_failure(job, f, feedback)
     return False
+
+
+def clip(text: str) -> str:
+    """Keep the one-line reason (first line) and the end of long output (the traceback)."""
+    if len(text) <= FEEDBACK_CHARS:
+        return text
+    return text.splitlines()[0] + "\n…\n" + text[-FEEDBACK_CHARS:]
 
 
 def redact(text: str, secrets: list[str]) -> str:
@@ -334,7 +357,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--push", action="store_true",
                    help="open issues/PRs and merge them (default: local dry run)")
     p.add_argument("--budget", type=int, default=DEFAULT_BUDGET, help="merged fix PRs per day")
-    p.add_argument("--model", default=DEFAULT_MODEL, help="OmniRoute model/combo for patches")
+    p.add_argument("--model", default=DEFAULT_MODEL, help="OmniRoute model that writes patches")
+    p.add_argument("--review-model", default=DEFAULT_REVIEW_MODEL,
+                   help="OmniRoute model that reviews each patch before it lands")
     p.add_argument("--keep", action="store_true", help="keep the throwaway clones")
     return p.parse_args(argv)
 
@@ -342,7 +367,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     a = _parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    opts = Options(a.push, a.budget, a.model, a.keep)
+    opts = Options(a.push, a.budget, a.model, a.keep, a.review_model)
     # a dry run never touches the persistent state: attempts and budget stay unspent
     state = State() if a.push else State(Path(":memory:"))
     failed = 0

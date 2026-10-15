@@ -10,6 +10,7 @@ import hashlib
 from dataclasses import dataclass
 
 from claude_cli.http_api import omniroute_chat
+from claude_cli.parsing import extract_json_or_none
 
 from .findings import Finding
 
@@ -90,3 +91,37 @@ def characterization_prompt(f: Finding, source: str, feedback: str) -> str:
     if feedback:
         parts += ["", f"Your previous attempt failed: {feedback}"]
     return "\n".join(parts)
+
+
+REVIEW_SYSTEM = """You review one automated change to a Python repository before it is merged
+without a human. The change already passed: full test suite green, changed lines were
+covered by tests before the change, no new lint findings, no tool suppressions.
+Approve only if ALL hold:
+- It addresses the stated finding and nothing else (no drive-by edits).
+- A lint fix keeps runtime behaviour identical.
+- New tests assert real current behaviour of the module: no tautologies (`assert True`,
+  asserting a mock returns what it was told), the unit under test is not mocked away,
+  and they are deterministic (no network, real clock, sleep, randomness without seed).
+Reply ONLY with JSON: {"approve": true|false, "reason": "<one sentence>"}
+"""
+
+
+@dataclass(frozen=True)
+class Verdict:
+    approve: bool
+    reason: str
+    model: str
+
+
+def review_prompt(f: Finding, diff: str) -> str:
+    return "\n".join([f"Finding: {f.rule} at {f.path}:{f.line}: {f.message}", "",
+                      "Change (git diff):", "```diff", diff, "```"])
+
+
+def review(f: Finding, diff: str, model: str) -> Verdict:
+    """Fail closed: a reply that is not a clear approval is a rejection."""
+    reply = ask(REVIEW_SYSTEM, review_prompt(f, diff), model)
+    data = extract_json_or_none(reply.text)
+    if not isinstance(data, dict):
+        return Verdict(False, f"unreadable review reply: {reply.text[:200]!r}", reply.model)
+    return Verdict(data.get("approve") is True, str(data.get("reason", "")), reply.model)

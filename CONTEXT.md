@@ -91,3 +91,13 @@ _Avoid_: circuit breaker
 **Bug hunt**:
 The later, optional mode where an LLM searches for bugs itself (Hunter → Skeptic → Referee) and its findings go through the same gate.
 _Avoid_: free agent, exploration mode
+
+### Roles
+
+**Patcher**:
+The model that writes a change for one finding (pinned: Sonnet 5.5).
+_Avoid_: fixer, coder, agent
+
+**Reviewer**:
+The model that reads a change after it passed the gate and approves or rejects it before it lands (pinned: Opus 5.5); an unclear answer is a rejection. Deterministic ruff fixes are not reviewed.
+_Avoid_: judge, critic, second opinion
