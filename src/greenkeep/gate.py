@@ -32,6 +32,31 @@ def changed_old_lines(diff: str) -> dict[str, set[int]]:
     return out
 
 
+def _guards(statements: list[int], line: int) -> set[int]:
+    """The statements a change at `line` lives in or next to.
+
+    Coverage only lists the first line of each statement, so a continuation line, a
+    comment or a blank line belongs to the statement that starts before it, and an
+    insertion there also reaches the statement that follows. Both must have run.
+    """
+    before = [s for s in statements if s <= line]
+    after = [s for s in statements if s >= line]
+    return {g for g in (before[-1] if before else None, after[0] if after else None)
+            if g is not None}
+
+
+def line_is_covered(cov: dict, path: str, line: int) -> bool:
+    """Whether a change at this line could pass the coverage rule at all."""
+    if is_test_path(path):
+        return True
+    data = cov.get("files", {}).get(path)
+    if data is None:
+        return False
+    executed = set(data.get("executed_lines", []))
+    guards = _guards(sorted(executed | set(data.get("missing_lines", []))), line)
+    return bool(guards) and guards <= executed
+
+
 def coverage_violations(diff: str, baseline_cov: dict) -> list[str]:
     """Changed source lines that the tests did not execute before the change."""
     files = baseline_cov.get("files", {})
@@ -42,14 +67,16 @@ def coverage_violations(diff: str, baseline_cov: dict) -> list[str]:
         if path not in files:
             bad.append(f"{path} (not measured)")
             continue
-        missing = set(files[path].get("missing_lines", []))
-        bad.extend(f"{path}:{n}" for n in sorted(lines & missing))
+        bad.extend(f"{path}:{n}" for n in sorted(lines)
+                   if not line_is_covered(baseline_cov, path, n))
     return bad
 
 
-def line_is_covered(cov: dict, path: str, line: int) -> bool:
-    """Whether a fix at this line could pass the coverage rule at all."""
-    if is_test_path(path):
-        return True
-    data = cov.get("files", {}).get(path)
-    return data is not None and line not in data.get("missing_lines", [])
+SUPPRESSION = re.compile(r"noqa|ruff\s*:|type:\s*ignore|pylint:\s*disable|pragma:\s*no cover",
+                         re.IGNORECASE)
+
+
+def suppressions(diff: str) -> list[str]:
+    """Added lines that silence a tool instead of fixing the code."""
+    return [ln[1:].strip() for ln in diff.splitlines()
+            if ln.startswith("+") and not ln.startswith("+++") and SUPPRESSION.search(ln)]

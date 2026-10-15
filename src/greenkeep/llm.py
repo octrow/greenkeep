@@ -63,7 +63,9 @@ def _excerpt(source: str, line: int) -> str:
     return "\n".join(lines[lo - 1:hi])
 
 
-def fix_prompt(f: Finding, source: str, line_text: str, feedback: str) -> str:
+def fix_prompt(f: Finding, source: str, feedback: str) -> str:
+    lines = source.splitlines()
+    line_text = lines[f.line - 1] if 0 < f.line <= len(lines) else ""
     parts = [f"Finding: {f.rule} {f.message}", f"File: {f.path}, line {f.line}:",
              f"    {line_text.strip()}", "", f"Current contents of {f.path}:",
              "```python", _excerpt(source, f.line), "```"]

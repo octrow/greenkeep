@@ -18,21 +18,29 @@ def test_parse_and_apply_search_replace(tmp_path):
     (tmp_path / "pkg/a.py").write_text("import os\nimport sys\nprint(sys)\n")
     edits = parse_edits(REPLY)
     assert [e.path for e in edits] == ["pkg/a.py"]
-    assert apply_edits(tmp_path, edits) == ["pkg/a.py"]
+    assert apply_edits(tmp_path, edits, frozenset({"pkg/a.py"})) == ["pkg/a.py"]
     assert (tmp_path / "pkg/a.py").read_text() == "import sys\nprint(sys)\n"
 
 
-def test_apply_rejects_ambiguous_or_missing_search(tmp_path):
+def block(path: str, search: str) -> str:
+    return f"{path}\n<<<<<<< SEARCH\n{search}\n=======\ny\n>>>>>>> REPLACE"
+
+
+@pytest.mark.parametrize(("path", "search", "why"), [
+    ("a.py", "x", "matches 2 times"),
+    ("a.py", "z", "matches 0 times"),
+    ("a.py", "", "empty SEARCH"),
+    ("../x.py", "a", "outside repo"),
+    (".git/config", "a", "not a tracked file"),
+    ("untracked.py", "a", "not a tracked file"),
+])
+def test_apply_rejects_unsafe_or_unclear_edits(tmp_path, path, search, why):
     (tmp_path / "a.py").write_text("x\nx\n")
-    with pytest.raises(EditError):
-        apply_edits(tmp_path, parse_edits("a.py\n<<<<<<< SEARCH\nx\n=======\ny\n>>>>>>> REPLACE"))
-    with pytest.raises(EditError):
-        apply_edits(tmp_path, parse_edits("a.py\n<<<<<<< SEARCH\nz\n=======\ny\n>>>>>>> REPLACE"))
-
-
-def test_apply_refuses_paths_outside_root(tmp_path):
-    with pytest.raises(EditError):
-        apply_edits(tmp_path, parse_edits("../x.py\n<<<<<<< SEARCH\na\n=======\nb\n>>>>>>> REPLACE"))
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git/config").write_text("a")
+    (tmp_path / "untracked.py").write_text("a")
+    with pytest.raises(EditError, match=why):
+        apply_edits(tmp_path, parse_edits(block(path, search)), frozenset({"a.py"}))
 
 
 def test_parse_edits_without_blocks_raises():

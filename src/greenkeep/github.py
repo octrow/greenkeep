@@ -33,15 +33,24 @@ def open_issue(ws: Workspace, title: str, body: str) -> int:
 
 
 def park_issue(ws: Workspace, issue: int, reason: str) -> None:
+    """Only the one-line reason goes public: test output may echo secrets from .env."""
     _gh(ws, "issue", "comment", str(issue), "--body",
-        f"greenkeep gave up after its attempts; last failure:\n\n```\n{reason[-1500:]}\n```")
+        f"greenkeep gave up after its attempts. Last failure: `{reason[:200]}`\n\n"
+        "Full output is in the local greenkeep log.")
     _gh(ws, "issue", "edit", str(issue), "--add-label", PARKED_LABEL)
 
 
 def publish(ws: Workspace, branch: str, title: str, body: str) -> int:
-    """Push the branch, open the PR and squash-merge it. Returns the PR number."""
-    ws.git("push", "-q", "-u", "origin", branch)
-    pr = _number(_gh(ws, "pr", "create", "--head", branch, "--base", ws.base_branch,
-                     "--title", title, "--body", body, "--label", LABEL))
+    """Push the branch, open the PR (or reuse one a failed run left) and squash-merge it.
+
+    Idempotent: the branch lives in greenkeep's own namespace, so a stale one from an
+    earlier failed publish is simply overwritten.
+    """
+    ws.git("push", "-q", "--force", "-u", "origin", branch)
+    open_pr = _gh(ws, "pr", "list", "--head", branch, "--state", "open", "--json", "number",
+                  "--jq", ".[0].number // empty")
+    pr = int(open_pr) if open_pr else _number(_gh(
+        ws, "pr", "create", "--head", branch, "--base", ws.base_branch,
+        "--title", title, "--body", body, "--label", LABEL))
     _gh(ws, "pr", "merge", str(pr), "--squash", "--delete-branch")
     return pr

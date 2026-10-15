@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import date
 from pathlib import Path
 
 MAX_ATTEMPTS = 3
@@ -49,5 +48,7 @@ class State:
         return n
 
     def merged_today(self) -> int:
-        return self.db.execute("SELECT count(*) FROM finding WHERE status='merged' "
-                               "AND date(updated)=?", (date.today().isoformat(),)).fetchone()[0]
+        # `updated` is stored in UTC; the budget is per local day
+        return self.db.execute("SELECT count(*) FROM finding WHERE status='merged' AND "
+                               "date(updated, 'localtime') = date('now', 'localtime')"
+                               ).fetchone()[0]

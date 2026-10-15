@@ -32,21 +32,27 @@ def parse_edits(reply: str) -> list[Edit]:
     return edits
 
 
-def _inside(root: Path, rel: str) -> Path:
+def _target(root: Path, rel: str, allowed: frozenset[str]) -> Path:
+    """Only files git tracks: never .git, .venv, untracked or generated files."""
     target = (root / rel).resolve()
     if not target.is_relative_to(root.resolve()):
         raise EditError(f"path outside repo: {rel}")
+    if target.relative_to(root.resolve()).as_posix() not in allowed:
+        raise EditError(f"not a tracked file the patch may edit: {rel}")
     return target
 
 
-def apply_edits(root: Path, edits: list[Edit]) -> list[str]:
-    """Apply every edit or raise; each SEARCH must occur exactly once."""
+def apply_edits(root: Path, edits: list[Edit], allowed: frozenset[str]) -> list[str]:
+    """Apply every edit or raise; each non-empty SEARCH must occur exactly once."""
     touched = []
     for e in edits:
-        target = _inside(root, e.path)
-        if not target.is_file():
-            raise EditError(f"no such file: {e.path}")
-        text = target.read_text()
+        target = _target(root, e.path, allowed)
+        if not e.search.strip():
+            raise EditError(f"empty SEARCH for {e.path}")
+        try:
+            text = target.read_text()
+        except (OSError, UnicodeDecodeError) as exc:
+            raise EditError(f"cannot read {e.path}: {exc}") from exc
         if text.count(e.search) != 1:
             raise EditError(f"SEARCH matches {text.count(e.search)} times in {e.path}")
         target.write_text(text.replace(e.search, e.replace))

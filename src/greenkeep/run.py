@@ -13,10 +13,9 @@ from claude_cli.http_api import HttpLlmError
 from . import github, llm
 from .edits import EditError, apply_edits, parse_edits, python_block
 from .findings import Finding, rank, ruff_findings, untested_findings
-from .gate import coverage_violations, is_test_path, line_is_covered
+from .gate import coverage_violations, is_test_path, line_is_covered, suppressions
 from .state import MAX_ATTEMPTS, State
 from .workspace import (
-    KEEP_ON_RESET,
     TestRun,
     Workspace,
     WorkspaceError,
@@ -46,6 +45,13 @@ TRAILER = "Co-Authored-By: greenkeep <greenkeep@users.noreply.github.com>"
 
 class GateFailure(Exception):
     """The attempt's change did not pass the gate."""
+
+
+# anything that sinks one attempt; it is counted, so a poison finding parks instead of
+# failing every run. ponytail: a gateway outage also burns attempts (one finding per
+# repo per run); add a health ping before the run if that starts parking good findings
+ATTEMPT_FAILURES = (GateFailure, EditError, WorkspaceError, HttpLlmError, OSError,
+                    UnicodeError)
 
 
 @dataclass(frozen=True)
@@ -87,61 +93,102 @@ def lint(ws: Workspace, *paths: str) -> list[Finding]:
     return ruff_findings(ruff_json(ws, *paths), root=str(ws.root), read_line=ws.read_line)
 
 
-def _write_tests(ws: Workspace, f: Finding, model: str, feedback: str) -> Change:
-    rel = f"tests/test_{Path(f.path).stem}_characterization.py"
-    target = ws.root / rel
+@dataclass(frozen=True)
+class Job:
+    """Everything one repo's run shares: the clone, its baseline, the options, the history."""
+    ws: Workspace
+    base: Baseline
+    opts: Options
+    state: State
+
+    def workable(self, f: Finding) -> bool:
+        return self.state.is_workable(self.ws.name, f.fingerprint)
+
+
+def characterization_path(f: Finding) -> str:
+    """One file per module, named after its full path so same-named modules don't clash."""
+    stem = f.path.removeprefix("src/").removesuffix(".py").replace("/", "_")
+    return f"tests/test_{stem}_characterization.py"
+
+
+def _write_tests(job: Job, f: Finding, feedback: str) -> Change:
+    rel = characterization_path(f)
+    target = job.ws.root / rel
     if target.exists():
         raise GateFailure(f"{rel} already exists")
-    source = (ws.root / f.path).read_text()
-    reply = llm.ask(llm.TEST_SYSTEM, llm.characterization_prompt(f, source, feedback), model)
+    source = (job.ws.root / f.path).read_text()
+    prompt = llm.characterization_prompt(f, source, feedback)
+    reply = llm.ask(llm.TEST_SYSTEM, prompt, job.opts.model)
     target.parent.mkdir(exist_ok=True)
     target.write_text(python_block(reply.text))
+    ruff_fix(job.ws, rel)  # safe fixes only: an unused import must not cost an attempt
     return Change([rel], reply.model, reply.prompt_sha)
 
 
-def produce(ws: Workspace, f: Finding, model: str, feedback: str) -> Change:
+def produce(job: Job, f: Finding, feedback: str) -> Change:
     if f.kind == "untested":
-        return _write_tests(ws, f, model, feedback)
+        return _write_tests(job, f, feedback)
     if f.fixable and not feedback:
-        ruff_fix(ws, f.rule, f.path)
+        ruff_fix(job.ws, f.path, f.rule)
         return Change([f.path], "ruff --fix", "-")
-    source = (ws.root / f.path).read_text()
-    prompt = llm.fix_prompt(f, source, ws.read_line(f.path, f.line), feedback)
-    reply = llm.ask(llm.FIX_SYSTEM, prompt, model)
-    return Change(apply_edits(ws.root, parse_edits(reply.text)), reply.model, reply.prompt_sha)
-
-
-def changed_paths(ws: Workspace) -> list[str]:
-    lines = ws.git("status", "--porcelain", "-uall").splitlines()
-    paths = [ln[3:] for ln in lines]
-    return [p for p in paths if not p.startswith(KEEP_ON_RESET)]
+    source = (job.ws.root / f.path).read_text()
+    reply = llm.ask(llm.FIX_SYSTEM, llm.fix_prompt(f, source, feedback), job.opts.model)
+    edited = apply_edits(job.ws.root, parse_edits(reply.text), job.ws.tracked())
+    return Change(edited, reply.model, reply.prompt_sha)
 
 
 def _percent(cov: dict, path: str) -> float:
     return cov.get("files", {}).get(path, {}).get("summary", {}).get("percent_covered", 0.0)
 
 
-def gate(ws: Workspace, f: Finding, base: Baseline) -> list[str]:
-    """Raise GateFailure unless the change is safe to merge; return the changed paths."""
-    paths = changed_paths(ws)
+def _check_scope(job: Job, f: Finding, paths: list[str]) -> None:
+    """What the change may touch: test files only, or covered lines that fix the finding."""
     if not paths:
         raise GateFailure("the change is empty")
     if f.kind == "untested" and not all(is_test_path(p) for p in paths):
         raise GateFailure(f"characterization tests may only add test files: {paths}")
+    if f.kind == "ruff" and not is_test_path(f.path) and any(map(is_test_path, paths)):
+        raise GateFailure(f"a source fix may not touch tests: {paths}")
     if f.kind == "ruff":
-        if bad := coverage_violations(ws.git("diff", "-U0"), base.cov):
+        if bad := coverage_violations(job.ws.git("diff", "-U0"), job.base.cov):
             raise GateFailure(f"changed lines were not covered before the change: {bad}")
-        if any(a.fingerprint == f.fingerprint for a in lint(ws, f.path)):
+        if any(a.fingerprint == f.fingerprint for a in lint(job.ws, f.path)):
             raise GateFailure("ruff still reports the finding")
+
+
+def _check_no_new_lint(job: Job, paths: list[str]) -> None:
+    if silenced := suppressions(job.ws.git("diff", "-U0", "HEAD")):
+        raise GateFailure(f"the change silences tools instead of fixing code: {silenced}")
     py = [p for p in paths if p.endswith(".py")]
-    if new := [a for a in (lint(ws, *py) if py else []) if a.fingerprint not in base.lint]:
+    new = [a for a in (lint(job.ws, *py) if py else []) if a.fingerprint not in job.base.lint]
+    if new:
         raise GateFailure("the change adds lint findings: "
                           + "; ".join(f"{a.path}:{a.line} {a.rule} {a.message}" for a in new))
-    run = run_tests(ws)
-    if not run.ok:
-        raise GateFailure(f"test suite failed:\n{run.output}")
-    if f.kind == "untested" and _percent(run.cov, f.path) <= _percent(base.cov, f.path):
+
+
+def _check_tests(job: Job, f: Finding) -> None:
+    after = run_tests(job.ws)
+    if not after.ok:
+        raise GateFailure(f"test suite failed: {_summary(after.output)}\n{after.output}")
+    if after.no_tests and not job.base.tests.no_tests:
+        raise GateFailure("pytest collected no tests, but the baseline had some")
+    if f.kind == "untested" and _percent(after.cov, f.path) <= _percent(job.base.cov, f.path):
         raise GateFailure(f"coverage of {f.path} did not grow")
+
+
+def _summary(output: str) -> str:
+    """pytest's closing `N failed, M passed` line: the one-line reason for logs and issues."""
+    lines = output.strip().splitlines()
+    return next((ln.strip("= ") for ln in reversed(lines) if " failed" in ln or " error" in ln),
+                lines[-1] if lines else "no output")
+
+
+def gate(job: Job, f: Finding) -> list[str]:
+    """Raise GateFailure unless the change is safe to merge; return the changed paths."""
+    paths = job.ws.changed()
+    _check_scope(job, f, paths)
+    _check_no_new_lint(job, paths)
+    _check_tests(job, f)
     return paths
 
 
@@ -155,65 +202,112 @@ def _commit_type(f: Finding) -> str:
     return "fix" if rank(f.rule) <= URGENT_RANK else "chore"
 
 
-def _describe(f: Finding, change: Change, issue: int | None) -> str:
-    lines = [f"Finding: `{f.rule}` at `{f.path}:{f.line}`: {f.message}",
-             f"Patched by: `{change.model}` (prompt `{change.prompt_sha}`)",
-             "Gate: " + GATE_NOTE[f.kind]]
-    if issue:
-        lines.append(f"\nCloses #{issue}")
-    return "\n".join(lines)
+@dataclass(frozen=True)
+class Fix:
+    """A gated change ready to commit, and the plan issue it closes (push mode only)."""
+    finding: Finding
+    change: Change
+    paths: list[str]
+    issue: int | None
+
+    def describe(self) -> str:
+        f, c = self.finding, self.change
+        lines = [f"Finding: `{f.rule}` at `{f.path}:{f.line}`: {f.message}",
+                 f"Patched by: `{c.model}` (prompt `{c.prompt_sha}`)",
+                 "Gate: " + GATE_NOTE[f.kind]]
+        if self.issue:
+            lines.append(f"\nCloses #{self.issue}")
+        return "\n".join(lines)
 
 
-def commit(ws: Workspace, f: Finding, change: Change, paths: list[str], issue: int | None) -> str:
-    branch = _branch(f)
-    ws.git("checkout", "-q", "-b", branch)
-    ws.git("add", "--", *paths)
-    title = f"{_commit_type(f)}: {f.title}"[:72]
-    ws.git("commit", "-q", "-m", title, "-m", _describe(f, change, issue), "-m", TRAILER)
+def commit(ws: Workspace, fix: Fix) -> str:
+    branch = _branch(fix.finding)
+    ws.git("checkout", "-q", "-B", branch)  # -B: a failed publish may have left it
+    ws.git("add", "--", *fix.paths)
+    title = f"{_commit_type(fix.finding)}: {fix.finding.title}"[:72]
+    ws.git("commit", "-q", "-m", title, "-m", fix.describe(), "-m", TRAILER)
     return branch
 
 
-def _ensure_issue(ws: Workspace, f: Finding, opts: Options, state: State) -> int | None:
-    if not opts.push:
+def _ensure_issue(job: Job, f: Finding) -> int | None:
+    if not job.opts.push:
         return None
-    issue = state.issue(ws.name, f.fingerprint)
+    issue = job.state.issue(job.ws.name, f.fingerprint)
     if issue is None:
         body = f"`{f.rule}` at `{f.path}:{f.line}`\n\n{f.message}\n\nFound by greenkeep."
-        issue = github.open_issue(ws, f.title, body)
-        state.set(ws.name, f.fingerprint, issue=issue)
+        issue = github.open_issue(job.ws, f.title, body)
+        job.state.set(job.ws.name, f.fingerprint, issue=issue)
     return issue
 
 
-def _attempt(ws: Workspace, f: Finding, base: Baseline, opts: Options,
-             feedback: str) -> tuple[Change, list[str]]:
-    ws.reset()
-    change = produce(ws, f, opts.model, feedback)
-    return change, gate(ws, f, base)
+def _attempt(job: Job, f: Finding, feedback: str) -> tuple[Change, list[str]]:
+    job.ws.reset()
+    change = produce(job, f, feedback)
+    return change, gate(job, f)
 
 
-def work(ws: Workspace, f: Finding, base: Baseline, opts: Options, state: State) -> bool:
+def _record_failure(job: Job, f: Finding, issue: int | None, reason: str) -> None:
+    n = job.state.add_attempt(job.ws.name, f.fingerprint)
+    log.info("  attempt %d/%d failed: %s", n, MAX_ATTEMPTS, reason.splitlines()[0])
+    if n >= MAX_ATTEMPTS and issue:
+        github.park_issue(job.ws, issue, reason.splitlines()[0])
+
+
+def _land(job: Job, fix: Fix) -> None:
+    """Commit; in push mode also publish and merge. Records the merge either way."""
+    branch = commit(job.ws, fix)
+    pr = github.publish(job.ws, branch, fix.finding.title, fix.describe()) \
+        if job.opts.push else None
+    job.state.set(job.ws.name, fix.finding.fingerprint, status="merged", pr=pr)
+    log.info("  merged %s via %s%s", fix.finding.title, fix.change.model,
+             f" (PR #{pr})" if pr else "")
+    if not job.opts.push:
+        log.info("%s", job.ws.git("show", "--stat", "--patch", "HEAD"))
+
+
+def work(job: Job, f: Finding) -> bool:
     """Up to the remaining attempts on one finding; True once its fix is merged."""
-    issue = _ensure_issue(ws, f, opts, state)
+    issue = _ensure_issue(job, f)
     feedback = ""
-    while state.is_workable(ws.name, f.fingerprint):
+    while job.workable(f):
         try:
-            change, paths = _attempt(ws, f, base, opts, feedback)
-        except (GateFailure, EditError) as exc:
-            feedback = str(exc)[-FEEDBACK_CHARS:]
-            n = state.add_attempt(ws.name, f.fingerprint)
-            log.info("  attempt %d/%d failed: %s", n, MAX_ATTEMPTS, feedback.splitlines()[0])
-            if n >= MAX_ATTEMPTS and issue:
-                github.park_issue(ws, issue, feedback)
-            continue
-        branch = commit(ws, f, change, paths, issue)
-        pr = github.publish(ws, branch, f.title, _describe(f, change, issue)) \
-            if opts.push else None
-        state.set(ws.name, f.fingerprint, status="merged", pr=pr)
-        log.info("  merged %s via %s%s", f.title, change.model, f" (PR #{pr})" if pr else "")
-        if not opts.push:
-            log.info("%s", ws.git("show", "--stat", "--patch", "HEAD"))
-        return True
+            change, paths = _attempt(job, f, feedback)
+            _land(job, Fix(f, change, paths, issue))
+            return True
+        except ATTEMPT_FAILURES as exc:
+            feedback = redact(str(exc), job.ws.secrets())[-FEEDBACK_CHARS:]
+            _record_failure(job, f, issue, feedback)
     return False
+
+
+def redact(text: str, secrets: list[str]) -> str:
+    """Mask .env values: failure text goes to the LLM and, in short, to a public issue."""
+    for value in secrets:
+        text = text.replace(value, "***")
+    return text
+
+
+def _candidates(job: Job) -> list[Finding]:
+    """Workable findings in priority order. A lint finding on an uncovered line is not
+    attempted at all: it becomes workable once tests cover that line."""
+    return [f for f in job.base.findings if job.workable(f) and _attemptable(job, f)]
+
+
+def _attemptable(job: Job, f: Finding) -> bool:
+    if f.kind == "untested":  # its tests already exist: more coverage is a later finding
+        return not (job.ws.root / characterization_path(f)).exists()
+    return line_is_covered(job.base.cov, f.path, f.line)
+
+
+def _work_repo(job: Job) -> None:
+    for f in _candidates(job)[:MAX_FINDINGS_PER_REPO]:
+        if job.state.merged_today() >= job.opts.budget:
+            return
+        log.info("%s: %s", job.ws.name, f.title)
+        if work(job, f):
+            # ponytail: one merge per repo per run, the baseline coverage is stale after
+            # it; re-run the baseline here if one fix per repo per day proves too slow
+            return
 
 
 def run_repo(src: Path, opts: Options, state: State) -> None:
@@ -224,23 +318,9 @@ def run_repo(src: Path, opts: Options, state: State) -> None:
         if not tests.ok:
             log.warning("%s: baseline tests are red, skipping\n%s", ws.name, tests.output)
             return
-        base = baseline(ws, tests)
         if opts.push:
             github.ensure_labels(ws)
-        tried = 0
-        for f in base.findings:
-            if state.merged_today() >= opts.budget or tried >= MAX_FINDINGS_PER_REPO:
-                break
-            if not state.is_workable(ws.name, f.fingerprint):
-                continue
-            if f.kind == "ruff" and not line_is_covered(base.cov, f.path, f.line):
-                continue  # not an attempt: it becomes workable once tests cover the line
-            tried += 1
-            log.info("%s: %s", ws.name, f.title)
-            if work(ws, f, base, opts, state):
-                # ponytail: one merge per repo per run, the baseline coverage is stale after
-                # it; re-run the baseline here if one fix per repo per day proves too slow
-                return
+        _work_repo(Job(ws, baseline(ws, tests), opts, state))
     finally:
         if not opts.keep:
             discard(ws)
@@ -263,9 +343,9 @@ def main(argv: list[str] | None = None) -> int:
     for src in a.repos:
         try:
             run_repo(src.resolve(), opts, state)
-        except (WorkspaceError, HttpLlmError) as exc:
+        except Exception:  # one broken repo must not cost the others their run
             failed += 1
-            log.error("%s: %s", src.name, exc)
+            log.exception("%s: run failed", src.name)
     return 1 if failed else 0
 
 

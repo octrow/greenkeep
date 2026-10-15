@@ -19,6 +19,7 @@ TEST_TIMEOUT = 1800
 PYTEST_NO_TESTS = 5
 # kept across attempt resets: secrets copied in, and the synced venv
 KEEP_ON_RESET = (".env", ".venv")
+MIN_SECRET_LEN = 6  # shorter .env values (ports, flags) would mask half the output
 
 
 class WorkspaceError(RuntimeError):
@@ -29,8 +30,11 @@ def sh(args: list[str], cwd: Path, *, check: bool = True,
        timeout: int = TEST_TIMEOUT) -> subprocess.CompletedProcess:
     # our own venv must not leak into the target's `uv run`
     env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
-    proc = subprocess.run(args, cwd=cwd, env=env, text=True, capture_output=True, check=False,
-                          timeout=timeout)
+    try:
+        proc = subprocess.run(args, cwd=cwd, env=env, text=True, capture_output=True,
+                              check=False, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        raise WorkspaceError(f"{' '.join(args[:3])}… timed out after {timeout}s") from exc
     if check and proc.returncode != 0:
         raise WorkspaceError(f"{' '.join(args[:3])}… exit {proc.returncode}: "
                              f"{(proc.stderr or proc.stdout)[-800:]}")
@@ -51,8 +55,33 @@ class Workspace:
     def reset(self) -> None:
         self.git("checkout", "-q", "-f", self.base_branch)
         self.git("reset", "-q", "--hard")
+        # -x: ignored leftovers of a failed attempt must not help the next one pass
         excludes = [a for k in KEEP_ON_RESET for a in ("-e", k)]
-        self.git("clean", "-fdq", *excludes)
+        self.git("clean", "-fdxq", *excludes)
+
+    def tracked(self) -> frozenset[str]:
+        return frozenset(self.git("ls-files", "-z").split("\0")) - {""}
+
+    def changed(self) -> list[str]:
+        """Paths the attempt changed or added, except the kept secrets and venv."""
+        def kept(name: str) -> bool:
+            return name.split("/")[0] in KEEP_ON_RESET
+
+        new = [n for n in self.git("ls-files", "-o", "--exclude-standard", "-z").split("\0")
+               if n and not kept(n)]
+        if new:  # intent-to-add: new files show up in `git diff` too (kept ones never are,
+            self.git("add", "-N", "--", *new)  # or a hard reset would delete them)
+        names = self.git("diff", "--name-only", "-z", "HEAD").split("\0")
+        return [n for n in names if n and not kept(n)]
+
+    def secrets(self) -> list[str]:
+        """Values from the copied .env, to be masked in anything leaving the machine."""
+        env = self.root / ".env"
+        if not env.is_file():
+            return []
+        values = (ln.partition("=")[2].strip().strip("\"'") for ln in env.read_text().splitlines()
+                  if "=" in ln and not ln.lstrip().startswith("#"))
+        return [v for v in values if len(v) >= MIN_SECRET_LEN]
 
     def read_line(self, path: str, n: int) -> str:
         lines = (self.root / path).read_text(errors="replace").splitlines()
@@ -87,15 +116,19 @@ class TestRun:
     ok: bool
     cov: dict
     output: str
+    no_tests: bool = False  # pytest collected nothing (exit 5)
 
 
 def run_tests(ws: Workspace) -> TestRun:
     """Full suite under coverage. No tests at all counts as green with empty coverage."""
     data = ws.scratch / ".coverage"
     data.unlink(missing_ok=True)
-    proc = sh(["uv", "run", "--with", "pytest", "--with", "coverage", "coverage", "run",
-               f"--data-file={data}", "--source=.", "--omit=tests/*,.venv/*",
-               "-m", "pytest", "-q", "-p", "no:cacheprovider"], ws.root, check=False)
+    try:
+        proc = sh(["uv", "run", "--with", "pytest", "--with", "coverage", "coverage", "run",
+                   f"--data-file={data}", "--source=.", "--omit=tests/*,.venv/*",
+                   "-m", "pytest", "-q", "-p", "no:cacheprovider"], ws.root, check=False)
+    except WorkspaceError as exc:  # a hanging test is a red suite, not a crashed run
+        return TestRun(False, {}, str(exc))
     tail = (proc.stdout + proc.stderr)[-3000:]
     if proc.returncode not in (0, PYTEST_NO_TESTS):
         return TestRun(False, {}, tail)
@@ -105,7 +138,7 @@ def run_tests(ws: Workspace) -> TestRun:
     rep = sh(["uv", "run", "--with", "coverage", "coverage", "json", f"--data-file={data}",
               "-o", str(out), "-q"], ws.root, check=False)
     cov = json.loads(out.read_text()) if rep.returncode == 0 else {"files": {}}
-    return TestRun(True, cov, tail)
+    return TestRun(True, cov, tail, no_tests=proc.returncode == PYTEST_NO_TESTS)
 
 
 def ruff_json(ws: Workspace, *paths: str) -> list[dict]:
@@ -114,5 +147,7 @@ def ruff_json(ws: Workspace, *paths: str) -> list[dict]:
     return json.loads(proc.stdout or "[]")
 
 
-def ruff_fix(ws: Workspace, rule: str, path: str) -> None:
-    sh(["uvx", "ruff", "check", "--fix", "--select", rule, "--exit-zero", path], ws.root)
+def ruff_fix(ws: Workspace, path: str, rule: str | None = None) -> None:
+    """Ruff's safe fixes on one file: one rule, or whatever the repo's own config selects."""
+    select = ["--select", rule] if rule else []
+    sh(["uvx", "ruff", "check", "--fix", *select, "--exit-zero", path], ws.root)

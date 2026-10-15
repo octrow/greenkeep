@@ -73,7 +73,8 @@ def test_bad_llm_reply_parks_finding_after_three_attempts(tmp_path, monkeypatch)
 
 def test_patch_that_adds_lint_findings_is_rejected_then_retried(tmp_path, monkeypatch):
     src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
-    dirty = CHAR_TEST.replace("```python\n", "```python\nimport os\n")
+    # F841 has no safe automatic fix, so only a new attempt can get rid of it
+    dirty = CHAR_TEST.replace("def test_a():\n", "def test_a():\n    unused = a(1)\n")
     replies, prompts = [dirty, CHAR_TEST], []
 
     def fake_ask(system, prompt, model):
@@ -83,5 +84,45 @@ def test_patch_that_adds_lint_findings_is_rejected_then_retried(tmp_path, monkey
     monkeypatch.setattr(llm, "ask", fake_ask)
     state, clone = dry_run(src)
     assert state.merged_today() == 1
-    assert "adds lint findings" in prompts[1] and "F401" in prompts[1]
-    assert "import os" not in (clone / "tests/test_demo_characterization.py").read_text()
+    assert "adds lint findings" in prompts[1] and "F841" in prompts[1]
+    assert "unused = a(1)" not in (clone / "tests/test_demo_characterization.py").read_text()
+
+
+UNUSED_VAR = "def add(a, b):\n    total = 0\n    return a + b\n"
+NOQA_FIX = "demo.py\n<<<<<<< SEARCH\n    total = 0\n=======\n    total = 0  # noqa: F841\n" \
+           ">>>>>>> REPLACE"
+REAL_FIX = "demo.py\n<<<<<<< SEARCH\n    total = 0\n    return\n=======\n    return\n" \
+           ">>>>>>> REPLACE"
+
+
+def test_silencing_the_linter_is_not_a_fix(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": UNUSED_VAR, "tests/test_demo.py": TEST})
+    replies, prompts = [NOQA_FIX, REAL_FIX], []
+
+    def fake_ask(system, prompt, model):
+        prompts.append(prompt)
+        return llm.Reply(replies[len(prompts) - 1], "fake", "sha")
+
+    monkeypatch.setattr(llm, "ask", fake_ask)
+    state, clone = dry_run(src)
+    assert state.merged_today() == 1
+    assert "silences tools" in prompts[1]
+    assert "total" not in (clone / "demo.py").read_text()
+
+
+def test_redact_masks_env_values():
+    assert run.redact("token=abcdef123 failed", ["abcdef123"]) == "token=*** failed"
+
+
+def test_safe_lint_in_generated_tests_is_fixed_without_an_attempt(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
+    dirty = CHAR_TEST.replace("```python\n", "```python\nimport os\n")
+    calls = []
+    monkeypatch.setattr(llm, "ask", lambda *a: calls.append(a) or llm.Reply(dirty, "f", "s"))
+    state, _ = dry_run(src)
+    assert state.merged_today() == 1 and len(calls) == 1
+
+
+def test_summary_picks_pytest_closing_line():
+    out = "____ test_x ____\nassert 1 == 2\n==== 1 failed, 3 passed in 0.1s ====\n"
+    assert run._summary(out) == "1 failed, 3 passed in 0.1s"
