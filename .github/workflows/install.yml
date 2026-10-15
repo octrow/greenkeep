@@ -1,0 +1,34 @@
+name: install
+on:
+  push:
+    branches: [main]
+    paths: [install.sh, install.ps1, pyproject.toml, uv.lock, "src/greenkeep/**", .github/workflows/install.yml]
+  pull_request:
+    paths: [install.sh, install.ps1, pyproject.toml, uv.lock, "src/greenkeep/**", .github/workflows/install.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      INSTALL_SOURCE: ${{ github.workspace }}  # install this commit, not what is on GitHub
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: runner.os != 'Windows'
+        run: |
+          sh install.sh
+          ~/.local/bin/greenkeep --help
+      - if: runner.os == 'Windows'
+        shell: powershell  # Windows PowerShell 5.1, what the README one-liner runs
+        run: |
+          ./install.ps1
+          $bin = Join-Path (uv tool dir --bin) "greenkeep.exe"
+          & $bin --help; if ($LASTEXITCODE -ne 0) { exit 1 }
