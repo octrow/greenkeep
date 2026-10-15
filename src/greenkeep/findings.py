@@ -62,5 +62,5 @@ def untested_findings(cov: dict) -> list[Finding]:
         if s["percent_covered"] < UNTESTED_PERCENT:
             msg = f"{s['percent_covered']:.0f}% covered"
             found.append(Finding("untested", "coverage", path, 1, msg, f"untested:{path}",
-                                 title=f"Add characterization tests for {path}"))
+                                 title=f"Add tests for {path}"))
     return found

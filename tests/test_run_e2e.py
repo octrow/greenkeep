@@ -88,7 +88,7 @@ def test_repo_without_tests_gets_characterization_tests(tmp_path, monkeypatch):
     fake = fake_llm(monkeypatch, [CHAR_TEST])
     state, clone = dry_run(src)
     assert state.merged_today() == 1 and fake.reviews == 1
-    assert git(clone, "log", "-1", "--format=%s").startswith("test: Add characterization")
+    assert git(clone, "log", "-1", "--format=%s").startswith("test: Add tests for")
     assert (clone / "tests/test_demo.py").is_file()
 
 
