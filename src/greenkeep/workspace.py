@@ -116,7 +116,8 @@ def discard(ws: Workspace) -> None:
 def sync(ws: Workspace) -> None:
     if not (ws.root / "pyproject.toml").is_file():
         raise WorkspaceError("no pyproject.toml: needs revival (not in v1)")
-    sh(["uv", "sync", "-q"], ws.root)
+    # extras too: many repos declare pytest plugins as a `dev` extra, not a dependency group
+    sh(["uv", "sync", "-q", "--all-extras"], ws.root)
 
 
 @dataclass(frozen=True)
@@ -134,7 +135,10 @@ def run_tests(ws: Workspace) -> TestRun:
     try:
         proc = sh(["uv", "run", "--with", "pytest", "--with", "coverage", "coverage", "run",
                    f"--data-file={data}", "--source=.", "--omit=tests/*,.venv/*",
-                   "-m", "pytest", "-q", "-p", "no:cacheprovider"], ws.root, check=False)
+                   "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                   # a repo's own `addopts = --cov` would hijack the tracer: 0% everywhere.
+                   # ponytail: drops every addopt (markers too); parse them if that bites
+                   "-p", "no:pytest_cov", "-o", "addopts="], ws.root, check=False)
     except WorkspaceError as exc:  # a hanging test is a red suite, not a crashed run
         return TestRun(False, {}, str(exc))
     tail = (proc.stdout + proc.stderr)[-3000:]

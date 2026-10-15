@@ -1,7 +1,9 @@
+from types import SimpleNamespace
+
 import pytest
 
 from greenkeep.findings import Finding
-from greenkeep.kinds import Kind, kind_of
+from greenkeep.kinds import Kind, characterization_path, kind_of, line_budget, related_context
 
 
 def finding(kind: str, rule: str) -> Finding:
@@ -18,3 +20,35 @@ def test_work_order_is_security_bugs_tests_upgrades_style():
 def test_kind_base_cannot_be_instantiated():
     with pytest.raises(TypeError):
         Kind()
+
+
+def untested(path: str) -> Finding:
+    return Finding("untested", "coverage", path, 1, "0% covered", f"untested:{path}")
+
+
+def test_new_tests_go_where_the_repo_keeps_them(tmp_path):
+    (tmp_path / "tests/db").mkdir(parents=True)
+    assert characterization_path(untested("src/pkg/db/repo.py"), tmp_path) == "tests/db/test_repo.py"
+    assert characterization_path(untested("pkg/util.py"), tmp_path) == "tests/test_util.py"
+    (tmp_path / "tests/db/test_repo.py").write_text("")
+    assert (characterization_path(untested("src/pkg/db/repo.py"), tmp_path)
+            == "tests/db/test_pkg_db_repo.py")
+
+
+def test_context_has_the_tests_that_import_the_module_and_their_conftest(tmp_path):
+    files = {"tests/conftest.py": "FIXTURE", "tests/test_a.py": "from pkg.db import repo",
+             "tests/test_b.py": "import other", "tests/other/conftest.py": "NOPE",
+             "pyproject.toml": "[tool.pytest.ini_options]\nasyncio_mode = 'auto'\n"}
+    for name, text in files.items():
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text(text)
+    ws = SimpleNamespace(root=tmp_path, tracked=lambda: set(files))
+    ctx = related_context(ws, untested("src/pkg/db/repo.py"))
+    assert set(ctx) == {"tests/conftest.py", "tests/test_a.py",
+                        "pyproject.toml [tool.pytest] / [tool.ruff]"}
+    assert "asyncio_mode" in ctx["pyproject.toml [tool.pytest] / [tool.ruff]"]
+
+
+def test_line_budget_scales_with_the_module_but_has_a_floor():
+    assert line_budget("x\n" * 10) == 120
+    assert line_budget("x\n" * 200) == 300

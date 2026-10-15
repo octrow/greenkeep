@@ -6,8 +6,9 @@ import hashlib
 import logging
 import re
 from dataclasses import dataclass, replace
+from textwrap import shorten
 
-from claude_cli.http_api import HttpLlmError
+from claude_cli import ClaudeCliError, UsageLimitError
 
 from . import deps, github, llm, reverts
 from .config import Target
@@ -23,22 +24,32 @@ from .workspace import TestRun, Workspace, WorkspaceError, clone, discard, run_t
 log = logging.getLogger("greenkeep")
 
 MAX_FINDINGS_PER_REPO = 10
+MAX_PARKED_IN_A_ROW = 2
 FEEDBACK_CHARS = 1500
 PYTEST_TOTALS = re.compile(r"^=*\s*(\d+ (?:failed|passed|errors?)\b[^\n]*? in [\d.]+s)",
                            re.MULTILINE)
+SUBJECT_MAX = 72
 TRAILER = "Co-Authored-By: greenkeep <greenkeep@users.noreply.github.com>"
 
 # anything that sinks one attempt; it is counted, so a poison finding parks instead of
 # failing every run. ponytail: a gateway outage also burns attempts (one finding per
 # repo per run); add a health ping before the run if that starts parking good findings
-ATTEMPT_FAILURES = (GateFailure, EditError, WorkspaceError, HttpLlmError, OSError,
+ATTEMPT_FAILURES = (GateFailure, EditError, WorkspaceError, ClaudeCliError, OSError,
                     UnicodeError)
+
+
+def _measured(tests: TestRun) -> bool:
+    """A green suite that covers nothing at all means coverage did not see it run: then
+    every module would look untested and no new test could ever raise its number."""
+    total = tests.cov.get("totals", {}).get("percent_covered", 0.0)
+    return tests.no_tests or total > 0
 
 
 def baseline(ws: Workspace, tests: TestRun) -> Baseline:
     """All findings, in the work order their kinds define."""
     ruff = lint(ws)
-    found = [*ruff, *untested_findings(tests.cov), *deps.collect(ws)]
+    found = [*ruff, *(untested_findings(tests.cov) if _measured(tests) else []),
+             *deps.collect(ws)]
     ordered = sorted(found, key=lambda f: kind_of(f).priority(f))  # stable within a kind
     return Baseline(tests, frozenset(f.fingerprint for f in ruff), ordered)
 
@@ -110,7 +121,8 @@ def commit(ws: Workspace, fix: Fix) -> str:
     branch = _branch(fix.finding)
     ws.git("checkout", "-q", "-B", branch)  # -B: a failed publish may have left it
     ws.git("add", "--", *fix.paths)
-    title = f"{kind_of(fix.finding).commit_type(fix.finding)}: {fix.finding.title}"[:72]
+    title = shorten(f"{kind_of(fix.finding).commit_type(fix.finding)}: {fix.finding.title}",
+                    SUBJECT_MAX, placeholder="…")
     ws.git("commit", "-q", "-m", title, "-m", fix.describe(), "-m", TRAILER)
     return branch
 
@@ -137,7 +149,7 @@ def _review(job: Job, f: Finding, change: Change) -> Change:
     """The last, most expensive check: a second model reads the diff that passed the gate."""
     if change.deterministic:
         return change
-    verdict = llm.review(f, job.ws.git("diff", "HEAD"), job.opts.review_model)
+    verdict = llm.review(f, job.ws.git("diff", "HEAD"), job.opts.review_model, job.ws.root)
     if not verdict.approve:
         raise GateFailure(f"reviewer ({verdict.model}) rejected the change: {verdict.reason}")
     return replace(change, reviewer=verdict.model)
@@ -185,9 +197,16 @@ def work(job: Job, f: Finding) -> bool:
             _land(job, Fix(f, change, paths, issue))
             return True
         except ATTEMPT_FAILURES as exc:
+            if _not_the_change(exc):
+                raise
             feedback = clip(redact(str(exc), job.ws.secrets()))
             _record_failure(job, f, feedback)
     return False
+
+
+def _not_the_change(exc: Exception) -> bool:
+    """Quota and rate limits say nothing about the change: they stop the repo, not count."""
+    return isinstance(exc, UsageLimitError) or str(exc).startswith(("HTTP 429", "HTTP 503"))
 
 
 def web_url(origin: str) -> str:
@@ -221,6 +240,7 @@ def _within_budget(job: Job, f: Finding) -> bool:
 
 
 def _work_repo(job: Job) -> None:
+    parked_in_a_row = 0
     for f in _candidates(job)[:MAX_FINDINGS_PER_REPO]:
         if not _within_budget(job, f):
             continue  # a later finding may still be budget-exempt (security)
@@ -228,6 +248,12 @@ def _work_repo(job: Job) -> None:
         if work(job, f):
             # ponytail: one merge per repo per run, the baseline is stale after it;
             # re-run the baseline here if one fix per repo per day proves too slow
+            return
+        parked_in_a_row += 1
+        if parked_in_a_row >= MAX_PARKED_IN_A_ROW:
+            # the repo, not the findings, is likely the problem: stop paying for it
+            job.digest.problems.append(f"{job.ws.name}: {parked_in_a_row} findings parked "
+                                       "in a row, stopped for this run")
             return
 
 

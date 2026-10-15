@@ -1,4 +1,8 @@
-"""The patcher role: fixed prompts, one finding per call, through the OmniRoute HTTP API.
+"""The patcher and reviewer roles: fixed prompts, one finding per call.
+
+The patcher goes through the OmniRoute HTTP API and sees only what the prompt carries.
+The reviewer is Claude Code run inside the clone with read-only tools, so it judges the
+change against the repo itself (existing tests, style, fixtures), not the diff alone.
 
 No temperature is sent: on OmniRoute that switches on a semantic cache whose key
 ignores the system prompt. Predictability comes from the pinned model and prompts.
@@ -8,13 +12,17 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from pathlib import Path
 
+from claude_cli import run_claude
 from claude_cli.http_api import omniroute_chat
 from claude_cli.parsing import extract_json_or_none
 
 from .findings import Finding
 
 LLM_TIMEOUT = 300
+REVIEW_TIMEOUT = 900
+REVIEW_TOOLS = "Read,Grep,Glob"
 EXCERPT_RADIUS = 40
 WHOLE_FILE_LINES = 300
 
@@ -39,6 +47,15 @@ Rules:
 - Pure, fast, deterministic tests: no network, no real external services, no sleeping,
   no writing outside pytest's tmp_path. Mock subprocess, HTTP clients and clocks.
 - Import the module the way the package is installed (the import path is given).
+- Match the repo's existing tests (shown when there are any): their style, fixtures,
+  conftest, async style and pytest settings. Do not repeat what they already cover.
+- Few, meaningful tests: the main behaviours and edge cases, within the line budget given.
+  No tests that restate constants or re-implement the code under test to compare with it.
+  Do not pin accidental crashes (ZeroDivisionError, KeyError, IndexError on bad input);
+  test raised exceptions only when the code raises them on purpose.
+- Do not mock the unit under test or replace a database fixture the repo already has
+  with mocks; mock only the outside world.
+- A plain test file: no section banners, no "characterization" wording.
 - Reply ONLY with one ```python block containing the complete test file.
 """
 
@@ -89,10 +106,14 @@ def module_name(path: str) -> str:
     return ".".join(parts)
 
 
-def characterization_prompt(f: Finding, source: str, feedback: str) -> str:
+def characterization_prompt(f: Finding, source: str, context: dict[str, str], budget: int,
+                            feedback: str) -> str:
+    """`context`: path -> text of the repo's related tests, conftest and pytest settings."""
     parts = [f"Module {f.path} (import as `{module_name(f.path)}`) is {f.message}.",
-             "Write characterization tests for its public functions and classes.",
+             f"Write tests for its public functions and classes, at most {budget} lines.",
              "", "```python", source, "```"]
+    for path, text in context.items():
+        parts += ["", f"Existing {path}:", "```", text, "```"]
     return _with_feedback(parts, feedback)
 
 
@@ -105,6 +126,11 @@ Approve only if ALL hold:
 - New tests assert real current behaviour of the module: no tautologies (`assert True`,
   asserting a mock returns what it was told), the unit under test is not mocked away,
   and they are deterministic (no network, real clock, sleep, randomness without seed).
+- New tests read like the repo's own: same place, naming, fixtures and style; they do
+  not duplicate existing tests, restate constants, pin accidental crashes or bloat.
+- The repo would look better to a senior reviewer with this change than without it.
+You are inside the repository with the change applied: read the files you need (the
+changed ones, the code they touch, neighbouring tests). Change nothing. Never open .env.
 Reply ONLY with JSON: {"approve": true|false, "reason": "<one sentence>"}
 """
 
@@ -121,10 +147,12 @@ def review_prompt(f: Finding, diff: str) -> str:
                       "Change (git diff):", "```diff", diff, "```"])
 
 
-def review(f: Finding, diff: str, model: str) -> Verdict:
-    """Fail closed: a reply that is not a clear approval is a rejection."""
-    reply = ask(REVIEW_SYSTEM, review_prompt(f, diff), model)
-    data = extract_json_or_none(reply.text)
+def review(f: Finding, diff: str, model: str, root: Path) -> Verdict:
+    """Claude Code in the clone at `root`. Fail closed: a reply that is not a clear
+    approval is a rejection."""
+    res = run_claude(f"{REVIEW_SYSTEM}\n{review_prompt(f, diff)}", model=model, effort="high",
+                     tools=REVIEW_TOOLS, cwd=root, backend="cli", timeout=REVIEW_TIMEOUT)
+    data = extract_json_or_none(res.text)
     if not isinstance(data, dict):
-        return Verdict(False, f"unreadable review reply: {reply.text[:200]!r}", reply.model)
-    return Verdict(data.get("approve") is True, str(data.get("reason", "")), reply.model)
+        return Verdict(False, f"unreadable review reply: {res.text[:200]!r}", model)
+    return Verdict(data.get("approve") is True, str(data.get("reason", "")), model)

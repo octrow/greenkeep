@@ -1,9 +1,11 @@
 """Whole dry runs on throwaway repos: real git, uv, ruff and pytest; only the LLM is faked."""
 
 import subprocess
+from types import SimpleNamespace
 from pathlib import Path
 
 from greenkeep import llm, run, workspace
+from greenkeep.core import DEFAULT_REVIEW_MODEL
 from greenkeep.config import Target
 from greenkeep.digest import Digest
 
@@ -45,11 +47,11 @@ class FakeLLM:
         self.patch_prompts: list[str] = []
         self.reviews = 0
 
+    def review(self, prompt: str, **kw) -> SimpleNamespace:
+        self.reviews += 1
+        return SimpleNamespace(text=self.verdicts.pop(0) if self.verdicts else APPROVE)
+
     def __call__(self, system: str, prompt: str, model: str) -> llm.Reply:
-        if system == llm.REVIEW_SYSTEM:
-            self.reviews += 1
-            verdict = self.verdicts.pop(0) if self.verdicts else APPROVE
-            return llm.Reply(verdict, "reviewer", "sha")
         self.patch_prompts.append(prompt)
         text = self.patches[min(len(self.patch_prompts), len(self.patches)) - 1]
         return llm.Reply(text, "patcher", "sha")
@@ -58,6 +60,7 @@ class FakeLLM:
 def fake_llm(monkeypatch, patches: list[str], verdicts: list[str] = ()) -> FakeLLM:
     fake = FakeLLM(patches, verdicts)
     monkeypatch.setattr(llm, "ask", fake)
+    monkeypatch.setattr(llm, "run_claude", fake.review)
     return fake
 
 
@@ -86,7 +89,7 @@ def test_repo_without_tests_gets_characterization_tests(tmp_path, monkeypatch):
     state, clone = dry_run(src)
     assert state.merged_today() == 1 and fake.reviews == 1
     assert git(clone, "log", "-1", "--format=%s").startswith("test: Add characterization")
-    assert (clone / "tests/test_demo_characterization.py").is_file()
+    assert (clone / "tests/test_demo.py").is_file()
 
 
 def test_bad_llm_reply_parks_finding_after_three_attempts(tmp_path, monkeypatch):
@@ -106,7 +109,7 @@ def test_patch_that_adds_lint_findings_is_rejected_then_retried(tmp_path, monkey
     state, clone = dry_run(src)
     assert state.merged_today() == 1
     assert "adds lint findings" in prompts[1] and "F841" in prompts[1]
-    assert "unused = a(1)" not in (clone / "tests/test_demo_characterization.py").read_text()
+    assert "unused = a(1)" not in (clone / "tests/test_demo.py").read_text()
 
 
 UNUSED_VAR = "def add(a, b):\n    total = 0\n    return a + b\n"
@@ -152,8 +155,8 @@ def test_reviewer_rejection_is_fed_back_and_recorded(tmp_path, monkeypatch):
     fake = fake_llm(monkeypatch, [CHAR_TEST], verdicts=[REJECT])
     state, clone = dry_run(src)
     assert state.merged_today() == 1 and fake.reviews == 2
-    assert "reviewer (reviewer) rejected" in fake.patch_prompts[1]
-    assert "reviewed by: `reviewer`" in git(clone, "log", "-1", "--format=%B")
+    assert f"reviewer ({DEFAULT_REVIEW_MODEL}) rejected" in fake.patch_prompts[1]
+    assert f"reviewed by: `{DEFAULT_REVIEW_MODEL}`" in git(clone, "log", "-1", "--format=%B")
 
 
 def test_unreadable_review_is_a_rejection(tmp_path, monkeypatch):
