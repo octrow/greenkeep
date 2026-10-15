@@ -16,3 +16,9 @@ def test_merged_today_counts_only_merged(tmp_path):
     st.set("r", "b", status="open")
     assert st.merged_today() == 1
     assert not st.is_workable("r", "a")
+
+
+def test_last_merge_orders_never_touched_repos_first(tmp_path):
+    st = State(tmp_path / "s.db")
+    st.set("a", "x", status="merged")
+    assert st.last_merge("b") == "" < st.last_merge("a")

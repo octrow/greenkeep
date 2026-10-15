@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import logging
 import re
 from dataclasses import dataclass, replace
-from pathlib import Path
 
 from claude_cli.http_api import HttpLlmError
 
 from . import github, llm
+from .config import Target
+from .digest import Digest
 from .edits import EditError, apply_edits, parse_edits, python_block
 from .findings import Finding, rank, ruff_findings, untested_findings
 from .gate import coverage_violations, is_test_path, line_is_covered, suppressions
@@ -35,7 +35,6 @@ log = logging.getLogger("greenkeep")
 DEFAULT_MODEL = "cc/claude-sonnet-5-5"
 DEFAULT_REVIEW_MODEL = "cc/claude-opus-5-5"
 DETERMINISTIC = "ruff --fix"  # changes from this producer skip the LLM review
-DEFAULT_BUDGET = 3
 MAX_FINDINGS_PER_REPO = 10
 URGENT_RANK = 2  # S/F/B ruff rules go before characterization tests
 FEEDBACK_CHARS = 1500
@@ -101,11 +100,13 @@ def lint(ws: Workspace, *paths: str) -> list[Finding]:
 
 @dataclass(frozen=True)
 class Job:
-    """Everything one repo's run shares: the clone, its baseline, the options, the history."""
+    """Everything one repo's run shares: the clone, its baseline, the options, the history,
+    and the digest it reports into."""
     ws: Workspace
     base: Baseline
     opts: Options
     state: State
+    digest: Digest
 
 
 def characterization_path(f: Finding) -> str:
@@ -266,8 +267,12 @@ def _review(job: Job, f: Finding, change: Change) -> Change:
 def _record_failure(job: Job, f: Finding, reason: str) -> None:
     n = job.state.add_attempt(job.ws.name, f.fingerprint)
     log.info("  attempt %d/%d failed: %s", n, MAX_ATTEMPTS, reason.splitlines()[0])
+    log.debug("  full failure:\n%s", reason)
+    if n < MAX_ATTEMPTS:
+        return
     issue = job.state.issue(job.ws.name, f.fingerprint)
-    if n >= MAX_ATTEMPTS and issue:
+    job.digest.parked.append(f"{job.ws.name}: {f.title}" + (f" (issue #{issue})" if issue else ""))
+    if issue:
         github.park_issue(job.ws, issue, reason.splitlines()[0])
 
 
@@ -279,6 +284,7 @@ def _land(job: Job, fix: Fix) -> None:
     job.state.set(job.ws.name, fix.finding.fingerprint, status="merged", pr=pr)
     log.info("  merged %s via %s%s", fix.finding.title, fix.change.model,
              f" (PR #{pr})" if pr else "")
+    job.digest.merged.append(f"{job.ws.name}: {fix.finding.title}" + (f" (PR #{pr})" if pr else ""))
     if not job.opts.push:
         log.info("%s", job.ws.git("show", "--stat", "--patch", "HEAD"))
 
@@ -335,50 +341,18 @@ def _work_repo(job: Job) -> None:
             return
 
 
-def run_repo(src: Path, opts: Options, state: State) -> None:
-    ws = clone(src)
+def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> None:
+    ws = clone(target)
     try:
         sync(ws)
         tests = run_tests(ws)
         if not tests.ok:
             log.warning("%s: baseline tests are red, skipping\n%s", ws.name, tests.output)
+            digest.problems.append(f"{ws.name}: baseline tests are red in a clean clone")
             return
         if opts.push:
             github.ensure_labels(ws)
-        _work_repo(Job(ws, baseline(ws, tests), opts, state))
+        _work_repo(Job(ws, baseline(ws, tests), opts, state, digest))
     finally:
         if not opts.keep:
             discard(ws)
-
-
-def _parse_args(argv: list[str] | None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(prog="greenkeep", description=__doc__)
-    p.add_argument("repos", nargs="+", type=Path, help="local checkouts of tended repos")
-    p.add_argument("--push", action="store_true",
-                   help="open issues/PRs and merge them (default: local dry run)")
-    p.add_argument("--budget", type=int, default=DEFAULT_BUDGET, help="merged fix PRs per day")
-    p.add_argument("--model", default=DEFAULT_MODEL, help="OmniRoute model that writes patches")
-    p.add_argument("--review-model", default=DEFAULT_REVIEW_MODEL,
-                   help="OmniRoute model that reviews each patch before it lands")
-    p.add_argument("--keep", action="store_true", help="keep the throwaway clones")
-    return p.parse_args(argv)
-
-
-def main(argv: list[str] | None = None) -> int:
-    a = _parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    opts = Options(a.push, a.budget, a.model, a.keep, a.review_model)
-    # a dry run never touches the persistent state: attempts and budget stay unspent
-    state = State() if a.push else State(Path(":memory:"))
-    failed = 0
-    for src in a.repos:
-        try:
-            run_repo(src.resolve(), opts, state)
-        except Exception:  # one broken repo must not cost the others their run
-            failed += 1
-            log.exception("%s: run failed", src.name)
-    return 1 if failed else 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

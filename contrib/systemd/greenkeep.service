@@ -1,0 +1,14 @@
+[Unit]
+Description=greenkeep: one gated maintenance run over the tended repos
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-%h/.config/greenkeep/env
+WorkingDirectory=%h/dev/greenkeep
+ExecStart=%h/.local/bin/uv run --project %h/dev/greenkeep greenkeep --push
+# a run clones, syncs and tests up to every tended repo
+TimeoutStartSec=4h
+Nice=10

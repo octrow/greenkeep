@@ -1,0 +1,10 @@
+[Unit]
+Description=greenkeep daily run
+
+[Timer]
+OnCalendar=*-*-* 10:00
+# a run missed while the machine was off happens at the next boot
+Persistent=true
+
+[Install]
+WantedBy=timers.target

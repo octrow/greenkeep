@@ -12,6 +12,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from .config import Target
+
 log = logging.getLogger(__name__)
 
 CACHE = Path.home() / ".cache/greenkeep"
@@ -87,15 +89,21 @@ class Workspace:
         return lines[n - 1] if 0 < n <= len(lines) else ""
 
 
-def clone(src: Path) -> Workspace:
-    origin = sh(["git", "remote", "get-url", "origin"], src).stdout.strip()
-    run_dir = CACHE / f"run-{src.name}-{time.strftime('%Y%m%d-%H%M%S')}"
-    root, scratch = run_dir / src.name, run_dir / "scratch"
+def clone(target: Target) -> Workspace:
+    """Clone the target's origin, borrowing objects (and .env) from its local checkout."""
+    name, src = target.name, target.path
+    origin = sh(["git", "remote", "get-url", "origin"], src, check=False).stdout.strip() \
+        if src else target.origin
+    if not origin:
+        raise WorkspaceError(f"{name}: local checkout has no origin to clone")
+    run_dir = CACHE / f"run-{name}-{time.strftime('%Y%m%d-%H%M%S')}"
+    root, scratch = run_dir / name, run_dir / "scratch"
     scratch.mkdir(parents=True)
-    sh(["git", "clone", "-q", "--reference-if-able", str(src), origin, str(root)], run_dir)
-    if (src / ".env").is_file():
+    reference = ["--reference-if-able", str(src)] if src else []
+    sh(["git", "clone", "-q", *reference, origin, str(root)], run_dir)
+    if src and (src / ".env").is_file():
         shutil.copy2(src / ".env", root / ".env")
-    ws = Workspace(src.name, root, scratch)
+    ws = Workspace(name, root, scratch)
     ws.base_branch = ws.git("rev-parse", "--abbrev-ref", "HEAD").strip()
     return ws
 

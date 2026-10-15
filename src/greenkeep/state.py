@@ -47,6 +47,12 @@ class State:
         self.set(repo, fp, attempts=n, **({"status": "parked"} if n >= MAX_ATTEMPTS else {}))
         return n
 
+    def last_merge(self, repo: str) -> str:
+        """When greenkeep last merged in this repo ("" if never): oldest goes first."""
+        row = self.db.execute("SELECT max(updated) FROM finding WHERE repo=? AND "
+                              "status='merged'", (repo,)).fetchone()
+        return row[0] or ""
+
     def merged_today(self) -> int:
         # `updated` is stored in UTC; the budget is per local day
         return self.db.execute("SELECT count(*) FROM finding WHERE status='merged' AND "

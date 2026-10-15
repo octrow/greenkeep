@@ -4,6 +4,8 @@ import subprocess
 from pathlib import Path
 
 from greenkeep import llm, run, workspace
+from greenkeep.config import Target
+from greenkeep.digest import Digest
 
 PYPROJECT = '[project]\nname = "demo"\nversion = "0"\nrequires-python = ">=3.12"\n'
 CODE = "import os\n\n\ndef add(a, b):\n    return a + b\n"
@@ -61,7 +63,8 @@ def fake_llm(monkeypatch, patches: list[str], verdicts: list[str] = ()) -> FakeL
 
 def dry_run(src: Path) -> tuple[run.State, Path]:
     state = run.State(Path(":memory:"))
-    run.run_repo(src, run.Options(push=False, budget=3, model="x", keep=True), state)
+    opts = run.Options(push=False, budget=3, model="x", keep=True)
+    run.run_repo(Target(str(src)), opts, state, Digest())
     return state, next(workspace.CACHE.glob("run-demo-*/demo"))
 
 
