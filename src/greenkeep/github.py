@@ -10,6 +10,7 @@ LABEL = "greenkeep"
 PARKED_LABEL = "needs-human"
 LABELS = {LABEL: "0e8a16", PARKED_LABEL: "d93f0b"}
 NUMBER = re.compile(r"/(\d+)\s*$")
+CHECKS_TIMEOUT = 1800
 
 
 def _gh(ws: Workspace, *args: str) -> str:
@@ -52,5 +53,15 @@ def publish(ws: Workspace, branch: str, title: str, body: str) -> int:
     pr = int(open_pr) if open_pr else _number(_gh(
         ws, "pr", "create", "--head", branch, "--base", ws.base_branch,
         "--title", title, "--body", body, "--label", LABEL))
-    _gh(ws, "pr", "merge", str(pr), "--squash", "--delete-branch")
+    _merge(ws, pr)
     return pr
+
+
+def _merge(ws: Workspace, pr: int) -> None:
+    """Merge now, or once the repo's required checks (CI) have passed."""
+    merge = ["gh", "pr", "merge", str(pr), "--squash", "--delete-branch"]
+    if sh(merge, ws.root, check=False).returncode == 0:
+        return
+    sh(["gh", "pr", "checks", str(pr), "--watch", "--required", "--fail-fast"], ws.root,
+       timeout=CHECKS_TIMEOUT)  # red or hung CI raises: the attempt fails
+    sh(merge, ws.root)

@@ -126,3 +126,8 @@ def test_safe_lint_in_generated_tests_is_fixed_without_an_attempt(tmp_path, monk
 def test_summary_picks_pytest_closing_line():
     out = "____ test_x ____\nassert 1 == 2\n==== 1 failed, 3 passed in 0.1s ====\n"
     assert run._summary(out) == "1 failed, 3 passed in 0.1s"
+
+
+def test_summary_ignores_failed_inside_assertion_text():
+    out = "E   assert {'failed': 1} == {}\nsome noise failed here\n1 failed, 2 passed in 3.40s\n"
+    assert run._summary(out) == "1 failed, 2 passed in 3.40s"

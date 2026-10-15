@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -34,6 +35,8 @@ DEFAULT_BUDGET = 3
 MAX_FINDINGS_PER_REPO = 10
 URGENT_RANK = 2  # S/F/B ruff rules go before characterization tests
 FEEDBACK_CHARS = 1500
+PYTEST_TOTALS = re.compile(r"^=*\s*(\d+ (?:failed|passed|errors?)\b[^\n]*? in [\d.]+s)",
+                           re.MULTILINE)
 GATE_NOTE = {
     "ruff": "full test suite green; every changed line was covered before the change; "
             "no new lint findings.",
@@ -178,9 +181,11 @@ def _check_tests(job: Job, f: Finding) -> None:
 
 def _summary(output: str) -> str:
     """pytest's closing `N failed, M passed` line: the one-line reason for logs and issues."""
+    found = PYTEST_TOTALS.findall(output)
+    if found:
+        return found[-1]
     lines = output.strip().splitlines()
-    return next((ln.strip("= ") for ln in reversed(lines) if " failed" in ln or " error" in ln),
-                lines[-1] if lines else "no output")
+    return lines[-1] if lines else "no output"
 
 
 def gate(job: Job, f: Finding) -> list[str]:
