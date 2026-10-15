@@ -13,8 +13,9 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from .config import DEFAULT_BUDGET, PAUSE_FILE, Target, load, paused
+from .core import DEFAULT_MODEL, DEFAULT_REVIEW_MODEL, Options
 from .digest import Digest, send
-from .run import DEFAULT_MODEL, DEFAULT_REVIEW_MODEL, Options, run_repo
+from .run import run_repo
 from .state import State
 
 log = logging.getLogger("greenkeep")

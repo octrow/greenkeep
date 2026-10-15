@@ -22,6 +22,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "claude-subprocess" },
+    { name = "packaging" },
     { name = "tg-toolkit" },
 ]
 
@@ -33,6 +34,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "claude-subprocess", git = "https://github.com/octrow/claude-cli?branch=main" },
+    { name = "packaging", specifier = ">=24" },
     { name = "tg-toolkit", specifier = ">=0.1.3" },
 ]
 

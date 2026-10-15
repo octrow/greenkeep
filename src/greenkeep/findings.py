@@ -30,12 +30,7 @@ class Finding:
     message: str
     fingerprint: str
     fixable: bool = False  # ruff can fix it deterministically, no LLM needed
-
-    @property
-    def title(self) -> str:
-        if self.kind == "untested":
-            return f"Add characterization tests for {self.path}"
-        return f"{self.rule}: {self.message} ({self.path})"
+    title: str = ""  # issue, PR and commit subject
 
 
 def _digest(text: str) -> str:
@@ -52,7 +47,8 @@ def ruff_findings(items: list[dict], *, root: str,
         fp = f"ruff:{it['code']}:{path}:{_digest(read_line(path, row).strip())}"
         fix = it.get("fix") or {}
         found.append(Finding("ruff", it["code"], path, row, it["message"], fp,
-                             fixable=fix.get("applicability") == "safe"))
+                             fixable=fix.get("applicability") == "safe",
+                             title=f"{it['code']}: {it['message']} ({path})"))
     return sorted(found, key=lambda f: rank(f.rule))
 
 
@@ -65,5 +61,6 @@ def untested_findings(cov: dict) -> list[Finding]:
             continue
         if s["percent_covered"] < UNTESTED_PERCENT:
             msg = f"{s['percent_covered']:.0f}% covered"
-            found.append(Finding("untested", "coverage", path, 1, msg, f"untested:{path}"))
+            found.append(Finding("untested", "coverage", path, 1, msg, f"untested:{path}",
+                                 title=f"Add characterization tests for {path}"))
     return found

@@ -1,4 +1,4 @@
-"""One run: clone each tended repo, collect findings, push each through the gate."""
+"""One repo's run: baseline, findings, then each finding through the gate to a merge."""
 
 from __future__ import annotations
 
@@ -9,49 +9,24 @@ from dataclasses import dataclass, replace
 
 from claude_cli.http_api import HttpLlmError
 
-from . import github, llm
+from . import deps, github, llm
 from .config import Target
+from .core import Baseline, Change, GateFailure, Job, Options, lint
 from .digest import Digest
-from .edits import EditError, apply_edits, parse_edits, python_block
-from .findings import Finding, rank, ruff_findings, untested_findings
-from .gate import coverage_violations, is_test_path, line_is_covered, suppressions
+from .edits import EditError
+from .findings import Finding, rank, untested_findings
+from .gate import suppressions
+from .kinds import URGENT_RANK, kind_of
 from .state import MAX_ATTEMPTS, State
-from .workspace import (
-    TestRun,
-    Workspace,
-    WorkspaceError,
-    clone,
-    discard,
-    ruff_fix,
-    ruff_json,
-    run_tests,
-    sync,
-)
+from .workspace import TestRun, Workspace, WorkspaceError, clone, discard, run_tests, sync
 
 log = logging.getLogger("greenkeep")
 
-# pinned models, not combos: a combo answers with a different model from run to run.
-# Benchmark 2026-10-15: opus = sonnet > grok-4.7 as patcher; sonnet writes, opus reviews.
-DEFAULT_MODEL = "cc/claude-sonnet-5-5"
-DEFAULT_REVIEW_MODEL = "cc/claude-opus-5-5"
-DETERMINISTIC = "ruff --fix"  # changes from this producer skip the LLM review
 MAX_FINDINGS_PER_REPO = 10
-URGENT_RANK = 2  # S/F/B ruff rules go before characterization tests
 FEEDBACK_CHARS = 1500
 PYTEST_TOTALS = re.compile(r"^=*\s*(\d+ (?:failed|passed|errors?)\b[^\n]*? in [\d.]+s)",
                            re.MULTILINE)
-GATE_NOTE = {
-    "ruff": "full test suite green; every changed line was covered before the change; "
-            "no new lint findings.",
-    "untested": "only test files added; full test suite green; module coverage grew; "
-                "no new lint findings.",
-}
 TRAILER = "Co-Authored-By: greenkeep <greenkeep@users.noreply.github.com>"
-
-
-class GateFailure(Exception):
-    """The attempt's change did not pass the gate."""
-
 
 # anything that sinks one attempt; it is counted, so a poison finding parks instead of
 # failing every run. ponytail: a gateway outage also burns attempts (one finding per
@@ -60,104 +35,16 @@ ATTEMPT_FAILURES = (GateFailure, EditError, WorkspaceError, HttpLlmError, OSErro
                     UnicodeError)
 
 
-@dataclass(frozen=True)
-class Options:
-    push: bool
-    budget: int
-    model: str
-    keep: bool
-    review_model: str = DEFAULT_REVIEW_MODEL
-
-
-@dataclass(frozen=True)
-class Change:
-    paths: list[str]
-    model: str
-    prompt_sha: str
-    reviewer: str = ""
-
-
-@dataclass(frozen=True)
-class Baseline:
-    """The repo before any attempt: what the gate compares every change against."""
-    tests: TestRun
-    lint: frozenset[str]  # fingerprints of ruff findings already there
-    findings: list[Finding]
-
-
-
 def baseline(ws: Workspace, tests: TestRun) -> Baseline:
+    """Findings in work order: vulnerabilities, lint bugs, missing tests, upgrades, style."""
     ruff = lint(ws)
-    urgent = [f for f in ruff if rank(f.rule) <= URGENT_RANK]
-    rest = [f for f in ruff if rank(f.rule) > URGENT_RANK]
-    findings = urgent + untested_findings(tests.cov) + rest
+    dependency = deps.collect(ws)
+    findings = ([f for f in dependency if f.kind == "vuln"]
+                + [f for f in ruff if rank(f.rule) <= URGENT_RANK]
+                + untested_findings(tests.cov)
+                + [f for f in dependency if f.kind == "outdated"]
+                + [f for f in ruff if rank(f.rule) > URGENT_RANK])
     return Baseline(tests, frozenset(f.fingerprint for f in ruff), findings)
-
-
-def lint(ws: Workspace, *paths: str) -> list[Finding]:
-    return ruff_findings(ruff_json(ws, *paths), root=str(ws.root), read_line=ws.read_line)
-
-
-@dataclass(frozen=True)
-class Job:
-    """Everything one repo's run shares: the clone, its baseline, the options, the history,
-    and the digest it reports into."""
-    ws: Workspace
-    base: Baseline
-    opts: Options
-    state: State
-    digest: Digest
-
-
-def characterization_path(f: Finding) -> str:
-    """One file per module, named after its full path so same-named modules don't clash."""
-    stem = f.path.removeprefix("src/").removesuffix(".py").replace("/", "_")
-    return f"tests/test_{stem}_characterization.py"
-
-
-def _write_tests(job: Job, f: Finding, feedback: str) -> Change:
-    rel = characterization_path(f)
-    target = job.ws.root / rel
-    if target.exists():
-        raise GateFailure(f"{rel} already exists")
-    source = (job.ws.root / f.path).read_text()
-    prompt = llm.characterization_prompt(f, source, feedback)
-    reply = llm.ask(llm.TEST_SYSTEM, prompt, job.opts.model)
-    target.parent.mkdir(exist_ok=True)
-    target.write_text(python_block(reply.text))
-    ruff_fix(job.ws, rel)  # safe fixes only: an unused import must not cost an attempt
-    return Change([rel], reply.model, reply.prompt_sha)
-
-
-def produce(job: Job, f: Finding, feedback: str) -> Change:
-    if f.kind == "untested":
-        return _write_tests(job, f, feedback)
-    if f.fixable and not feedback:
-        ruff_fix(job.ws, f.path, f.rule)
-        return Change([f.path], DETERMINISTIC, "-")
-    source = (job.ws.root / f.path).read_text()
-    reply = llm.ask(llm.FIX_SYSTEM, llm.fix_prompt(f, source, feedback), job.opts.model)
-    edited = apply_edits(job.ws.root, parse_edits(reply.text), job.ws.tracked())
-    return Change(edited, reply.model, reply.prompt_sha)
-
-
-def _percent(cov: dict, path: str) -> float:
-    return cov.get("files", {}).get(path, {}).get("summary", {}).get("percent_covered", 0.0)
-
-
-def _check_scope(job: Job, f: Finding, paths: list[str]) -> None:
-    """What the change may touch: test files only, or covered lines that fix the finding."""
-    if not paths:
-        raise GateFailure("the change is empty")
-    if f.kind == "untested" and not all(is_test_path(p) for p in paths):
-        raise GateFailure(f"characterization tests may only add test files: {paths}")
-    if f.kind == "ruff" and not is_test_path(f.path) and any(map(is_test_path, paths)):
-        raise GateFailure(f"a source fix may not touch tests: {paths}")
-    if f.kind == "ruff":
-        if bad := coverage_violations(job.ws.git("diff", "-U0"), job.base.tests.cov):
-            raise GateFailure(f"changed lines were not covered before the change: {bad}")
-        if any(a.fingerprint == f.fingerprint for a in lint(job.ws, f.path)):
-            raise GateFailure("ruff still reports the finding")
 
 
 def _check_no_new_lint(job: Job, paths: list[str]) -> None:
@@ -176,8 +63,7 @@ def _check_tests(job: Job, f: Finding) -> None:
         raise GateFailure(f"test suite failed: {_summary(after.output)}\n{after.output}")
     if after.no_tests and not job.base.tests.no_tests:
         raise GateFailure("pytest collected no tests, but the baseline had some")
-    if f.kind == "untested" and _percent(after.cov, f.path) <= _percent(job.base.tests.cov, f.path):
-        raise GateFailure(f"coverage of {f.path} did not grow")
+    kind_of(f).check_after(job, f, after)
 
 
 def _summary(output: str) -> str:
@@ -192,7 +78,9 @@ def _summary(output: str) -> str:
 def gate(job: Job, f: Finding) -> list[str]:
     """Raise GateFailure unless the change is safe to merge; return the changed paths."""
     paths = job.ws.changed()
-    _check_scope(job, f, paths)
+    if not paths:
+        raise GateFailure("the change is empty")
+    kind_of(f).check_scope(job, f, paths)
     _check_no_new_lint(job, paths)
     _check_tests(job, f)
     return paths
@@ -200,12 +88,6 @@ def gate(job: Job, f: Finding) -> list[str]:
 
 def _branch(f: Finding) -> str:
     return "greenkeep/" + hashlib.sha1(f.fingerprint.encode()).hexdigest()[:10]
-
-
-def _commit_type(f: Finding) -> str:
-    if f.kind == "untested":
-        return "test"
-    return "fix" if rank(f.rule) <= URGENT_RANK else "chore"
 
 
 @dataclass(frozen=True)
@@ -218,10 +100,11 @@ class Fix:
 
     def describe(self) -> str:
         f, c = self.finding, self.change
-        lines = [f"Finding: `{f.rule}` at `{f.path}:{f.line}`: {f.message}",
+        where = f"`{f.path}:{f.line}`" if f.line else f"`{f.path}`"
+        lines = [f"Finding: `{f.rule}` at {where}: {f.message}",
                  f"Patched by: `{c.model}` (prompt `{c.prompt_sha}`)"
                  + (f", reviewed by: `{c.reviewer}`" if c.reviewer else ""),
-                 "Gate: " + GATE_NOTE[f.kind]]
+                 "Gate: " + kind_of(f).gate_note]
         if self.issue:
             lines.append(f"\nCloses #{self.issue}")
         return "\n".join(lines)
@@ -231,7 +114,7 @@ def commit(ws: Workspace, fix: Fix) -> str:
     branch = _branch(fix.finding)
     ws.git("checkout", "-q", "-B", branch)  # -B: a failed publish may have left it
     ws.git("add", "--", *fix.paths)
-    title = f"{_commit_type(fix.finding)}: {fix.finding.title}"[:72]
+    title = f"{kind_of(fix.finding).commit_type(fix.finding)}: {fix.finding.title}"[:72]
     ws.git("commit", "-q", "-m", title, "-m", fix.describe(), "-m", TRAILER)
     return branch
 
@@ -241,7 +124,7 @@ def _ensure_issue(job: Job, f: Finding) -> int | None:
         return None
     issue = job.state.issue(job.ws.name, f.fingerprint)
     if issue is None:
-        body = f"`{f.rule}` at `{f.path}:{f.line}`\n\n{f.message}\n\nFound by greenkeep."
+        body = f"`{f.rule}` at `{f.path}`\n\n{f.message}\n\nFound by greenkeep."
         issue = github.open_issue(job.ws, f.title, body)
         job.state.set(job.ws.name, f.fingerprint, issue=issue)
     return issue
@@ -249,14 +132,14 @@ def _ensure_issue(job: Job, f: Finding) -> int | None:
 
 def _attempt(job: Job, f: Finding, feedback: str) -> tuple[Change, list[str]]:
     job.ws.reset()
-    change = produce(job, f, feedback)
+    change = kind_of(f).produce(job, f, feedback)
     paths = gate(job, f)
     return _review(job, f, change), paths
 
 
 def _review(job: Job, f: Finding, change: Change) -> Change:
     """The last, most expensive check: a second model reads the diff that passed the gate."""
-    if change.model == DETERMINISTIC:
+    if change.deterministic:
         return change
     verdict = llm.review(f, job.ws.git("diff", "HEAD"), job.opts.review_model)
     if not verdict.approve:
@@ -271,7 +154,8 @@ def _record_failure(job: Job, f: Finding, reason: str) -> None:
     if n < MAX_ATTEMPTS:
         return
     issue = job.state.issue(job.ws.name, f.fingerprint)
-    job.digest.parked.append(f"{job.ws.name}: {f.title}" + (f" (issue #{issue})" if issue else ""))
+    job.digest.parked.append(f"{job.ws.name}: {f.title}"
+                             + (f" (issue #{issue})" if issue else ""))
     if issue:
         github.park_issue(job.ws, issue, reason.splitlines()[0])
 
@@ -284,7 +168,8 @@ def _land(job: Job, fix: Fix) -> None:
     job.state.set(job.ws.name, fix.finding.fingerprint, status="merged", pr=pr)
     log.info("  merged %s via %s%s", fix.finding.title, fix.change.model,
              f" (PR #{pr})" if pr else "")
-    job.digest.merged.append(f"{job.ws.name}: {fix.finding.title}" + (f" (PR #{pr})" if pr else ""))
+    job.digest.merged.append(f"{job.ws.name}: {fix.finding.title}"
+                             + (f" (PR #{pr})" if pr else ""))
     if not job.opts.push:
         log.info("%s", job.ws.git("show", "--stat", "--patch", "HEAD"))
 
@@ -319,25 +204,23 @@ def redact(text: str, secrets: list[str]) -> str:
 
 
 def _candidates(job: Job) -> list[Finding]:
-    """Workable findings in priority order. A lint finding on an uncovered line is not
-    attempted at all: it becomes workable once tests cover that line."""
-    return [f for f in job.base.findings if job.state.is_workable(job.ws.name, f.fingerprint) and _attemptable(job, f)]
+    return [f for f in job.base.findings
+            if job.state.is_workable(job.ws.name, f.fingerprint)
+            and kind_of(f).attemptable(job, f)]
 
 
-def _attemptable(job: Job, f: Finding) -> bool:
-    if f.kind == "untested":  # its tests already exist: more coverage is a later finding
-        return not (job.ws.root / characterization_path(f)).exists()
-    return line_is_covered(job.base.tests.cov, f.path, f.line)
+def _within_budget(job: Job, f: Finding) -> bool:
+    return kind_of(f).exempt_from_budget or job.state.merged_today() < job.opts.budget
 
 
 def _work_repo(job: Job) -> None:
     for f in _candidates(job)[:MAX_FINDINGS_PER_REPO]:
-        if job.state.merged_today() >= job.opts.budget:
-            return
+        if not _within_budget(job, f):
+            continue  # a later finding may still be budget-exempt (security)
         log.info("%s: %s", job.ws.name, f.title)
         if work(job, f):
-            # ponytail: one merge per repo per run, the baseline coverage is stale after
-            # it; re-run the baseline here if one fix per repo per day proves too slow
+            # ponytail: one merge per repo per run, the baseline is stale after it;
+            # re-run the baseline here if one fix per repo per day proves too slow
             return
 
 
