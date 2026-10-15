@@ -1,0 +1,15 @@
+name: Idea
+description: Suggest a finding source, a gate rule or another change
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The maintenance chore greenkeep doesn't handle yet, or handles badly.
+    validations: {required: true}
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+    validations: {required: true}

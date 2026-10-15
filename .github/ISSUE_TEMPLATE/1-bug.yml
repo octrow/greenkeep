@@ -1,0 +1,35 @@
+name: Bug report
+description: greenkeep did something wrong, or a run failed
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, what you got.
+    validations: {required: true}
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      placeholder: greenkeep ~/dev/my-repo --budget 1
+      render: shell
+    validations: {required: true}
+  - type: textarea
+    id: log
+    attributes:
+      label: Output
+      description: The end of the run's output. Remove anything private.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version and how you installed it
+      placeholder: "0.1.0, install script / from a clone"
+    validations: {required: true}
+  - type: dropdown
+    id: os
+    attributes:
+      label: System
+      options: [Linux, macOS, Windows]
+    validations: {required: true}
