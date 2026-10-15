@@ -17,7 +17,7 @@ from claude_cli.parsing import extract_json_or_none
 
 from .findings import Finding
 
-LLM_TIMEOUT = 300
+LLM_TIMEOUT = 600  # claude -p on a 20k-char prompt has hit 300s
 REVIEW_TIMEOUT = 900
 REVIEW_TOOLS = "Read,Grep,Glob"
 EXCERPT_RADIUS = 40
