@@ -80,15 +80,17 @@ def choose(port: int, ask: Callable[[str], bool],
     if is_free(port):
         return Choice(port, serve=True)
     pid = running_dashboard(port)
-    if pid is not None:
-        url = Choice(port, serve=False).url
-        if ask(f"greenkeep dashboard already runs at {url} (pid {pid}). Restart it?") \
-                and _stop(pid, port, kill):
-            return Choice(port, serve=True)
-        return Choice(port, serve=False)
+    if pid is None:
+        return Choice(_next_free(port), serve=True)
+    url = Choice(port, serve=False).url
+    restart = ask(f"greenkeep dashboard already runs at {url} (pid {pid}). Restart it?")
+    return Choice(port, serve=restart and _stop(pid, port, kill))
+
+
+def _next_free(port: int) -> int:
     for candidate in range(port + 1, port + 1 + PORT_TRIES):
         if is_free(candidate):
-            return Choice(candidate, serve=True)
+            return candidate
     raise OSError(f"ports {port}-{port + PORT_TRIES} are all busy")
 
 

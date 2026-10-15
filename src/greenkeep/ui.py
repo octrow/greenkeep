@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
@@ -45,17 +46,20 @@ LINK_SLOT = ('<q-td :props="props"><a v-if="props.value" :href="props.value" tar
 
 def table_rows(rows: list[dict], status: str | None, query: str) -> list[dict]:
     """State rows -> table rows: filtered, with a link to the PR (or else the issue)."""
-    out = []
-    for r in rows:
-        if status and r["status"] != status:
-            continue
-        if query and query.lower() not in f"{r['repo']} {r['title'] or ''}".lower():
-            continue
-        number, kind = (r["pr"], "pull") if r["pr"] else (r["issue"], "issues")
-        link = f"{r['url']}/{kind}/{number}" if r["url"] and number else ""
-        out.append({**r, "title": r["title"] or r["fp"], "key": f"{r['repo']}:{r['fp']}",
-                    "link": link, "link_text": f"#{number}" if link else ""})
-    return out
+    return [_decorate(r) for r in rows if _matches(r, status, query)]
+
+
+def _matches(row: dict, status: str | None, query: str) -> bool:
+    if status and row["status"] != status:
+        return False
+    return not query or query.lower() in f"{row['repo']} {row['title'] or ''}".lower()
+
+
+def _decorate(row: dict) -> dict:
+    number, kind = (row["pr"], "pull") if row["pr"] else (row["issue"], "issues")
+    link = f"{row['url']}/{kind}/{number}" if row["url"] and number else ""
+    return {**row, "title": row["title"] or row["fp"], "key": f"{row['repo']}:{row['fp']}",
+            "link": link, "link_text": f"#{number}" if link else ""}
 
 
 def budget_today() -> int | None:
@@ -105,42 +109,66 @@ def _summary(state: State) -> None:
     ui.label(text).classes("t-status")
 
 
+def _filters() -> tuple[ui.select, ui.input]:
+    """Status filter, search, and the dry-run button that sits with them."""
+    with layout.filter_bar():
+        status = ui.select(list(STATUSES), value="All").props("outlined dense")
+        search = layout.search_field("Repo or finding")
+        layout.button("Dry run now", kind="normal", on_click=lambda: run_pool.submit(
+            ["uv", "run", "--project", str(PROJECT), "greenkeep"], label="greenkeep dry run",
+            cwd=PROJECT))
+    return status, search
+
+
+def _log_card() -> ui.code:
+    with layout.section_card(recessive=True):
+        layout.heading("Recent events", level=2)
+        return ui.code("", language="text").classes("w-full").style(
+            f"max-height: {LOG_MAX_HEIGHT}; overflow: auto")
+
+
+@dataclass
+class _Page:
+    """The page's live parts; refresh() redraws them from the state and the log."""
+    state: State
+    top: ui.column
+    status: ui.select
+    search: ui.input
+    findings: table.EmptyAwareTable
+    log: ui.code
+
+    def refresh(self) -> None:
+        self.top.clear()
+        with self.top:
+            _pause_card(self.refresh)
+            _summary(self.state)
+        status = STATUSES[self.status.value]
+        self.findings.set_rows(table_rows(self.state.rows(), status, self.search.value or ""))
+        self.log.set_content(log_tail(_read_log()))
+
+
+def _findings_table() -> table.EmptyAwareTable:
+    findings = table.empty_aware_table(COLUMNS, row_key="key", pagination={"rowsPerPage": 25},
+                                       empty_text="No findings yet")
+    findings.table.add_slot("body-cell-link", LINK_SLOT)
+    return findings
+
+
 @ui.page("/")
 def index() -> None:
-    state = State()
     with ui.header().classes("items-center justify-between"):
         layout.heading("greenkeep", level=1)
         theme.theme_toggle()
     with layout.page_container(max_width=layout.PAGE_MAX_WIDTH_WIDE):
         top = ui.column().classes("w-full")
-        with layout.filter_bar():
-            status = ui.select(list(STATUSES), value="All").props("outlined dense")
-            search = layout.search_field("Repo or finding")
-            layout.button("Dry run now", kind="normal", on_click=lambda: run_pool.submit(
-                ["uv", "run", "--project", str(PROJECT), "greenkeep"], label="greenkeep dry run",
-                cwd=PROJECT))
-        findings = table.empty_aware_table(COLUMNS, row_key="key",
-                                           pagination={"rowsPerPage": 25},
-                                           empty_text="No findings yet")
-        findings.table.add_slot("body-cell-link", LINK_SLOT)
+        status, search = _filters()
+        findings = _findings_table()
         run_monitor.attach_run_monitor()
-        with layout.section_card(recessive=True):
-            layout.heading("Log", level=2)
-            log = ui.code("", language="text").classes("w-full").style(
-                f"max-height: {LOG_MAX_HEIGHT}; overflow: auto")
-
-    def refresh() -> None:
-        top.clear()
-        with top:
-            _pause_card(refresh)
-            _summary(state)
-        findings.set_rows(table_rows(state.rows(), STATUSES[status.value], search.value or ""))
-        log.set_content(log_tail(_read_log()))
-
-    status.on_value_change(lambda _: refresh())
-    search.on_value_change(lambda _: refresh())
-    refresh()
-    ui.timer(REFRESH_SECONDS, refresh)
+        page = _Page(State(), top, status, search, findings, _log_card())
+    status.on_value_change(lambda _: page.refresh())
+    search.on_value_change(lambda _: page.refresh())
+    page.refresh()
+    ui.timer(REFRESH_SECONDS, page.refresh)
 
 
 @app.get(port.MARKER_PATH)
