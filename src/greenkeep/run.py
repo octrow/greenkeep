@@ -14,9 +14,9 @@ from .config import Target
 from .core import Baseline, Change, GateFailure, Job, Options, lint
 from .digest import Digest
 from .edits import EditError
-from .findings import Finding, rank, untested_findings
+from .findings import Finding, untested_findings
 from .gate import suppressions
-from .kinds import URGENT_RANK, kind_of
+from .kinds import kind_of
 from .state import MAX_ATTEMPTS, State
 from .workspace import TestRun, Workspace, WorkspaceError, clone, discard, run_tests, sync
 
@@ -36,15 +36,11 @@ ATTEMPT_FAILURES = (GateFailure, EditError, WorkspaceError, HttpLlmError, OSErro
 
 
 def baseline(ws: Workspace, tests: TestRun) -> Baseline:
-    """Findings in work order: vulnerabilities, lint bugs, missing tests, upgrades, style."""
+    """All findings, in the work order their kinds define."""
     ruff = lint(ws)
-    dependency = deps.collect(ws)
-    findings = ([f for f in dependency if f.kind == "vuln"]
-                + [f for f in ruff if rank(f.rule) <= URGENT_RANK]
-                + untested_findings(tests.cov)
-                + [f for f in dependency if f.kind == "outdated"]
-                + [f for f in ruff if rank(f.rule) > URGENT_RANK])
-    return Baseline(tests, frozenset(f.fingerprint for f in ruff), findings)
+    found = [*ruff, *untested_findings(tests.cov), *deps.collect(ws)]
+    ordered = sorted(found, key=lambda f: kind_of(f).priority(f))  # stable within a kind
+    return Baseline(tests, frozenset(f.fingerprint for f in ruff), ordered)
 
 
 def _check_no_new_lint(job: Job, paths: list[str]) -> None:

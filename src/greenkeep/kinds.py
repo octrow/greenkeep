@@ -6,6 +6,8 @@ review) are the same for every kind; only what lives here differs.
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
+
 from . import deps, llm
 from .core import Change, GateFailure, Job, lint
 from .edits import apply_edits, parse_edits, python_block
@@ -14,17 +16,23 @@ from .gate import coverage_violations, is_test_path, line_is_covered
 from .workspace import TestRun, ruff_fix
 
 URGENT_RANK = 2  # S/F/B ruff rules are bugs: "fix:", and they go before tests
-OUTDATED_MIN_COVERAGE = 60.0  # below it a green suite says too little about an upgrade
+OUTDATED_MIN_COVERAGE = 60.0
+# work order: security, lint bugs, missing tests, upgrades, lint style
+SECURITY, BUGS, MISSING_TESTS, UPGRADES, STYLE = range(5)  # below it a green suite says too little about an upgrade
 
 
 def _percent(cov: dict, path: str) -> float:
     return cov.get("files", {}).get(path, {}).get("summary", {}).get("percent_covered", 0.0)
 
 
-class Kind:
+class Kind(ABC):
     """Defaults: an LLM-reviewed change with no extra rules. Kinds override what differs."""
     gate_note = ""
     exempt_from_budget = False
+
+    @abstractmethod
+    def priority(self, f: Finding) -> int:
+        """Work order across kinds, lowest first."""
 
     def commit_type(self, f: Finding) -> str:
         return "chore"
@@ -32,8 +40,9 @@ class Kind:
     def attemptable(self, job: Job, f: Finding) -> bool:
         return True
 
+    @abstractmethod
     def produce(self, job: Job, f: Finding, feedback: str) -> Change:
-        raise NotImplementedError
+        """Make the change in the clean clone, or raise GateFailure / EditError."""
 
     def check_scope(self, job: Job, f: Finding, paths: list[str]) -> None:
         """Called before the suite runs; raise GateFailure for a change out of bounds."""
@@ -48,6 +57,9 @@ class Lint(Kind):
 
     def commit_type(self, f: Finding) -> str:
         return "fix" if rank(f.rule) <= URGENT_RANK else "chore"
+
+    def priority(self, f: Finding) -> int:
+        return BUGS if rank(f.rule) <= URGENT_RANK else STYLE
 
     def attemptable(self, job: Job, f: Finding) -> bool:
         # an uncovered line is not attempted: it becomes workable once tests cover it
@@ -83,6 +95,9 @@ class Untested(Kind):
 
     def commit_type(self, f: Finding) -> str:
         return "test"
+
+    def priority(self, f: Finding) -> int:
+        return MISSING_TESTS
 
     def attemptable(self, job: Job, f: Finding) -> bool:
         # its tests already exist: more coverage is a later finding
@@ -129,8 +144,14 @@ class Vulnerability(Dependency):
     def commit_type(self, f: Finding) -> str:
         return "fix"
 
+    def priority(self, f: Finding) -> int:
+        return SECURITY
+
 
 class Outdated(Dependency):
+    def priority(self, f: Finding) -> int:
+        return UPGRADES
+
     def attemptable(self, job: Job, f: Finding) -> bool:
         tests = job.base.tests
         total = tests.cov.get("totals", {}).get("percent_covered", 0.0)
