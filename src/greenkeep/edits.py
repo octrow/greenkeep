@@ -10,7 +10,8 @@ from pathlib import Path
 BLOCK = re.compile(
     r"^(?P<path>[^\n<>=]+?)\s*\n<<<<<<< SEARCH\n(?P<search>.*?)\n?=======\n"
     r"(?P<replace>.*?)\n?>>>>>>> REPLACE", re.DOTALL | re.MULTILINE)
-CODE = re.compile(r"```(?:python|py)?\n(.*?)```", re.DOTALL)
+# greedy, to the LAST fence: the one block we ask for may itself contain ``` in strings
+CODE = re.compile(r"```(?:python|py)?\n(.*)```", re.DOTALL)
 
 
 class EditError(ValueError):

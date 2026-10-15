@@ -53,3 +53,8 @@ def test_python_block():
         "def test_x():\n    pass\n")
     with pytest.raises(EditError):
         python_block("no code")
+
+
+def test_python_block_keeps_fences_inside_the_code():
+    reply = '```python\ndef test_md():\n    assert render("```x```") == "x"\n```\n'
+    assert python_block(reply) == 'def test_md():\n    assert render("```x```") == "x"\n'
