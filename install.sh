@@ -32,8 +32,6 @@ note() { printf '    %s\n' "$*"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$*" >&2; }
 die() { printf '\033[1;31mxx\033[0m %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
-# curl | sh takes stdin from the pipe, so interactive steps read the terminal directly
-has_tty() { (: </dev/tty) 2>/dev/null; }
 
 export PATH="$HOME/.local/bin:$PATH"
 
