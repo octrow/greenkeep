@@ -71,7 +71,7 @@ uv tool install git+https://github.com/octrow/greenkeep
 Ещё понадобятся:
 
 - git и [GitHub CLI](https://cli.github.com/) с выполненным `gh auth login` (только для `--push`);
-- шлюз [OmniRoute](https://github.com/diegosouzapw/OmniRoute): ключ в `OMNIROUTE_API_KEY` или `~/.omniroute/.env`, адрес в `OMNIROUTE_URL` (по умолчанию `http://localhost:20128`).
+- [Claude Code](https://docs.claude.com/en/docs/claude-code) с выполненным входом, вызывается через [claude-subprocess](https://github.com/octrow/claude-cli) (`omniroute run claude -p`): Sonnet пишет патчи, Opus проверяет их прямо в клоне, только на чтение.
 
 ## Использование
 
@@ -84,7 +84,8 @@ greenkeep ~/dev/repo-a --push --budget 3     # open issues and PRs, merge on gre
 |---|---|---|
 | `--push` | выкл. | Открывает plan issue и PR, ждёт обязательных проверок, вливает squash-ом |
 | `--budget N` | 3 | Сколько PR с исправлениями влить за день, по всем репозиториям |
-| `--model NAME` | `free-stack` | Модель или combo в OmniRoute, которая пишет патчи |
+| `--model NAME` | `claude-sonnet-5-5` | Модель Claude Code, которая пишет патчи |
+| `--review-model NAME` | `claude-opus-5-5` | Модель Claude Code, которая проверяет каждый патч в клоне |
 | `--keep` | выкл. | Оставляет одноразовые клоны в `~/.cache/greenkeep` для разбора |
 
 За один запуск делается не больше одного исправления на репозиторий, поэтому greenkeep рассчитан на запуск по расписанию. Хватит строки в cron раз в день:
@@ -110,7 +111,7 @@ greenkeep ~/dev/repo-a --push --budget 3     # open issues and PRs, merge on gre
 
 ## Статус
 
-Версия 0.1: один сквозной срез: Python-репозитории, находки ruff и характеризационные тесты. В планах (термины в [CONTEXT.md](CONTEXT.md)): больше источников находок (тайпчекер, сканеры безопасности и зависимостей), test-first исправления для непокрытых багов, проверки готовности репозитория, сводка в Telegram после каждого запуска и автопауза, если собственные вливания greenkeep откатывают.
+С 2026-10-16 ежедневно работает на репозиториях автора. Что сделано и что дальше: [Status and roadmap](README.md#status-and-roadmap) (на английском).
 
 ## Участие и безопасность
 

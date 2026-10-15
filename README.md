@@ -111,7 +111,7 @@ State (attempts per finding, merges per day) lives in `~/.local/share/greenkeep/
 
 ## Status
 
-Version 0.1 is one end-to-end slice: Python repos, ruff findings and characterization tests. Planned (terms in [CONTEXT.md](CONTEXT.md)): more finding sources (type checker, security and dependency scanners), test-first fixes for uncovered bugs, readiness checks, a Telegram digest after each run, and auto-pause when greenkeep's own merges get reverted.
+In daily use on the author's repos since 2026-10-16. What is done and what comes next: [Status and roadmap](#status-and-roadmap).
 
 ## Contributing and security
 
@@ -179,11 +179,16 @@ runs until you delete the pause file, which says which merge it was).
 
 Next, roughly in this order:
 
-1. **Revival**, if more repos need it (today only LaptopLoot): move a `requirements.txt`
-   repo to uv + `pyproject.toml`.
-2. **Bug hunt**: LLM-found bugs (Hunter → Skeptic → Referee) through the same gate.
-3. **Readiness checks** (license, metadata, README sections, CI badge) for new repos; the
+1. **Bug hunt**: LLM-found bugs (Hunter → Skeptic → Referee) through the same gate.
+2. **Better generated tests**:
+   - the patcher sees the repo's ruff rules but still trips them (RUF059, SIM115); try a
+     full `ruff --fix` on the new test file before the gate;
+   - modules that only run against a service (Postgres) can't gain coverage in a clone;
+     skip them instead of spending three attempts.
+3. **Keep the repo's `addopts`**: today the suite runs with `-o addopts=` so a repo's own
+   `--cov` can't hijack coverage, which also drops its markers and other options.
+4. **Readiness checks** (license, metadata, README sections, CI badge) for new repos; the
    current public ones already pass them.
-4. JS/TS as a second language plugin.
+5. JS/TS as a second language plugin.
 
 Design: [CONTEXT.md](CONTEXT.md) (glossary), [docs/adr](docs/adr) (decisions).
