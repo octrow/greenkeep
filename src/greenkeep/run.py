@@ -246,9 +246,10 @@ def _attempt(job: Job, f: Finding, feedback: str) -> tuple[Change, list[str]]:
     return change, gate(job, f)
 
 
-def _record_failure(job: Job, f: Finding, issue: int | None, reason: str) -> None:
+def _record_failure(job: Job, f: Finding, reason: str) -> None:
     n = job.state.add_attempt(job.ws.name, f.fingerprint)
     log.info("  attempt %d/%d failed: %s", n, MAX_ATTEMPTS, reason.splitlines()[0])
+    issue = job.state.issue(job.ws.name, f.fingerprint)
     if n >= MAX_ATTEMPTS and issue:
         github.park_issue(job.ws, issue, reason.splitlines()[0])
 
@@ -276,7 +277,7 @@ def work(job: Job, f: Finding) -> bool:
             return True
         except ATTEMPT_FAILURES as exc:
             feedback = redact(str(exc), job.ws.secrets())[-FEEDBACK_CHARS:]
-            _record_failure(job, f, issue, feedback)
+            _record_failure(job, f, feedback)
     return False
 
 
@@ -326,7 +327,7 @@ def run_repo(src: Path, opts: Options, state: State) -> None:
             discard(ws)
 
 
-def main(argv: list[str] | None = None) -> int:
+def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="greenkeep", description=__doc__)
     p.add_argument("repos", nargs="+", type=Path, help="local checkouts of tended repos")
     p.add_argument("--push", action="store_true",
@@ -334,7 +335,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--budget", type=int, default=DEFAULT_BUDGET, help="merged fix PRs per day")
     p.add_argument("--model", default=DEFAULT_MODEL, help="OmniRoute model/combo for patches")
     p.add_argument("--keep", action="store_true", help="keep the throwaway clones")
-    a = p.parse_args(argv)
+    return p.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    a = _parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     opts = Options(a.push, a.budget, a.model, a.keep)
     # a dry run never touches the persistent state: attempts and budget stay unspent
