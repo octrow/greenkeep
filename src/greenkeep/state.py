@@ -6,6 +6,7 @@ import sqlite3
 from pathlib import Path
 
 MAX_ATTEMPTS = 3
+COLUMNS = frozenset({"status", "attempts", "issue", "pr", "sha"})  # what set() may write
 DEFAULT_DB = Path.home() / ".local/share/greenkeep/state.db"
 SCHEMA = """CREATE TABLE IF NOT EXISTS finding (
     repo TEXT, fp TEXT, status TEXT DEFAULT 'open', attempts INT DEFAULT 0,
@@ -42,17 +43,21 @@ class State:
 
     def set(self, repo: str, fp: str, **fields: object) -> None:
         self.db.execute("INSERT OR IGNORE INTO finding (repo, fp) VALUES (?, ?)", (repo, fp))
-        cols = ", ".join(f"{k}=?" for k in fields)  # keys come from code, never from input
+        if unknown := set(fields) - COLUMNS:  # column names are spliced into the SQL
+            raise ValueError(f"unknown finding columns: {sorted(unknown)}")
+        cols = ", ".join(f"{k}=?" for k in fields)
         self.db.execute(f"UPDATE finding SET {cols}, updated=CURRENT_TIMESTAMP "
                         "WHERE repo=? AND fp=?", (*fields.values(), repo, fp))
         self.db.commit()
 
-    def add_attempt(self, repo: str, fp: str) -> int:
-        """Count one attempt; the last allowed one parks the finding."""
+    def attempts(self, repo: str, fp: str) -> int:
         row = self._row(repo, fp)
-        n = (row[1] if row else 0) + 1
+        return row[1] if row else 0
+
+    def add_attempt(self, repo: str, fp: str) -> None:
+        """Count one attempt; the last allowed one parks the finding."""
+        n = self.attempts(repo, fp) + 1
         self.set(repo, fp, attempts=n, **({"status": "parked"} if n >= MAX_ATTEMPTS else {}))
-        return n
 
     def merges(self, repo: str) -> list[tuple[str, int | None, str | None]]:
         """(fingerprint, PR, merge commit) of every live greenkeep merge in the repo."""

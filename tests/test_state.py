@@ -22,3 +22,9 @@ def test_last_merge_orders_never_touched_repos_first(tmp_path):
     st = State(tmp_path / "s.db")
     st.set("a", "x", status="merged")
     assert st.last_merge("b") == "" < st.last_merge("a")
+
+
+def test_set_rejects_unknown_columns(tmp_path):
+    import pytest
+    with pytest.raises(ValueError, match="unknown finding columns"):
+        State(tmp_path / "s.db").set("r", "fp", **{"status='x'; --": 1})

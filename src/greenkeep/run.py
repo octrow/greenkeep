@@ -144,7 +144,8 @@ def _review(job: Job, f: Finding, change: Change) -> Change:
 
 
 def _record_failure(job: Job, f: Finding, reason: str) -> None:
-    n = job.state.add_attempt(job.ws.name, f.fingerprint)
+    job.state.add_attempt(job.ws.name, f.fingerprint)
+    n = job.state.attempts(job.ws.name, f.fingerprint)
     log.info("  attempt %d/%d failed: %s", n, MAX_ATTEMPTS, reason.splitlines()[0])
     log.debug("  full failure:\n%s", reason)
     if n < MAX_ATTEMPTS:
