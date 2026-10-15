@@ -153,6 +153,15 @@ Telegram digest: `GREENKEEP_TG_BOT_TOKEN` and `GREENKEEP_TG_CHAT_ID` in
 `~/.config/greenkeep/env` (without them: desktop notification). Full log:
 `~/.local/state/greenkeep/greenkeep.log`. Pause: `touch ~/.config/greenkeep/PAUSE`.
 
+Dashboard (findings, pause/resume, dry run with live log, recent events):
+
+```bash
+uv run greenkeep-ui            # http://127.0.0.1:8095
+```
+
+If the port belongs to another app it moves to the next free one; if a greenkeep
+dashboard already runs there it asks whether to restart it (default No) and prints its link.
+
 Daily at 10:00:
 
 ```bash
@@ -164,17 +173,16 @@ systemctl --user daemon-reload && systemctl --user enable --now greenkeep.timer
 
 Done: ruff, coverage and dependency findings (vulnerabilities bypass the daily budget;
 upgrades need 60% coverage), gate, Sonnet patcher + Opus reviewer, issue → PR → merge,
-config, daily timer, digest, pause, auto-pause (a reverted greenkeep merge stops all
+config, daily timer, digest, pause, dashboard, auto-pause (a reverted greenkeep merge stops all
 runs until you delete the pause file, which says which merge it was).
 
 Next, roughly in this order:
 
 1. **Revival**, if more repos need it (today only LaptopLoot): move a `requirements.txt`
    repo to uv + `pyproject.toml`.
-2. **Dashboard** of runs and findings (nicegui-kit).
-3. **Bug hunt**: LLM-found bugs (Hunter → Skeptic → Referee) through the same gate.
-4. **Readiness checks** (license, metadata, README sections, CI badge) for new repos; the
+2. **Bug hunt**: LLM-found bugs (Hunter → Skeptic → Referee) through the same gate.
+3. **Readiness checks** (license, metadata, README sections, CI badge) for new repos; the
    current public ones already pass them.
-5. JS/TS as a second language plugin.
+4. JS/TS as a second language plugin.
 
 Design: [CONTEXT.md](CONTEXT.md) (glossary), [docs/adr](docs/adr) (decisions).

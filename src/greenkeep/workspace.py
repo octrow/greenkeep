@@ -49,6 +49,7 @@ class Workspace:
     root: Path  # the clone
     scratch: Path  # coverage data etc., outside the clone so it is never committed
     base_branch: str = ""
+    origin: str = ""  # clone URL; its https form links issues and PRs
 
     def git(self, *args: str, check: bool = True) -> str:
         return sh(["git", *args], self.root, check=check).stdout
@@ -103,7 +104,7 @@ def clone(target: Target) -> Workspace:
     sh(["git", "clone", "-q", *reference, origin, str(root)], run_dir)
     if src and (src / ".env").is_file():
         shutil.copy2(src / ".env", root / ".env")
-    ws = Workspace(name, root, scratch)
+    ws = Workspace(name, root, scratch, origin=origin)
     ws.base_branch = ws.git("rev-parse", "--abbrev-ref", "HEAD").strip()
     return ws
 

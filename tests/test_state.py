@@ -28,3 +28,10 @@ def test_set_rejects_unknown_columns(tmp_path):
     import pytest
     with pytest.raises(ValueError, match="unknown finding columns"):
         State(tmp_path / "s.db").set("r", "fp", **{"status='x'; --": 1})
+
+
+def test_rows_for_the_dashboard(tmp_path):
+    st = State(tmp_path / "s.db")
+    st.set("r", "fp", status="merged", pr=3, title="Bump x", url="https://github.com/o/r")
+    [row] = st.rows()
+    assert row["title"] == "Bump x" and row["pr"] == 3 and row["status"] == "merged"

@@ -170,3 +170,9 @@ def test_clip_keeps_reason_line_and_tail():
     clipped = run.clip(text)
     assert clipped.startswith("test suite failed: 1 failed in 2s\n…\n")
     assert clipped.endswith("assert 1 == 2") and len(clipped) < 1600
+
+
+def test_web_url_from_remotes():
+    assert run.web_url("https://github.com/o/r.git") == "https://github.com/o/r"
+    assert run.web_url("git@github.com:o/r.git") == "https://github.com/o/r"
+    assert run.web_url("/tmp/origin.git") == ""

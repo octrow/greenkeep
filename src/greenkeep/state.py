@@ -6,14 +6,15 @@ import sqlite3
 from pathlib import Path
 
 MAX_ATTEMPTS = 3
-COLUMNS = frozenset({"status", "attempts", "issue", "pr", "sha"})  # what set() may write
+COLUMNS = frozenset({"status", "attempts", "issue", "pr", "sha", "title", "url"})  # what set() may write
 DEFAULT_DB = Path.home() / ".local/share/greenkeep/state.db"
 SCHEMA = """CREATE TABLE IF NOT EXISTS finding (
     repo TEXT, fp TEXT, status TEXT DEFAULT 'open', attempts INT DEFAULT 0,
-    issue INT, pr INT, updated TEXT DEFAULT CURRENT_TIMESTAMP, sha TEXT,
+    issue INT, pr INT, updated TEXT DEFAULT CURRENT_TIMESTAMP, sha TEXT, title TEXT, url TEXT,
     PRIMARY KEY (repo, fp))"""
 # columns added after the first release, for databases created before them
-MIGRATIONS = {"sha": "ALTER TABLE finding ADD COLUMN sha TEXT"}
+MIGRATIONS = {column: f"ALTER TABLE finding ADD COLUMN {column} TEXT"
+              for column in ("sha", "title", "url")}
 
 
 class State:
@@ -63,6 +64,13 @@ class State:
         """(fingerprint, PR, merge commit) of every live greenkeep merge in the repo."""
         return self.db.execute("SELECT fp, pr, sha FROM finding WHERE repo=? AND "
                                "status='merged'", (repo,)).fetchall()
+
+    def rows(self) -> list[dict]:
+        """Every finding greenkeep has touched, newest first (the dashboard's data)."""
+        cur = self.db.execute("SELECT repo, fp, status, attempts, issue, pr, updated, title, "
+                              "url FROM finding ORDER BY updated DESC")
+        names = [d[0] for d in cur.description]
+        return [dict(zip(names, row, strict=True)) for row in cur.fetchall()]
 
     def last_merge(self, repo: str) -> str:
         """When greenkeep last merged in this repo ("" if never): oldest goes first."""

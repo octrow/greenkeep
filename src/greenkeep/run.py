@@ -176,6 +176,7 @@ def _land(job: Job, fix: Fix) -> None:
 
 def work(job: Job, f: Finding) -> bool:
     """Up to the remaining attempts on one finding; True once its fix is merged."""
+    job.state.set(job.ws.name, f.fingerprint, title=f.title, url=web_url(job.ws.origin))
     issue = _ensure_issue(job, f)
     feedback = ""
     while job.state.is_workable(job.ws.name, f.fingerprint):
@@ -187,6 +188,12 @@ def work(job: Job, f: Finding) -> bool:
             feedback = clip(redact(str(exc), job.ws.secrets()))
             _record_failure(job, f, feedback)
     return False
+
+
+def web_url(origin: str) -> str:
+    """https://github.com/owner/name for an https or ssh GitHub remote, else ""."""
+    m = re.match(r"(?:https://|git@)github\.com[/:](.+?)(?:\.git)?/?$", origin)
+    return f"https://github.com/{m.group(1)}" if m else ""
 
 
 def clip(text: str) -> str:
