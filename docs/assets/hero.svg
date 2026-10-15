@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" width="1200" height="400" role="img" aria-labelledby="t d">
+  <title id="t">greenkeep</title>
+  <desc id="d">greenkeep: deterministic tools find problems, an LLM writes one patch per finding, and it merges only when the tests already covered every changed line. Right: a real fix for ruff B006 with the three gate checks passed.</desc>
+  <rect width="1200" height="400" rx="20" fill="#0d1512"/>
+  <g font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <text x="64" y="84" font-family="'JetBrains Mono', SFMono-Regular, Menlo, Consolas, monospace" font-size="20" fill="#8fa89a">$ greenkeep ~/dev/my-repos --push</text>
+    <text x="60" y="176" font-size="96" font-weight="700" letter-spacing="-2" fill="#e6efe9"><tspan fill="#3fb950">green</tspan>keep</text>
+    <g font-size="25" fill="#b4c7bc">
+      <text x="64" y="236">Deterministic tools find the problems.</text>
+      <text x="64" y="270">An LLM writes one patch per finding.</text>
+      <text x="64" y="304">It merges only when the tests already</text>
+      <text x="64" y="338">covered every changed line.</text>
+    </g>
+  </g>
+  <g font-family="'JetBrains Mono', SFMono-Regular, Menlo, Consolas, monospace" font-size="20">
+    <rect x="684" y="44" width="452" height="320" rx="14" fill="#13201b" stroke="#22352d"/>
+    <text x="712" y="84" fill="#e6efe9" font-weight="600">fix: B006 mutable default</text>
+    <text x="712" y="114" fill="#8fa89a">src/tidy/tags.py</text>
+    <text x="712" y="152" fill="#f85149">-def add_tag(tag, tags=[]):</text>
+    <text x="712" y="180" fill="#3fb950">+def add_tag(tag, tags=None):</text>
+    <text x="712" y="208" fill="#3fb950">+&#160;&#160;&#160;&#160;if tags is None:</text>
+    <text x="712" y="236" fill="#3fb950">+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;tags = []</text>
+    <line x1="712" y1="258" x2="1108" y2="258" stroke="#22352d"/>
+    <text x="712" y="288" fill="#3fb950">✓ <tspan fill="#b4c7bc">full test suite green</tspan></text>
+    <text x="712" y="316" fill="#3fb950">✓ <tspan fill="#b4c7bc">changed lines were covered</tspan></text>
+    <text x="712" y="344" fill="#3fb950">✓ <tspan fill="#b4c7bc">no new lint findings</tspan></text>
+  </g>
+</svg>

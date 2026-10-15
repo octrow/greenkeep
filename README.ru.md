@@ -1,4 +1,4 @@
-# greenkeep
+<p align="center"><img src="docs/assets/hero.svg" width="100%" alt="greenkeep: детерминированные инструменты находят проблемы, LLM пишет по патчу на находку, вливается только если тесты уже покрывали каждую изменённую строку"></p>
 
 [![test](https://github.com/octrow/greenkeep/actions/workflows/test.yml/badge.svg)](https://github.com/octrow/greenkeep/actions/workflows/test.yml)
 [![release](https://img.shields.io/github/v/release/octrow/greenkeep)](https://github.com/octrow/greenkeep/releases/latest)

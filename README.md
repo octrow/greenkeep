@@ -1,4 +1,4 @@
-# greenkeep
+<p align="center"><img src="docs/assets/hero.svg" width="100%" alt="greenkeep: deterministic tools find problems, an LLM writes one patch per finding, merged only when the tests already covered every changed line"></p>
 
 [![test](https://github.com/octrow/greenkeep/actions/workflows/test.yml/badge.svg)](https://github.com/octrow/greenkeep/actions/workflows/test.yml)
 [![release](https://img.shields.io/github/v/release/octrow/greenkeep)](https://github.com/octrow/greenkeep/releases/latest)
