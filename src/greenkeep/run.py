@@ -30,7 +30,9 @@ from .workspace import (
 
 log = logging.getLogger("greenkeep")
 
-DEFAULT_MODEL = "free-stack"
+# pinned, not a combo: a combo answers with a different model from run to run.
+# Chosen by a dry-run benchmark on 2026-10-15 (opus = sonnet > grok-4.7 on 3 repos).
+DEFAULT_MODEL = "cc/claude-opus-5-5"
 DEFAULT_BUDGET = 3
 MAX_FINDINGS_PER_REPO = 10
 URGENT_RANK = 2  # S/F/B ruff rules go before characterization tests
