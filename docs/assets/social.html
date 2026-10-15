@@ -1,0 +1,26 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0d1512; --panel:#13201b; --line:#22352d; --fg:#e6efe9; --muted:#8fa89a;
+          --green:#3fb950; --red:#f85149; --sans:Inter,system-ui,sans-serif; --mono:"JetBrains Mono",monospace; }
+  * { margin:0; box-sizing:border-box; }
+  body { width:1280px; height:640px; background:var(--bg); color:var(--fg); font-family:var(--sans);
+         padding:64px 80px; display:flex; flex-direction:column; justify-content:space-between; }
+  h1 { font-size:88px; font-weight:700; letter-spacing:-2px; }
+  h1 span { color:var(--green); }
+  p { font-size:32px; color:var(--muted); margin-top:16px; line-height:1.35; max-width:1080px; }
+  pre { font-family:var(--mono); font-size:24px; line-height:1.55; background:var(--panel);
+        border:1px solid var(--line); border-radius:14px; padding:22px 28px; }
+  .del { color:var(--red); } .add { color:var(--green); } .meta { color:var(--muted); }
+</style></head><body>
+<div>
+  <h1><span>green</span>keep</h1>
+  <p>Deterministic findings, one LLM patch each, auto-merged only when tests pass and every changed line was covered.</p>
+</div>
+<pre><span class="meta">Gate: suite green; every changed line covered before the change</span>
+<span class="del">-def add_tag(tag, tags=[]):</span>
+<span class="add">+def add_tag(tag, tags=None):</span>
+<span class="add">+    if tags is None:</span>
+<span class="add">+        tags = []</span></pre>
+</body></html>
