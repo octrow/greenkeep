@@ -1,11 +1,9 @@
-"""The patcher and reviewer roles: fixed prompts, one finding per call.
+"""The patcher and reviewer roles: fixed prompts, one finding per call, on Claude Code.
 
-The patcher goes through the OmniRoute HTTP API and sees only what the prompt carries.
-The reviewer is Claude Code run inside the clone with read-only tools, so it judges the
-change against the repo itself (existing tests, style, fixtures), not the diff alone.
-
-No temperature is sent: on OmniRoute that switches on a semantic cache whose key
-ignores the system prompt. Predictability comes from the pinned model and prompts.
+The patcher runs without tools and sees only what the prompt carries. The reviewer runs
+inside the clone with read-only tools, so it judges the change against the repo itself
+(existing tests, style, fixtures), not the diff alone. Predictability comes from the
+pinned models and prompts.
 """
 
 from __future__ import annotations
@@ -15,7 +13,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from claude_cli import run_claude
-from claude_cli.http_api import omniroute_chat
 from claude_cli.parsing import extract_json_or_none
 
 from .findings import Finding
@@ -68,9 +65,10 @@ class Reply:
 
 
 def ask(system: str, prompt: str, model: str) -> Reply:
-    res = omniroute_chat(prompt, model=model, system_prompt=system, timeout=LLM_TIMEOUT)
+    res = run_claude(f"{system}\n{prompt}", model=model, effort="medium", backend="cli",
+                     timeout=LLM_TIMEOUT)
     sha = hashlib.sha1((system + prompt).encode()).hexdigest()[:12]
-    return Reply(res.text, str(res.raw.get("model") or model), sha)
+    return Reply(res.text, model, sha)
 
 
 def _excerpt(source: str, line: int) -> str:

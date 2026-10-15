@@ -11,8 +11,9 @@ from .workspace import TestRun, Workspace, ruff_json
 
 # pinned models, not combos: a combo answers with a different model from run to run.
 # Benchmark 2026-10-15: opus = sonnet > grok-4.7 as patcher; sonnet writes, opus reviews.
-DEFAULT_MODEL = "cc/claude-sonnet-5-5"
-DEFAULT_REVIEW_MODEL = "claude-opus-5-5"  # Claude Code, not OmniRoute HTTP: it reads the repo
+# Both run on Claude Code (claude -p): the reviewer reads the repo with tools.
+DEFAULT_MODEL = "claude-sonnet-5-5"
+DEFAULT_REVIEW_MODEL = "claude-opus-5-5"
 
 
 class GateFailure(Exception):

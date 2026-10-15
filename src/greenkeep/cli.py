@@ -33,7 +33,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--push", action="store_true",
                    help="open issues/PRs and merge them (default: local dry run)")
     p.add_argument("--budget", type=int, help="merged fix PRs today (default: config)")
-    p.add_argument("--model", default=DEFAULT_MODEL, help="OmniRoute model that writes patches")
+    p.add_argument("--model", default=DEFAULT_MODEL, help="Claude Code model that writes patches")
     p.add_argument("--review-model", default=DEFAULT_REVIEW_MODEL,
                    help="Claude Code model that reviews each patch inside the clone")
     p.add_argument("--keep", action="store_true", help="keep the throwaway clones")

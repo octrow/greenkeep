@@ -71,7 +71,7 @@ uv tool install git+https://github.com/octrow/greenkeep
 You also need:
 
 - git, and the [GitHub CLI](https://cli.github.com/) logged in with `gh auth login` (only for `--push`);
-- an [OmniRoute](https://github.com/diegosouzapw/OmniRoute) gateway: the key in `OMNIROUTE_API_KEY` or `~/.omniroute/.env`, the address in `OMNIROUTE_URL` (default `http://localhost:20128`).
+- [Claude Code](https://docs.claude.com/en/docs/claude-code) logged in, called through [claude-subprocess](https://github.com/octrow/claude-cli) (`omniroute run claude -p`): Sonnet writes the patches, Opus reviews them inside the clone with read-only tools.
 
 ## Usage
 
@@ -84,7 +84,8 @@ greenkeep ~/dev/repo-a --push --budget 3     # open issues and PRs, merge on gre
 |---|---|---|
 | `--push` | off | Open a plan issue and a fix PR, wait for the required checks, squash-merge |
 | `--budget N` | 3 | Merged fix PRs per day, across all repos |
-| `--model NAME` | `free-stack` | OmniRoute model or combo that writes the patches |
+| `--model NAME` | `claude-sonnet-5-5` | Claude Code model that writes the patches |
+| `--review-model NAME` | `claude-opus-5-5` | Claude Code model that reviews each patch inside the clone |
 | `--keep` | off | Keep the throwaway clones in `~/.cache/greenkeep` for inspection |
 
 A run makes at most one fix per repo, so it's meant to run on a schedule. A daily cron line is enough:
@@ -128,7 +129,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). Changes: 
    little or no test coverage, outdated dependencies (same major), ruff style.
 4. Per finding, up to 3 attempts: a deterministic ruff fix or an LLM patch (Sonnet), then the
    gate — only allowed files touched, changed lines covered before the change, no new lint, no
-   `noqa`-style suppressions, full suite green — then an LLM review (Opus).
+   `noqa`-style suppressions, full suite green — then a review by Opus in Claude Code, which reads the repo, not just the diff.
 5. A plan issue, a PR that closes it, squash merge once required CI checks pass.
 6. A digest of the run goes to Telegram.
 
