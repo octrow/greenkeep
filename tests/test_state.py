@@ -1,0 +1,18 @@
+from greenkeep.state import MAX_ATTEMPTS, State
+
+
+def test_attempts_park_finding_after_limit(tmp_path):
+    st = State(tmp_path / "s.db")
+    for _ in range(MAX_ATTEMPTS):
+        assert st.is_workable("r", "fp")
+        st.add_attempt("r", "fp")
+    assert st.status("r", "fp") == "parked"
+    assert not st.is_workable("r", "fp")
+
+
+def test_merged_today_counts_only_merged(tmp_path):
+    st = State(tmp_path / "s.db")
+    st.set("r", "a", status="merged", pr=1)
+    st.set("r", "b", status="open")
+    assert st.merged_today() == 1
+    assert not st.is_workable("r", "a")

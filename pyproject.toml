@@ -1,0 +1,23 @@
+[project]
+name = "greenkeep"
+version = "0.1.0"
+description = "Scheduled, gated maintainer for your own repos: deterministic findings, one LLM patch per finding, PR + automerge only on green."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["claude-subprocess>=0.1.1"]
+
+[project.scripts]
+greenkeep = "greenkeep.run:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv.sources]
+claude-subprocess = { git = "https://github.com/octrow/claude-cli", branch = "main" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100

@@ -1,0 +1,60 @@
+"""LLM replies -> file edits. SEARCH/REPLACE blocks, not unified diffs: weak models
+mangle hunk headers, but they copy a few lines of code back reliably."""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from pathlib import Path
+
+BLOCK = re.compile(
+    r"^(?P<path>[^\n<>=]+?)\s*\n<<<<<<< SEARCH\n(?P<search>.*?)\n?=======\n"
+    r"(?P<replace>.*?)\n?>>>>>>> REPLACE", re.DOTALL | re.MULTILINE)
+CODE = re.compile(r"```(?:python|py)?\n(.*?)```", re.DOTALL)
+
+
+class EditError(ValueError):
+    """The reply cannot be applied as-is; the attempt fails."""
+
+
+@dataclass(frozen=True)
+class Edit:
+    path: str
+    search: str
+    replace: str
+
+
+def parse_edits(reply: str) -> list[Edit]:
+    edits = [Edit(m["path"].strip().strip("`"), m["search"], m["replace"])
+             for m in BLOCK.finditer(reply)]
+    if not edits:
+        raise EditError("no SEARCH/REPLACE blocks in reply")
+    return edits
+
+
+def _inside(root: Path, rel: str) -> Path:
+    target = (root / rel).resolve()
+    if not target.is_relative_to(root.resolve()):
+        raise EditError(f"path outside repo: {rel}")
+    return target
+
+
+def apply_edits(root: Path, edits: list[Edit]) -> list[str]:
+    """Apply every edit or raise; each SEARCH must occur exactly once."""
+    touched = []
+    for e in edits:
+        target = _inside(root, e.path)
+        if not target.is_file():
+            raise EditError(f"no such file: {e.path}")
+        text = target.read_text()
+        if text.count(e.search) != 1:
+            raise EditError(f"SEARCH matches {text.count(e.search)} times in {e.path}")
+        target.write_text(text.replace(e.search, e.replace))
+        touched.append(e.path)
+    return touched
+
+
+def python_block(reply: str) -> str:
+    if m := CODE.search(reply):
+        return m.group(1)
+    raise EditError("no python code block in reply")
