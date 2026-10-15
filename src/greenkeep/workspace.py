@@ -9,7 +9,7 @@ import os
 import shutil
 import subprocess
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -47,7 +47,6 @@ class Workspace:
     root: Path  # the clone
     scratch: Path  # coverage data etc., outside the clone so it is never committed
     base_branch: str = ""
-    files: list[str] = field(default_factory=list)
 
     def git(self, *args: str, check: bool = True) -> str:
         return sh(["git", *args], self.root, check=check).stdout

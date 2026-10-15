@@ -8,8 +8,7 @@
 set -eu
 
 REPO="octrow/greenkeep"
-NAME="greenkeep"  # distribution name from pyproject.toml [project] name
-CMD="greenkeep"   # the command from [project.scripts]
+NAME="greenkeep"  # distribution name and command
 PYTHON="3.12"   # pinned so binary wheels of the dependencies exist; bump when they ship for newer Pythons
 VERSION=""
 MAIN=0
@@ -37,13 +36,13 @@ export PATH="$HOME/.local/bin:$PATH"
 
 if [ "$UNINSTALL" = 1 ]; then
   if have uv; then uv tool uninstall "$NAME" || true; fi
-  say "$CMD is removed."
+  say "$NAME is removed."
   exit 0
 fi
 
 # 1. uv: installs Python and the app into an isolated environment, no system Python or sudo needed
 if ! have uv; then
-  say "Installing uv (it installs Python and $CMD)"
+  say "Installing uv (it installs Python and $NAME)"
   curl -LsSf https://astral.sh/uv/install.sh | sh
   have uv || die "uv is installed, but this terminal does not see it. Open a new terminal and run this command again."
 fi
@@ -64,14 +63,14 @@ else
       || die "GitHub is not reachable. Check your internet connection and run this command again."
     case "$URL" in */tag/v*) VERSION="${URL##*/tag/v}" ;; *) die "No release yet. Run this command again with --main." ;; esac
   fi
-  WHEEL="$(printf %s "$NAME" | tr '-' '_')-$VERSION-py3-none-any.whl"
+  WHEEL="$NAME-$VERSION-py3-none-any.whl"
   SPEC="$NAME @ https://github.com/$REPO/releases/download/v$VERSION/$WHEEL"
 fi
-say "Installing $CMD${VERSION:+ $VERSION}"
+say "Installing $NAME${VERSION:+ $VERSION}"
 uv tool install --reinstall --python "$PYTHON" "$SPEC"
 uv tool update-shell >/dev/null 2>&1 || true
-BIN="$(uv tool dir --bin)/$CMD"
+BIN="$(uv tool dir --bin)/$NAME"
 
-say "$CMD is installed. Try a dry run on one of your repos: $CMD ~/path/to/repo"
+say "$NAME is installed. Try a dry run on one of your repos: $NAME ~/path/to/repo"
 note "Command not found? Open a new terminal or run: $BIN"
 note "Patches need an OmniRoute key in OMNIROUTE_API_KEY or ~/.omniroute/.env"

@@ -35,9 +35,9 @@ class State:
 
     def set(self, repo: str, fp: str, **fields: object) -> None:
         self.db.execute("INSERT OR IGNORE INTO finding (repo, fp) VALUES (?, ?)", (repo, fp))
-        for k, v in fields.items():  # keys come from code, never from input
-            self.db.execute(f"UPDATE finding SET {k}=?, updated=CURRENT_TIMESTAMP "
-                            "WHERE repo=? AND fp=?", (v, repo, fp))
+        cols = ", ".join(f"{k}=?" for k in fields)  # keys come from code, never from input
+        self.db.execute(f"UPDATE finding SET {cols}, updated=CURRENT_TIMESTAMP "
+                        "WHERE repo=? AND fp=?", (*fields.values(), repo, fp))
         self.db.commit()
 
     def add_attempt(self, repo: str, fp: str) -> int:

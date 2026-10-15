@@ -79,9 +79,6 @@ class Baseline:
     lint: frozenset[str]  # fingerprints of ruff findings already there
     findings: list[Finding]
 
-    @property
-    def cov(self) -> dict:
-        return self.tests.cov
 
 
 def baseline(ws: Workspace, tests: TestRun) -> Baseline:
@@ -103,9 +100,6 @@ class Job:
     base: Baseline
     opts: Options
     state: State
-
-    def workable(self, f: Finding) -> bool:
-        return self.state.is_workable(self.ws.name, f.fingerprint)
 
 
 def characterization_path(f: Finding) -> str:
@@ -153,7 +147,7 @@ def _check_scope(job: Job, f: Finding, paths: list[str]) -> None:
     if f.kind == "ruff" and not is_test_path(f.path) and any(map(is_test_path, paths)):
         raise GateFailure(f"a source fix may not touch tests: {paths}")
     if f.kind == "ruff":
-        if bad := coverage_violations(job.ws.git("diff", "-U0"), job.base.cov):
+        if bad := coverage_violations(job.ws.git("diff", "-U0"), job.base.tests.cov):
             raise GateFailure(f"changed lines were not covered before the change: {bad}")
         if any(a.fingerprint == f.fingerprint for a in lint(job.ws, f.path)):
             raise GateFailure("ruff still reports the finding")
@@ -175,7 +169,7 @@ def _check_tests(job: Job, f: Finding) -> None:
         raise GateFailure(f"test suite failed: {_summary(after.output)}\n{after.output}")
     if after.no_tests and not job.base.tests.no_tests:
         raise GateFailure("pytest collected no tests, but the baseline had some")
-    if f.kind == "untested" and _percent(after.cov, f.path) <= _percent(job.base.cov, f.path):
+    if f.kind == "untested" and _percent(after.cov, f.path) <= _percent(job.base.tests.cov, f.path):
         raise GateFailure(f"coverage of {f.path} did not grow")
 
 
@@ -275,7 +269,7 @@ def work(job: Job, f: Finding) -> bool:
     """Up to the remaining attempts on one finding; True once its fix is merged."""
     issue = _ensure_issue(job, f)
     feedback = ""
-    while job.workable(f):
+    while job.state.is_workable(job.ws.name, f.fingerprint):
         try:
             change, paths = _attempt(job, f, feedback)
             _land(job, Fix(f, change, paths, issue))
@@ -296,13 +290,13 @@ def redact(text: str, secrets: list[str]) -> str:
 def _candidates(job: Job) -> list[Finding]:
     """Workable findings in priority order. A lint finding on an uncovered line is not
     attempted at all: it becomes workable once tests cover that line."""
-    return [f for f in job.base.findings if job.workable(f) and _attemptable(job, f)]
+    return [f for f in job.base.findings if job.state.is_workable(job.ws.name, f.fingerprint) and _attemptable(job, f)]
 
 
 def _attemptable(job: Job, f: Finding) -> bool:
     if f.kind == "untested":  # its tests already exist: more coverage is a later finding
         return not (job.ws.root / characterization_path(f)).exists()
-    return line_is_covered(job.base.cov, f.path, f.line)
+    return line_is_covered(job.base.tests.cov, f.path, f.line)
 
 
 def _work_repo(job: Job) -> None:

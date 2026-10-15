@@ -10,8 +10,7 @@
 $ErrorActionPreference = "Continue"
 
 $Repo = "octrow/greenkeep"
-$Name = "greenkeep"  # distribution name from pyproject.toml [project] name
-$Cmd = "greenkeep"   # the command from [project.scripts]
+$Name = "greenkeep"  # distribution name and command
 $Python = "3.12"   # pinned so binary wheels of the dependencies exist; bump when they ship for newer Pythons
 
 function Say($m) { Write-Host "==> $m" -ForegroundColor Cyan }
@@ -27,13 +26,13 @@ Refresh-Path
 
 if ($env:INSTALL_UNINSTALL -eq "1") {
   if (Have uv) { uv tool uninstall $Name }
-  Say "$Cmd is removed."
+  Say "$Name is removed."
   return
 }
 
 # 1. uv: installs Python and the app into an isolated environment, no system Python or admin rights needed
 if (-not (Have uv)) {
-  Say "Installing uv (it installs Python and $Cmd)"
+  Say "Installing uv (it installs Python and $Name)"
   Invoke-RestMethod https://astral.sh/uv/install.ps1 -ErrorAction Stop | Invoke-Expression
   Refresh-Path
   if (-not (Have uv)) { throw "uv is installed, but this terminal does not see it. Open a new terminal and run this command again." }
@@ -55,15 +54,15 @@ if ($env:INSTALL_SOURCE) {
     try { $Version = (Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest" -ErrorAction Stop).tag_name.TrimStart("v") }
     catch { throw "No release found, or GitHub is not reachable. To install the main branch, set `$env:INSTALL_MAIN = `"1`" and run this command again." }
   }
-  $Wheel = "$($Name -replace '-', '_')-$Version-py3-none-any.whl"
+  $Wheel = "$Name-$Version-py3-none-any.whl"
   $Spec = "$Name @ https://github.com/$Repo/releases/download/v$Version/$Wheel"
 }
-Say "Installing $Cmd $Version"
+Say "Installing $Name $Version"
 uv tool install --reinstall --python $Python $Spec
-if ($LASTEXITCODE -ne 0) { throw "uv could not install $Cmd. See the uv output above." }
+if ($LASTEXITCODE -ne 0) { throw "uv could not install $Name. See the uv output above." }
 uv tool update-shell *> $null
-$Bin = Join-Path (uv tool dir --bin) "$Cmd.exe"
+$Bin = Join-Path (uv tool dir --bin) "$Name.exe"
 
-Say "$Cmd is installed. Try a dry run on one of your repos: $Cmd C:\path\to\repo"
+Say "$Name is installed. Try a dry run on one of your repos: $Name C:\path\to\repo"
 Note "Command not found? Open a new terminal or run: $Bin"
 Note "Patches need an OmniRoute key in OMNIROUTE_API_KEY or ~/.omniroute/.env"

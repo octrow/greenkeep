@@ -2,9 +2,9 @@ name: install
 on:
   push:
     branches: [main]
-    paths: [install.sh, install.ps1, pyproject.toml, uv.lock, "src/greenkeep/**", .github/workflows/install.yml]
+    paths: &paths [install.sh, install.ps1, pyproject.toml, uv.lock, "src/greenkeep/**", .github/workflows/install.yml]
   pull_request:
-    paths: [install.sh, install.ps1, pyproject.toml, uv.lock, "src/greenkeep/**", .github/workflows/install.yml]
+    paths: *paths
   workflow_dispatch:
 permissions:
   contents: read
