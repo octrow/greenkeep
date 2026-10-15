@@ -164,17 +164,17 @@ systemctl --user daemon-reload && systemctl --user enable --now greenkeep.timer
 
 Done: ruff, coverage and dependency findings (vulnerabilities bypass the daily budget;
 upgrades need 60% coverage), gate, Sonnet patcher + Opus reviewer, issue → PR → merge,
-config, daily timer, digest, pause.
+config, daily timer, digest, pause, auto-pause (a reverted greenkeep merge stops all
+runs until you delete the pause file, which says which merge it was).
 
 Next, roughly in this order:
 
-1. **Revival**: repos with only `requirements.txt` get a PR that moves them to uv +
-   `pyproject.toml` with their existing tests green.
-2. **Auto-pause**: stop and report when a greenkeep merge gets reverted.
-3. **Dashboard** of runs and findings (nicegui-kit).
-4. **Bug hunt**: LLM-found bugs (Hunter → Skeptic → Referee) through the same gate.
-5. **Readiness checks** (license, metadata, README sections, CI badge) for new repos; the
+1. **Revival**, if more repos need it (today only LaptopLoot): move a `requirements.txt`
+   repo to uv + `pyproject.toml`.
+2. **Dashboard** of runs and findings (nicegui-kit).
+3. **Bug hunt**: LLM-found bugs (Hunter → Skeptic → Referee) through the same gate.
+4. **Readiness checks** (license, metadata, README sections, CI badge) for new repos; the
    current public ones already pass them.
-6. JS/TS as a second language plugin.
+5. JS/TS as a second language plugin.
 
 Design: [CONTEXT.md](CONTEXT.md) (glossary), [docs/adr](docs/adr) (decisions).

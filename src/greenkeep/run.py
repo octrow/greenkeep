@@ -9,7 +9,7 @@ from dataclasses import dataclass, replace
 
 from claude_cli.http_api import HttpLlmError
 
-from . import deps, github, llm
+from . import deps, github, llm, reverts
 from .config import Target
 from .core import Baseline, Change, GateFailure, Job, Options, lint
 from .digest import Digest
@@ -159,9 +159,12 @@ def _record_failure(job: Job, f: Finding, reason: str) -> None:
 def _land(job: Job, fix: Fix) -> None:
     """Commit; in push mode also publish and merge. Records the merge either way."""
     branch = commit(job.ws, fix)
-    pr = github.publish(job.ws, branch, fix.finding.title, fix.describe()) \
-        if job.opts.push else None
-    job.state.set(job.ws.name, fix.finding.fingerprint, status="merged", pr=pr)
+    if job.opts.push:
+        pr = github.publish(job.ws, branch, fix.finding.title, fix.describe())
+        sha = github.merge_sha(job.ws, pr)
+    else:
+        pr, sha = None, job.ws.git("rev-parse", "HEAD").strip()
+    job.state.set(job.ws.name, fix.finding.fingerprint, status="merged", pr=pr, sha=sha)
     log.info("  merged %s via %s%s", fix.finding.title, fix.change.model,
              f" (PR #{pr})" if pr else "")
     job.digest.merged.append(f"{job.ws.name}: {fix.finding.title}"
@@ -223,6 +226,7 @@ def _work_repo(job: Job) -> None:
 def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> None:
     ws = clone(target)
     try:
+        reverts.check(ws, state, backfill=opts.push)  # raises AutoPause before any work
         sync(ws)
         tests = run_tests(ws)
         if not tests.ok:

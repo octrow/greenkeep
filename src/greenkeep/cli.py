@@ -12,9 +12,10 @@ from datetime import date
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from .config import DEFAULT_BUDGET, PAUSE_FILE, Target, load, paused
+from .config import DEFAULT_BUDGET, PAUSE_FILE, Target, load, pause, paused
 from .core import DEFAULT_MODEL, DEFAULT_REVIEW_MODEL, Options
 from .digest import Digest, send
+from .reverts import AutoPause
 from .run import run_repo
 from .state import State
 
@@ -64,6 +65,12 @@ def _run_all(targets: list[Target], opts: Options, state: State) -> Digest:
             break
         try:
             run_repo(t, opts, state, digest)
+        except AutoPause as stop:
+            log.warning("auto-pause: %s", stop)
+            if opts.push:
+                pause(f"auto-paused {date.today()}: {stop}")
+            digest.problems.append(f"AUTO-PAUSED: {stop}. Check it, then delete {PAUSE_FILE}")
+            break
         except Exception as exc:  # one broken repo must not cost the others their run
             log.exception("%s: run failed", t.name)
             first = (str(exc).splitlines() or [type(exc).__name__])[0]

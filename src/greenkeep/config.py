@@ -76,3 +76,9 @@ def load(path: Path = CONFIG_FILE) -> Config:
 
 def paused(pause_file: Path = PAUSE_FILE) -> bool:
     return pause_file.exists()
+
+
+def pause(reason: str, pause_file: Path = PAUSE_FILE) -> None:
+    """Auto-pause: the file's text says why; deleting it resumes greenkeep."""
+    pause_file.parent.mkdir(parents=True, exist_ok=True)
+    pause_file.write_text(reason + "\n")

@@ -9,7 +9,10 @@ MAX_ATTEMPTS = 3
 DEFAULT_DB = Path.home() / ".local/share/greenkeep/state.db"
 SCHEMA = """CREATE TABLE IF NOT EXISTS finding (
     repo TEXT, fp TEXT, status TEXT DEFAULT 'open', attempts INT DEFAULT 0,
-    issue INT, pr INT, updated TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (repo, fp))"""
+    issue INT, pr INT, updated TEXT DEFAULT CURRENT_TIMESTAMP, sha TEXT,
+    PRIMARY KEY (repo, fp))"""
+# columns added after the first release, for databases created before them
+MIGRATIONS = {"sha": "ALTER TABLE finding ADD COLUMN sha TEXT"}
 
 
 class State:
@@ -17,6 +20,10 @@ class State:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path)
         self.db.execute(SCHEMA)
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(finding)")}
+        for column, ddl in MIGRATIONS.items():
+            if column not in columns:
+                self.db.execute(ddl)
 
     def _row(self, repo: str, fp: str) -> tuple | None:
         return self.db.execute("SELECT status, attempts, issue FROM finding "
@@ -46,6 +53,11 @@ class State:
         n = (row[1] if row else 0) + 1
         self.set(repo, fp, attempts=n, **({"status": "parked"} if n >= MAX_ATTEMPTS else {}))
         return n
+
+    def merges(self, repo: str) -> list[tuple[str, int | None, str | None]]:
+        """(fingerprint, PR, merge commit) of every live greenkeep merge in the repo."""
+        return self.db.execute("SELECT fp, pr, sha FROM finding WHERE repo=? AND "
+                               "status='merged'", (repo,)).fetchall()
 
     def last_merge(self, repo: str) -> str:
         """When greenkeep last merged in this repo ("" if never): oldest goes first."""

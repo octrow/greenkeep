@@ -57,6 +57,12 @@ def publish(ws: Workspace, branch: str, title: str, body: str) -> int:
     return pr
 
 
+def merge_sha(ws: Workspace, pr: int) -> str:
+    """The commit a merged PR put on the base branch (what a revert names)."""
+    return _gh(ws, "pr", "view", str(pr), "--json", "mergeCommit", "--jq",
+               ".mergeCommit.oid // empty")
+
+
 def _merge(ws: Workspace, pr: int) -> None:
     """Merge now, or once the repo's required checks (CI) have passed."""
     merge = ["gh", "pr", "merge", str(pr), "--squash", "--delete-branch"]
