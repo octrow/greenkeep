@@ -64,15 +64,20 @@ def _excerpt(source: str, line: int) -> str:
     return "\n".join(lines[lo - 1:hi])
 
 
+def _with_feedback(parts: list[str], feedback: str) -> str:
+    """The prompt, plus why the previous attempt failed: the only thing that differs
+    between attempts, so a retry is a correction rather than a re-roll."""
+    return "\n".join([*parts, "", f"Your previous attempt failed: {feedback}"] if feedback
+                     else parts)
+
+
 def fix_prompt(f: Finding, source: str, feedback: str) -> str:
     lines = source.splitlines()
     line_text = lines[f.line - 1] if 0 < f.line <= len(lines) else ""
     parts = [f"Finding: {f.rule} {f.message}", f"File: {f.path}, line {f.line}:",
              f"    {line_text.strip()}", "", f"Current contents of {f.path}:",
              "```python", _excerpt(source, f.line), "```"]
-    if feedback:
-        parts += ["", f"Your previous attempt failed: {feedback}"]
-    return "\n".join(parts)
+    return _with_feedback(parts, feedback)
 
 
 def module_name(path: str) -> str:
@@ -88,9 +93,7 @@ def characterization_prompt(f: Finding, source: str, feedback: str) -> str:
     parts = [f"Module {f.path} (import as `{module_name(f.path)}`) is {f.message}.",
              "Write characterization tests for its public functions and classes.",
              "", "```python", source, "```"]
-    if feedback:
-        parts += ["", f"Your previous attempt failed: {feedback}"]
-    return "\n".join(parts)
+    return _with_feedback(parts, feedback)
 
 
 REVIEW_SYSTEM = """You review one automated change to a Python repository before it is merged

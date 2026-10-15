@@ -3,8 +3,6 @@
 import subprocess
 from pathlib import Path
 
-import pytest
-
 from greenkeep import llm, run, workspace
 
 PYPROJECT = '[project]\nname = "demo"\nversion = "0"\nrequires-python = ">=3.12"\n'
@@ -69,9 +67,10 @@ def dry_run(src: Path) -> tuple[run.State, Path]:
 
 def test_covered_lint_finding_is_fixed_by_ruff_and_checkout_untouched(tmp_path, monkeypatch):
     src = make_repo(tmp_path, monkeypatch, {"demo.py": CODE, "tests/test_demo.py": TEST})
-    monkeypatch.setattr(llm, "ask", lambda *a: pytest.fail("LLM must not be needed"))
+    fake = fake_llm(monkeypatch, ["unused"])
     state, clone = dry_run(src)
     assert state.merged_today() == 1
+    assert not fake.patch_prompts and fake.reviews == 0  # deterministic: no patcher, no review
     assert "import os" not in (clone / "demo.py").read_text()
     msg = git(clone, "log", "-1", "--format=%B")
     assert msg.startswith("fix: F401") and run.TRAILER in msg
@@ -161,12 +160,6 @@ def test_unreadable_review_is_a_rejection(tmp_path, monkeypatch):
     assert state.merged_today() == 0
     assert state.status("demo", "untested:demo.py") == "parked"
 
-
-def test_deterministic_ruff_fix_skips_review(tmp_path, monkeypatch):
-    src = make_repo(tmp_path, monkeypatch, {"demo.py": CODE, "tests/test_demo.py": TEST})
-    fake = fake_llm(monkeypatch, ["unused"])
-    state, _ = dry_run(src)
-    assert state.merged_today() == 1 and fake.reviews == 0 and not fake.patch_prompts
 
 
 def test_clip_keeps_reason_line_and_tail():
