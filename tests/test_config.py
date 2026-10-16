@@ -36,3 +36,17 @@ def test_config_with_unknown_repo_fails_at_load(tmp_path):
     cfg.write_text('repos = ["/no/such/checkout"]\n')
     with pytest.raises(ConfigError, match="neither a local checkout"):
         load(cfg)
+
+
+def test_focus_repos_are_flagged(tmp_path):
+    (tmp_path / "a").mkdir()
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(f'repos = ["{tmp_path}/a", "octrow/b"]\nfocus = ["octrow/b"]\n')
+    assert [(t.name, t.focus) for t in load(cfg).repos] == [("a", False), ("b", True)]
+
+
+def test_focus_outside_repos_fails_at_load(tmp_path):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('repos = ["octrow/a"]\nfocus = ["octrow/typo"]\n')
+    with pytest.raises(ConfigError, match="not in `repos`"):
+        load(cfg)

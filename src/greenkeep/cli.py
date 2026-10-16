@@ -59,8 +59,10 @@ def _targets(a: argparse.Namespace) -> tuple[list[Target], int]:
 
 def _run_all(targets: list[Target], opts: Options, state: State) -> Digest:
     digest = Digest()
-    # least recently merged first: activity spreads over the repos instead of piling up
-    for t in sorted(targets, key=lambda t: state.last_merge(t.name)):
+    # Focus repos first, then least recently merged: activity spreads over the repos
+    # instead of piling up. ponytail: Focus can take the whole budget and starve the rest
+    # (security still bypasses it); reserve a slot for the others if that starts to show
+    for t in sorted(targets, key=lambda t: (not t.focus, state.last_merge(t.name))):
         if state.merged_today() >= opts.budget:
             break
         try:

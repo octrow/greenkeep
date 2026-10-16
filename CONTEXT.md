@@ -10,6 +10,10 @@ An autonomous, scheduled maintainer for the owner's own repositories: it finds r
 A repository explicitly listed in the config that greenkeep is allowed to change. Work repos, forks and archived repos are never tended repos.
 _Avoid_: target, managed repo, project
 
+**Focus repo**:
+A tended repo the owner marked in the config as a current priority; every run reaches it before the other tended repos.
+_Avoid_: pinned repo, favourite, priority repo
+
 **Bootstrap stage**:
 The state of a tended repo whose tests do not yet cover the code; only test-only, safe-category and test-first fix changes are allowed.
 _Avoid_: onboarding, warm-up

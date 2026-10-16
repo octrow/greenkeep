@@ -1,4 +1,4 @@
-"""The owner's config: which repos are tended and how much greenkeep may merge a day.
+"""The owner's config: which repos are tended, which come first, and the daily merge budget.
 
 Lives outside any repo (`~/.config/greenkeep/config.toml`): it names private repos.
 """
@@ -28,6 +28,7 @@ class ConfigError(ValueError):
 class Target:
     """A tended repo: a local checkout, or `owner/name` cloned straight from GitHub."""
     spec: str
+    focus: bool = False  # a Focus repo: run before the others every run
 
     @property
     def path(self) -> Path | None:
@@ -66,7 +67,12 @@ def load(path: Path = CONFIG_FILE) -> Config:
     repos = data.get("repos")
     if not isinstance(repos, list) or not all(isinstance(r, str) for r in repos):
         raise ConfigError(f"{path}: `repos` must be a list of paths or owner/name strings")
-    targets = [Target(r) for r in repos]
+    focus = data.get("focus", [])
+    if not isinstance(focus, list) or not all(isinstance(r, str) for r in focus):
+        raise ConfigError(f"{path}: `focus` must be a list of entries from `repos`")
+    if stray := sorted(set(focus) - set(repos)):
+        raise ConfigError(f"{path}: focus entries not in `repos`: {', '.join(stray)}")
+    targets = [Target(r, r in focus) for r in repos]
     for t in targets:
         _ = t.path  # a typo in the config fails at load, not halfway through a run
     return Config(targets,

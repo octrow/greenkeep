@@ -148,6 +148,7 @@ Config `~/.config/greenkeep/config.toml`:
 budget = 3            # merged PRs per weekday
 weekend_budget = 1
 repos = ["~/dev/my-repo", "owner/name-without-local-checkout"]
+focus = ["~/dev/my-repo"]   # optional: these run first every run
 ```
 
 Telegram digest: `GREENKEEP_TG_BOT_TOKEN` and `GREENKEEP_TG_CHAT_ID` in
