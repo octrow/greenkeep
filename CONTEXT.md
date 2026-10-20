@@ -45,7 +45,7 @@ A GitHub Issue opened for a triaged finding; the public record of planned work, 
 _Avoid_: ticket, task, TODO
 
 **Fix PR**:
-A pull request that resolves exactly one finding.
+A pull request that resolves exactly one finding. Lint that its own change introduces (a rewritten import leaving the block unsorted) is fixed in the same PR; lint that was there before is not.
 _Avoid_: patch PR, bot PR, change
 
 **Characterization test**:

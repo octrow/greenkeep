@@ -236,3 +236,21 @@ def test_test_root_runs_the_suite_from_its_folder(tmp_path, monkeypatch):
     workspace.sync(ws)
     tests = workspace.run_tests(ws)
     assert tests.ok and "app/demo.py" in tests.cov["files"]  # paths stay repo-relative
+
+
+RUFF_UP_I = '\n[tool.ruff.lint]\nselect = ["UP", "I"]\n'
+OLD_IMPORT = "from os import sep\nfrom typing import Iterator\n\n\n" \
+             "def parts(p: str) -> Iterator[str]:\n    yield from p.split(sep)\n"
+PARTS_TEST = "from demo import parts\n\n\ndef test_parts():\n    assert list(parts('a')) == ['a']\n"
+
+
+def test_ruff_fix_also_fixes_the_lint_it_introduces(tmp_path, monkeypatch):
+    # UP035 rewrites the import in place, which leaves the import block unsorted (I001)
+    src = make_repo(tmp_path, monkeypatch, {"pyproject.toml": PYPROJECT + RUFF_UP_I,
+                                            "demo.py": OLD_IMPORT,
+                                            "tests/test_demo.py": PARTS_TEST})
+    fake = fake_llm(monkeypatch, ["unused"])
+    state, clone = dry_run(src)
+    assert state.merged_today() == 1 and not fake.patch_prompts
+    assert (clone / "demo.py").read_text().startswith(
+        "from collections.abc import Iterator\nfrom os import sep\n")

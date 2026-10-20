@@ -78,6 +78,12 @@ class Lint(Kind):
     def produce(self, job: Job, f: Finding, feedback: str) -> Change:
         if f.fixable and not feedback:
             ruff_fix(job.ws, f.path, f.rule)
+            # the fix may leave lint of its own (UP035 -> unsorted imports): fix only that,
+            # never what was there before, so the PR still resolves one finding
+            new = {a.rule for a in lint(job.ws, f.path)
+                   if a.fixable and a.fingerprint not in job.base.lint}
+            for rule in sorted(new):
+                ruff_fix(job.ws, f.path, rule)
             return Change([f.path], "ruff --fix", deterministic=True)
         source = (job.ws.root / f.path).read_text()
         reply = llm.ask(llm.FIX_SYSTEM, llm.fix_prompt(f, source, feedback), job.opts.model,
