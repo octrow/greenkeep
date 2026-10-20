@@ -201,7 +201,13 @@ def work(job: Job, f: Finding) -> bool:
                 raise
             feedback = clip(redact(str(exc), job.ws.secrets()))
             _record_failure(job, f, feedback)
+            if _timed_out(exc):
+                return False  # up to 10 minutes each: the next attempt waits for tomorrow
     return False
+
+
+def _timed_out(exc: Exception) -> bool:
+    return isinstance(exc, TimeoutError) or "timed out after" in str(exc)
 
 
 def _not_the_change(exc: Exception) -> bool:
@@ -240,24 +246,37 @@ def _within_budget(job: Job, f: Finding) -> bool:
 
 
 def _work_repo(job: Job) -> None:
-    parked_in_a_row = 0
-    for f in _candidates(job)[:MAX_FINDINGS_PER_REPO]:
+    candidates = _candidates(job)[:MAX_FINDINGS_PER_REPO]
+    if not candidates:
+        job.digest.clean += 1
+        return
+    parked_in_a_row, worked = 0, False
+    for f in candidates:
         if not _within_budget(job, f):
             continue  # a later finding may still be budget-exempt (security)
+        worked = True
         log.info("%s: %s", job.ws.name, f.title)
         if work(job, f):
             # ponytail: one merge per repo per run, the baseline is stale after it;
             # re-run the baseline here if one fix per repo per day proves too slow
             return
+        if job.state.status(job.ws.name, f.fingerprint) != "parked":
+            continue  # timed out: it waits for the next run, the repo is not to blame
         parked_in_a_row += 1
         if parked_in_a_row >= MAX_PARKED_IN_A_ROW:
             # the repo, not the findings, is likely the problem: stop paying for it
+            until = job.state.cool_down(job.ws.name)
             job.digest.problems.append(f"{job.ws.name}: {parked_in_a_row} findings parked "
-                                       "in a row, stopped for this run")
+                                       f"in a row, cool-down until {until}")
             return
+    if not worked:
+        job.digest.waiting.append(job.ws.name)
 
 
 def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> None:
+    if state.cooling(target.name):
+        digest.cooling += 1
+        return
     ws = clone(target)
     try:
         reverts.check(ws, state, backfill=opts.push)  # raises AutoPause before any work

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import date, timedelta
 from pathlib import Path
 
 MAX_ATTEMPTS = 3
@@ -12,6 +13,10 @@ SCHEMA = """CREATE TABLE IF NOT EXISTS finding (
     repo TEXT, fp TEXT, status TEXT DEFAULT 'open', attempts INT DEFAULT 0,
     issue INT, pr INT, updated TEXT DEFAULT CURRENT_TIMESTAMP, sha TEXT, title TEXT, url TEXT,
     PRIMARY KEY (repo, fp))"""
+# per-repo and per-run marks: a repo's cool-down end, the day the last run finished
+MARKS = "CREATE TABLE IF NOT EXISTS mark (key TEXT PRIMARY KEY, value TEXT)"
+COOL_DOWN = timedelta(days=7)
+BUDGET_FREE = "vuln:"  # security fingerprints: they neither need nor spend the budget
 # columns added after the first release, for databases created before them
 MIGRATIONS = {column: f"ALTER TABLE finding ADD COLUMN {column} TEXT"
               for column in ("sha", "title", "url")}
@@ -22,6 +27,7 @@ class State:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path)
         self.db.execute(SCHEMA)
+        self.db.execute(MARKS)
         columns = {row[1] for row in self.db.execute("PRAGMA table_info(finding)")}
         for column, ddl in MIGRATIONS.items():
             if column not in columns:
@@ -81,5 +87,29 @@ class State:
     def merged_today(self) -> int:
         # `updated` is stored in UTC; the budget is per local day
         return self.db.execute("SELECT count(*) FROM finding WHERE status='merged' AND "
-                               "date(updated, 'localtime') = date('now', 'localtime')"
-                               ).fetchone()[0]
+                               "date(updated, 'localtime') = date('now', 'localtime') "
+                               "AND fp NOT LIKE ?", (BUDGET_FREE + "%",)).fetchone()[0]
+
+    def _mark(self, key: str) -> str:
+        row = self.db.execute("SELECT value FROM mark WHERE key=?", (key,)).fetchone()
+        return row[0] if row else ""
+
+    def _set_mark(self, key: str, value: str) -> None:
+        self.db.execute("INSERT OR REPLACE INTO mark (key, value) VALUES (?, ?)", (key, value))
+        self.db.commit()
+
+    def cool_down(self, repo: str) -> date:
+        """Leave the repo alone for a week; returns the day it is worked again."""
+        until = date.today() + COOL_DOWN
+        self._set_mark(f"cool-down:{repo}", until.isoformat())
+        return until
+
+    def cooling(self, repo: str) -> bool:
+        return date.today().isoformat() < self._mark(f"cool-down:{repo}")
+
+    def record_run(self) -> None:
+        """The scheduled run is done for today: the digest went out."""
+        self._set_mark("run", date.today().isoformat())
+
+    def ran_today(self) -> bool:
+        return self._mark("run") == date.today().isoformat()

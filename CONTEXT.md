@@ -63,7 +63,7 @@ The automatic verdict that a fix PR may be merged: the full test suite passes an
 _Avoid_: check, CI, validation
 
 **Attempt**:
-One try of the patcher (a fixed model, prompt and temperature 0) to produce a fix PR that passes the gate; a finding gets at most three.
+One try of the patcher (a fixed model, prompt and temperature 0) to produce a fix PR that passes the gate; a finding gets at most three. An attempt that times out still counts, and the finding waits for the next run.
 _Avoid_: retry, run
 
 **Parked finding**:
@@ -71,13 +71,13 @@ A finding whose attempts are exhausted; it is labelled `needs-human` and greenke
 _Avoid_: failed finding, skipped, blocked
 
 **Daily budget**:
-The maximum number of fix PRs merged per day across all tended repos; security findings bypass it, plan issues do not count toward it.
+The maximum number of fix PRs merged per day across all tended repos; security findings neither need nor spend it, plan issues do not count toward it.
 _Avoid_: quota, rate limit
 
 ### Operation
 
 **Run**:
-One scheduled pass of greenkeep over the tended repos, from finding collection to merged fix PRs; every run is recorded.
+One scheduled pass of greenkeep over the tended repos, from finding collection to merged fix PRs; every run is recorded. A run counts as done for its local day only once its digest is sent; an interrupted run is simply started again.
 _Avoid_: job, sweep, cycle
 
 **Digest**:
@@ -87,6 +87,10 @@ _Avoid_: report, notification
 **Pause**:
 The state in which runs exit immediately; set by the owner or by auto-pause.
 _Avoid_: stop, disable, kill switch
+
+**Cool-down**:
+A fixed seven days during which greenkeep leaves one tended repo alone, set when a run stopped working that repo because its findings kept getting parked; the digest mentions it once, when it starts.
+_Avoid_: shelved, snooze, backoff
 
 **Auto-pause**:
 Pause set by greenkeep itself when its own merged fix PRs get reverted.

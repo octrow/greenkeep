@@ -179,3 +179,34 @@ def test_web_url_from_remotes():
     assert run.web_url("https://github.com/o/r.git") == "https://github.com/o/r"
     assert run.web_url("git@github.com:o/r.git") == "https://github.com/o/r"
     assert run.web_url("/tmp/origin.git") == ""
+
+
+def test_timed_out_attempt_counts_and_the_finding_waits_for_the_next_run(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
+    calls = []
+
+    def hang(*_):
+        calls.append(1)
+        raise run.ClaudeCliError("claude timed out after 600s")
+    monkeypatch.setattr(llm, "ask", hang)
+    state, _ = dry_run(src)
+    assert len(calls) == 1
+    assert state.attempts("demo", "untested:demo.py") == 1
+    assert state.status("demo", "untested:demo.py") == "open"
+
+
+def test_parked_findings_in_a_row_put_the_repo_in_cool_down(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG, "other.py": BIG})
+    fake_llm(monkeypatch, ["no"])
+    state, digest = run.State(Path(":memory:")), Digest()
+    run.run_repo(Target(str(src)), run.Options(False, 3, "x", True), state, digest)
+    assert state.cooling("demo")
+    assert "cool-down until" in digest.problems[0]
+
+
+def test_repo_in_cool_down_is_not_even_cloned(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
+    state, digest = run.State(Path(":memory:")), Digest()
+    state.cool_down("demo")
+    run.run_repo(Target(str(src)), run.Options(False, 3, "x", True), state, digest)
+    assert digest.cooling == 1 and not workspace.CACHE.exists()

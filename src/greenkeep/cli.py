@@ -61,10 +61,9 @@ def _run_all(targets: list[Target], opts: Options, state: State) -> Digest:
     digest = Digest()
     # Focus repos first, then least recently merged: activity spreads over the repos
     # instead of piling up. ponytail: Focus can take the whole budget and starve the rest
-    # (security still bypasses it); reserve a slot for the others if that starts to show
+    # (security still bypasses it); reserve a slot for the others if that starts to show.
+    # A spent budget still visits every repo: security findings do not wait for it.
     for t in sorted(targets, key=lambda t: (not t.focus, state.last_merge(t.name))):
-        if state.merged_today() >= opts.budget:
-            break
         try:
             run_repo(t, opts, state, digest)
         except AutoPause as stop:
@@ -86,14 +85,21 @@ def main(argv: list[str] | None = None) -> int:
     if paused():
         log.info("paused: %s exists", PAUSE_FILE)
         return 0
-    targets, budget = _targets(a)
-    opts = Options(a.push, budget, a.model, a.keep, a.review_model)
+    # the timer fires hourly; one scheduled run per day, an interrupted one starts over
+    scheduled = a.push and not a.repos
     # a dry run never touches the persistent state: attempts and budget stay unspent
     state = State() if a.push else State(Path(":memory:"))
+    if scheduled and state.ran_today():
+        log.debug("already ran today")
+        return 0
+    targets, budget = _targets(a)
+    opts = Options(a.push, budget, a.model, a.keep, a.review_model)
     digest = _run_all(targets, opts, state)
     text = digest.text(max(opts.budget - state.merged_today(), 0))
     if a.push:
         send(text)
+        if scheduled:
+            state.record_run()
     else:
         log.info("%s", text)
     return 0

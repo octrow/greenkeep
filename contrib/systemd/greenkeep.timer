@@ -2,8 +2,9 @@
 Description=greenkeep daily run
 
 [Timer]
-OnCalendar=*-*-* 10:00
-# a run missed while the machine was off happens at the next boot
+# hourly: greenkeep exits at once when today's run already sent its digest, so a run
+# cut short by a shutdown starts over within the hour after the next boot
+OnCalendar=hourly
 Persistent=true
 
 [Install]

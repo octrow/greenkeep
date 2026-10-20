@@ -6,6 +6,7 @@ review) are the same for every kind; only what lives here differs.
 
 from __future__ import annotations
 
+import logging
 import re
 import tomllib
 from abc import ABC, abstractmethod
@@ -13,10 +14,12 @@ from pathlib import Path
 
 from . import deps, llm
 from .core import Change, GateFailure, Job, lint
-from .edits import apply_edits, parse_edits, python_block
+from .edits import EditError, apply_edits, parse_edits, python_block
 from .findings import Finding, rank
 from .gate import coverage_violations, is_test_path, line_is_covered
 from .workspace import TestRun, Workspace, ruff_fix
+
+log = logging.getLogger("greenkeep")
 
 URGENT_RANK = 2  # S/F/B ruff rules are bugs: "fix:", and they go before tests
 OUTDATED_MIN_COVERAGE = 60.0  # below it a green suite says too little about an upgrade
@@ -168,7 +171,12 @@ class Untested(Kind):
         prompt = llm.characterization_prompt(f, source, context, line_budget(source), feedback)
         reply = llm.ask(llm.TEST_SYSTEM, prompt, job.opts.model)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(python_block(reply.text))
+        try:
+            code = python_block(reply.text)
+        except EditError:
+            log.debug("  reply without a code block:\n%s", reply.text)
+            raise
+        target.write_text(code)
         ruff_fix(job.ws, rel)  # safe fixes only: an unused import must not cost an attempt
         return Change([rel], reply.model, reply.prompt_sha)
 

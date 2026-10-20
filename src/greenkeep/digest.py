@@ -19,6 +19,10 @@ class Digest:
     merged: list[str] = field(default_factory=list)
     parked: list[str] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)
+    # repos with nothing to report: no findings, findings only past the budget, cooling down
+    clean: int = 0
+    waiting: list[str] = field(default_factory=list)
+    cooling: int = 0
 
     def text(self, budget_left: int) -> str:
         lines = [(f"greenkeep: {len(self.merged)} merged, {len(self.parked)} parked, "
@@ -27,7 +31,16 @@ class Digest:
                              ("Problems", self.problems)):
             if items:
                 lines += ["", f"{title}:", *(f"• {i}" for i in items)]
+        if quiet := self._quiet():
+            lines += ["", "Quiet: " + quiet]
         return "\n".join(lines)
+
+    def _quiet(self) -> str:
+        parts = [f"{self.clean} clean" if self.clean else "",
+                 (f"{len(self.waiting)} waiting for budget ({', '.join(self.waiting)})"
+                  if self.waiting else ""),
+                 f"{self.cooling} in cool-down" if self.cooling else ""]
+        return ", ".join(p for p in parts if p)
 
 
 def send(text: str) -> None:

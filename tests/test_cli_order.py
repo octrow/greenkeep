@@ -15,3 +15,11 @@ def test_focus_repos_run_first_then_least_recently_merged(monkeypatch):
                                                         "f": "2026-10-15"}.get(n, ""))
     cli._run_all(targets, Options(False, 3, None, False, None), state)
     assert seen == ["f", "b", "a"]
+
+
+def test_spent_budget_still_visits_every_repo_for_security(monkeypatch):
+    seen = []
+    monkeypatch.setattr(cli, "run_repo", lambda t, *_: seen.append(t.name))
+    cli._run_all([Target("octrow/a"), Target("octrow/b")],
+                 Options(False, 0, None, False, None), State(Path(":memory:")))
+    assert seen == ["a", "b"]

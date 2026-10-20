@@ -116,8 +116,9 @@ def discard(ws: Workspace) -> None:
 def sync(ws: Workspace) -> None:
     if not (ws.root / "pyproject.toml").is_file():
         raise WorkspaceError("no pyproject.toml: needs revival (not in v1)")
-    # extras too: many repos declare pytest plugins as a `dev` extra, not a dependency group
-    sh(["uv", "sync", "-q", "--all-extras"], ws.root)
+    # extras too: many repos declare pytest plugins as a `dev` extra, not a dependency group;
+    # all packages: a workspace member's tests need its own dependencies
+    sh(["uv", "sync", "-q", "--all-extras", "--all-packages"], ws.root)
 
 
 @dataclass(frozen=True)

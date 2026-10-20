@@ -164,7 +164,8 @@ uv run greenkeep-ui            # http://127.0.0.1:8095
 If the port belongs to another app it moves to the next free one; if a greenkeep
 dashboard already runs there it asks whether to restart it (default No) and prints its link.
 
-Daily at 10:00:
+Once a day: the timer fires hourly and greenkeep exits at once if today's digest already went
+out, so a run cut short by a shutdown starts over after the next boot.
 
 ```bash
 cp contrib/systemd/greenkeep.* ~/.config/systemd/user/
@@ -173,9 +174,9 @@ systemctl --user daemon-reload && systemctl --user enable --now greenkeep.timer
 
 ## Status and roadmap
 
-Done: ruff, coverage and dependency findings (vulnerabilities bypass the daily budget;
+Done: ruff, coverage and dependency findings (vulnerabilities neither need nor spend the daily budget;
 upgrades need 60% coverage), gate, Sonnet patcher + Opus reviewer, issue → PR → merge,
-config, daily timer, digest, pause, dashboard, auto-pause (a reverted greenkeep merge stops all
+config, daily timer, digest (with a one-line `Quiet:` summary), pause, cool-down, dashboard, auto-pause (a reverted greenkeep merge stops all
 runs until you delete the pause file, which says which merge it was).
 
 Next, roughly in this order:

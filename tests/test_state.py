@@ -35,3 +35,26 @@ def test_rows_for_the_dashboard(tmp_path):
     st.set("r", "fp", status="merged", pr=3, title="Bump x", url="https://github.com/o/r")
     [row] = st.rows()
     assert row["title"] == "Bump x" and row["pr"] == 3 and row["status"] == "merged"
+
+
+def test_security_merges_do_not_spend_the_budget(tmp_path):
+    st = State(tmp_path / "s.db")
+    st.set("r", "vuln:anyio:PYSEC-1", status="merged", pr=1)
+    st.set("r", "ruff:SIM115:x.py:1", status="merged", pr=2)
+    assert st.merged_today() == 1
+
+
+def test_cool_down_keeps_a_repo_off_for_seven_days(tmp_path):
+    from datetime import date, timedelta
+    st = State(tmp_path / "s.db")
+    assert not st.cooling("r")
+    until = st.cool_down("r")
+    assert until == date.today() + timedelta(days=7)
+    assert st.cooling("r") and not st.cooling("other")
+
+
+def test_a_run_is_done_for_the_day_once_recorded(tmp_path):
+    st = State(tmp_path / "s.db")
+    assert not st.ran_today()
+    st.record_run()
+    assert State(tmp_path / "s.db").ran_today()
