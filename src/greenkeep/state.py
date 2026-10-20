@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -20,6 +21,15 @@ BUDGET_FREE = "vuln:"  # security fingerprints: they neither need nor spend the 
 # columns added after the first release, for databases created before them
 MIGRATIONS = {column: f"ALTER TABLE finding ADD COLUMN {column} TEXT"
               for column in ("sha", "title", "url")}
+
+
+@dataclass(frozen=True)
+class CoolDown:
+    """Until when a repo is left alone, and what it and greenkeep looked like then: a change
+    to either ends it early."""
+    until: date
+    repo_head: str
+    tool_head: str
 
 
 class State:
@@ -98,14 +108,22 @@ class State:
         self.db.execute("INSERT OR REPLACE INTO mark (key, value) VALUES (?, ?)", (key, value))
         self.db.commit()
 
-    def cool_down(self, repo: str) -> date:
+    def cool_down(self, repo: str, repo_head: str, tool_head: str) -> date:
         """Leave the repo alone for a week; returns the day it is worked again."""
         until = date.today() + COOL_DOWN
-        self._set_mark(f"cool-down:{repo}", until.isoformat())
+        self._set_mark(f"cool-down:{repo}", f"{until.isoformat()} {repo_head} {tool_head}")
         return until
 
-    def cooling(self, repo: str) -> bool:
-        return date.today().isoformat() < self._mark(f"cool-down:{repo}")
+    def cool_down_of(self, repo: str) -> CoolDown | None:
+        until, _, heads = self._mark(f"cool-down:{repo}").partition(" ")
+        if not until:
+            return None
+        repo_head, _, tool_head = heads.partition(" ")
+        return CoolDown(date.fromisoformat(until), repo_head, tool_head)
+
+    def lift_cool_down(self, repo: str) -> None:
+        self.db.execute("DELETE FROM mark WHERE key=?", (f"cool-down:{repo}",))
+        self.db.commit()
 
     def record_run(self) -> None:
         """The scheduled run is done for today: the digest went out."""

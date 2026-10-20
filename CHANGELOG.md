@@ -7,7 +7,7 @@
 - Findings: dependency vulnerabilities (pip-audit, bypass the daily budget) and outdated direct dependencies (same major, needs 60% coverage), fixed with `uv lock --upgrade-package`.
 - Coverage is measured even when a repo's `addopts` turns on pytest-cov; a green suite with 0% total coverage skips test findings. `uv sync --all-extras` installs test plugins declared as a `dev` extra.
 - Cost guards: a repo is dropped for the run after 2 parked findings in a row; rate limits (429/503) and quota errors no longer count as attempts.
-- Cool-down: a run that stops a repo for parked findings in a row also leaves it alone for 7 days. A patcher timeout counts as an attempt and defers the finding to the next run.
+- Cool-down: a run that stops a repo for parked findings in a row also leaves it alone for up to 7 days; a new commit in the repo or in greenkeep ends that early. A patcher timeout counts as an attempt and defers the finding to the next run.
 - Security fixes no longer spend the daily budget, and a spent budget still visits every repo for them.
 - The timer fires hourly; one scheduled run per day, done once its digest is sent, so an interrupted run starts over. The digest ends with `Quiet: N clean, M waiting for budget (…), K in cool-down`.
 - The patcher runs inside the clone with read-only tools too: without them it asked to read the modules under test as plain text and returned no code.

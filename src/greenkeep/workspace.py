@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import time
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 
 from .config import Target
@@ -91,11 +92,31 @@ class Workspace:
         return lines[n - 1] if 0 < n <= len(lines) else ""
 
 
+def _origin(target: Target) -> str:
+    src = target.path
+    return sh(["git", "remote", "get-url", "origin"], src, check=False).stdout.strip() \
+        if src else target.origin
+
+
+def remote_head(target: Target) -> str:
+    """The commit the target's origin HEAD points at, without cloning ("" if unreachable)."""
+    origin = _origin(target)
+    proc = sh(["git", "ls-remote", origin, "HEAD"], Path.home(), check=False) if origin else None
+    return proc.stdout.split()[0] if proc and proc.returncode == 0 and proc.stdout else ""
+
+
+@cache
+def tool_head() -> str:
+    """greenkeep's own commit ("" when not run from a git checkout)."""
+    here = Path(__file__).parent
+    proc = sh(["git", "rev-parse", "HEAD"], here, check=False)
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
 def clone(target: Target) -> Workspace:
     """Clone the target's origin, borrowing objects (and .env) from its local checkout."""
     name, src = target.name, target.path
-    origin = sh(["git", "remote", "get-url", "origin"], src, check=False).stdout.strip() \
-        if src else target.origin
+    origin = _origin(target)
     if not origin:
         raise WorkspaceError(f"{name}: local checkout has no origin to clone")
     run_dir = CACHE / f"run-{name}-{time.strftime('%Y%m%d-%H%M%S')}"

@@ -1,4 +1,4 @@
-from greenkeep.state import MAX_ATTEMPTS, State
+from greenkeep.state import MAX_ATTEMPTS, CoolDown, State
 
 
 def test_attempts_park_finding_after_limit(tmp_path):
@@ -44,13 +44,15 @@ def test_security_merges_do_not_spend_the_budget(tmp_path):
     assert st.merged_today() == 1
 
 
-def test_cool_down_keeps_a_repo_off_for_seven_days(tmp_path):
+def test_cool_down_remembers_until_when_and_both_heads(tmp_path):
     from datetime import date, timedelta
     st = State(tmp_path / "s.db")
-    assert not st.cooling("r")
-    until = st.cool_down("r")
-    assert until == date.today() + timedelta(days=7)
-    assert st.cooling("r") and not st.cooling("other")
+    assert st.cool_down_of("r") is None
+    st.cool_down("r", "repo-sha", "tool-sha")
+    cd = st.cool_down_of("r")
+    assert cd == CoolDown(date.today() + timedelta(days=7), "repo-sha", "tool-sha")
+    st.lift_cool_down("r")
+    assert st.cool_down_of("r") is None
 
 
 def test_a_run_is_done_for_the_day_once_recorded(tmp_path):

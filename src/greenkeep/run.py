@@ -6,6 +6,7 @@ import hashlib
 import logging
 import re
 from dataclasses import dataclass, replace
+from datetime import date
 from textwrap import shorten
 
 from claude_cli import ClaudeCliError, UsageLimitError
@@ -19,7 +20,8 @@ from .findings import Finding, untested_findings
 from .gate import suppressions
 from .kinds import kind_of
 from .state import MAX_ATTEMPTS, State
-from .workspace import TestRun, Workspace, WorkspaceError, clone, discard, run_tests, sync
+from .workspace import (TestRun, Workspace, WorkspaceError, clone, discard, remote_head,
+                        run_tests, sync, tool_head)
 
 log = logging.getLogger("greenkeep")
 
@@ -265,7 +267,8 @@ def _work_repo(job: Job) -> None:
         parked_in_a_row += 1
         if parked_in_a_row >= MAX_PARKED_IN_A_ROW:
             # the repo, not the findings, is likely the problem: stop paying for it
-            until = job.state.cool_down(job.ws.name)
+            until = job.state.cool_down(job.ws.name, job.ws.git("rev-parse", "HEAD").strip(),
+                                        tool_head())
             job.digest.problems.append(f"{job.ws.name}: {parked_in_a_row} findings parked "
                                        f"in a row, cool-down until {until}")
             return
@@ -273,8 +276,21 @@ def _work_repo(job: Job) -> None:
         job.digest.waiting.append(job.ws.name)
 
 
+def _cooling(target: Target, state: State) -> bool:
+    """In cool-down, unless it ran out or the repo or greenkeep changed since it began."""
+    cd = state.cool_down_of(target.name)
+    if cd is None:
+        return False
+    head = remote_head(target)
+    if date.today() < cd.until and head in ("", cd.repo_head) and tool_head() == cd.tool_head:
+        return True
+    log.info("%s: cool-down lifted", target.name)
+    state.lift_cool_down(target.name)
+    return False
+
+
 def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> None:
-    if state.cooling(target.name):
+    if _cooling(target, state):
         digest.cooling += 1
         return
     ws = clone(target)

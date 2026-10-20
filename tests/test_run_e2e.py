@@ -200,16 +200,34 @@ def test_parked_findings_in_a_row_put_the_repo_in_cool_down(tmp_path, monkeypatc
     fake_llm(monkeypatch, ["no"])
     state, digest = run.State(Path(":memory:")), Digest()
     run.run_repo(Target(str(src)), run.Options(False, 3, "x", True), state, digest)
-    assert state.cooling("demo")
+    assert state.cool_down_of("demo").repo_head == git(src, "rev-parse", "HEAD").strip()
     assert "cool-down until" in digest.problems[0]
 
 
 def test_repo_in_cool_down_is_not_even_cloned(tmp_path, monkeypatch):
     src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
     state, digest = run.State(Path(":memory:")), Digest()
-    state.cool_down("demo")
+    state.cool_down("demo", git(src, "rev-parse", "HEAD").strip(), workspace.tool_head())
     run.run_repo(Target(str(src)), run.Options(False, 3, "x", True), state, digest)
     assert digest.cooling == 1 and not workspace.CACHE.exists()
+
+
+def test_a_new_commit_in_the_repo_lifts_its_cool_down(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
+    state, digest = run.State(Path(":memory:")), Digest()
+    state.cool_down("demo", "an-older-head", workspace.tool_head())
+    fake_llm(monkeypatch, [CHAR_TEST])
+    run.run_repo(Target(str(src)), run.Options(False, 3, "x", True), state, digest)
+    assert state.cool_down_of("demo") is None and digest.cooling == 0
+
+
+def test_an_updated_greenkeep_lifts_every_cool_down(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
+    state, digest = run.State(Path(":memory:")), Digest()
+    state.cool_down("demo", git(src, "rev-parse", "HEAD").strip(), "an-older-greenkeep")
+    fake_llm(monkeypatch, [CHAR_TEST])
+    run.run_repo(Target(str(src)), run.Options(False, 3, "x", True), state, digest)
+    assert state.cool_down_of("demo") is None
 
 
 def test_test_root_runs_the_suite_from_its_folder(tmp_path, monkeypatch):
