@@ -141,6 +141,10 @@ def sync(ws: Workspace) -> None:
     # extras too: many repos declare pytest plugins as a `dev` extra, not a dependency group;
     # all packages: a workspace member's tests need its own dependencies
     sh(["uv", "sync", "-q", "--all-extras", "--all-packages"], ws.root)
+    # a test root that is its own project (not a workspace member) runs on its own venv;
+    # inexact: on a workspace member this must not strip what the root sync installed
+    if ws.tests and (ws.root / ws.tests / "pyproject.toml").is_file():
+        sh(["uv", "sync", "-q", "--all-extras", "--inexact"], ws.root / ws.tests)
 
 
 @dataclass(frozen=True)

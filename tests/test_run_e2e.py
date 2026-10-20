@@ -238,6 +238,18 @@ def test_test_root_runs_the_suite_from_its_folder(tmp_path, monkeypatch):
     assert tests.ok and "app/demo.py" in tests.cov["files"]  # paths stay repo-relative
 
 
+def test_a_test_root_with_its_own_project_gets_its_extras(tmp_path, monkeypatch):
+    # chat-watch's bot/: a separate uv project whose pytest plugins live in its own `dev` extra
+    bot = PYPROJECT.replace('"demo"', '"bot"') + \
+        '\n[project.optional-dependencies]\ndev = ["pytest-timeout"]\n'
+    plugin_test = "import pytest_timeout\n\n\ndef test_plugin():\n    assert pytest_timeout\n"
+    src = make_repo(tmp_path, monkeypatch, {"bot/pyproject.toml": bot,
+                                            "bot/tests/test_plugin.py": plugin_test})
+    ws = workspace.clone(Target(str(src), tests="bot"))
+    workspace.sync(ws)
+    assert workspace.run_tests(ws).ok
+
+
 RUFF_UP_I = '\n[tool.ruff.lint]\nselect = ["UP", "I"]\n'
 OLD_IMPORT = "from os import sep\nfrom typing import Iterator\n\n\n" \
              "def parts(p: str) -> Iterator[str]:\n    yield from p.split(sep)\n"
