@@ -48,7 +48,7 @@ def ruff_findings(items: list[dict], *, root: str,
         fix = it.get("fix") or {}
         found.append(Finding("ruff", it["code"], path, row, it["message"], fp,
                              fixable=fix.get("applicability") == "safe",
-                             title=f"{it['code']}: {it['message']} ({path})"))
+                             title=f"{it['code']}: {it['message']} ({path}:{row})"))
     return sorted(found, key=lambda f: rank(f.rule))
 
 

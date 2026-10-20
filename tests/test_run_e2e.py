@@ -79,7 +79,7 @@ def test_covered_lint_finding_is_fixed_by_ruff_and_checkout_untouched(tmp_path, 
     assert not fake.patch_prompts and fake.reviews == 0  # deterministic: no patcher, no review
     assert "import os" not in (clone / "demo.py").read_text()
     msg = git(clone, "log", "-1", "--format=%B")
-    assert msg.startswith("fix: F401") and run.TRAILER in msg
+    assert msg.startswith("fix: F401") and "(demo.py:1)" in msg and run.TRAILER in msg
     assert "import os" in (src / "demo.py").read_text()
 
 

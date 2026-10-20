@@ -41,3 +41,11 @@ def test_ruff_safe_fix_marks_finding_fixable():
     assert ruff_findings([item], root="/w", read_line=lambda p, n: "x")[0].fixable
     unsafe = {**RUFF[0], "fix": {"applicability": "unsafe"}}
     assert not ruff_findings([unsafe], root="/w", read_line=lambda p, n: "x")[0].fixable
+
+
+def test_same_rule_twice_in_one_file_gets_distinct_titles():
+    s110 = {"code": "S110", "message": "`try`-`except`-`pass` detected", "filename": "/w/u.py"}
+    items = [{**s110, "location": {"row": n, "column": 5}} for n in (4, 12)]
+    found = ruff_findings(items, root="/w", read_line=lambda p, n: "pass")
+    assert [f.title for f in found] == ["S110: `try`-`except`-`pass` detected (u.py:4)",
+                                        "S110: `try`-`except`-`pass` detected (u.py:12)"]
