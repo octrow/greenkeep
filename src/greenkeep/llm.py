@@ -1,8 +1,8 @@
 """The patcher and reviewer roles: fixed prompts, one finding per call, on Claude Code.
 
-The patcher runs without tools and sees only what the prompt carries. The reviewer runs
-inside the clone with read-only tools, so it judges the change against the repo itself
-(existing tests, style, fixtures), not the diff alone. Predictability comes from the
+Both run inside the clone with read-only tools. The patcher reads what the module it tests
+leans on (without that it wrote tool calls as text and no code); the reviewer judges the
+change against the repo itself (existing tests, style, fixtures), not the diff alone. Predictability comes from the
 pinned models and prompts.
 """
 
@@ -19,7 +19,7 @@ from .findings import Finding
 
 LLM_TIMEOUT = 600  # claude -p on a 20k-char prompt has hit 300s
 REVIEW_TIMEOUT = 900
-REVIEW_TOOLS = "Read,Grep,Glob"
+READ_TOOLS = "Read,Grep,Glob"  # neither role may write: greenkeep applies the reply
 EXCERPT_RADIUS = 40
 WHOLE_FILE_LINES = 300
 
@@ -27,6 +27,7 @@ FIX_SYSTEM = """You fix exactly one lint finding in a Python repository.
 Rules:
 - Change as little code as possible. Never change behaviour, public names or formatting
   elsewhere in the file.
+- You may read the repository with the read-only tools first.
 - Reply ONLY with one or more SEARCH/REPLACE blocks in this exact format:
 path/to/file.py
 <<<<<<< SEARCH
@@ -53,6 +54,7 @@ Rules:
 - Do not mock the unit under test or replace a database fixture the repo already has
   with mocks; mock only the outside world.
 - A plain test file: no section banners, no "characterization" wording.
+- You may read the repository with the read-only tools first.
 - Reply ONLY with one ```python block containing the complete test file.
 """
 
@@ -64,9 +66,10 @@ class Reply:
     prompt_sha: str
 
 
-def ask(system: str, prompt: str, model: str) -> Reply:
-    res = run_claude(f"{system}\n{prompt}", model=model, effort="medium", backend="cli",
-                     timeout=LLM_TIMEOUT)
+def ask(system: str, prompt: str, model: str, root: Path) -> Reply:
+    """The patcher, in the clone at `root`: it may read the repo, its reply is the change."""
+    res = run_claude(f"{system}\n{prompt}", model=model, effort="medium", tools=READ_TOOLS,
+                     cwd=root, backend="cli", timeout=LLM_TIMEOUT)
     sha = hashlib.sha1((system + prompt).encode()).hexdigest()[:12]
     return Reply(res.text, model, sha)
 
@@ -149,7 +152,7 @@ def review(f: Finding, diff: str, model: str, root: Path) -> Verdict:
     """Claude Code in the clone at `root`. Fail closed: a reply that is not a clear
     approval is a rejection."""
     res = run_claude(f"{REVIEW_SYSTEM}\n{review_prompt(f, diff)}", model=model, effort="high",
-                     tools=REVIEW_TOOLS, cwd=root, backend="cli", timeout=REVIEW_TIMEOUT)
+                     tools=READ_TOOLS, cwd=root, backend="cli", timeout=REVIEW_TIMEOUT)
     data = extract_json_or_none(res.text)
     if not isinstance(data, dict):
         return Verdict(False, f"unreadable review reply: {res.text[:200]!r}", model)

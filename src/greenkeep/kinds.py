@@ -80,7 +80,8 @@ class Lint(Kind):
             ruff_fix(job.ws, f.path, f.rule)
             return Change([f.path], "ruff --fix", deterministic=True)
         source = (job.ws.root / f.path).read_text()
-        reply = llm.ask(llm.FIX_SYSTEM, llm.fix_prompt(f, source, feedback), job.opts.model)
+        reply = llm.ask(llm.FIX_SYSTEM, llm.fix_prompt(f, source, feedback), job.opts.model,
+                         job.ws.root)
         edited = apply_edits(job.ws.root, parse_edits(reply.text), job.ws.tracked())
         return Change(edited, reply.model, reply.prompt_sha)
 
@@ -169,7 +170,7 @@ class Untested(Kind):
         source = (job.ws.root / f.path).read_text()
         context = related_context(job.ws, f)
         prompt = llm.characterization_prompt(f, source, context, line_budget(source), feedback)
-        reply = llm.ask(llm.TEST_SYSTEM, prompt, job.opts.model)
+        reply = llm.ask(llm.TEST_SYSTEM, prompt, job.opts.model, job.ws.root)
         target.parent.mkdir(parents=True, exist_ok=True)
         try:
             code = python_block(reply.text)

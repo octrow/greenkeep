@@ -51,7 +51,7 @@ class FakeLLM:
         self.reviews += 1
         return SimpleNamespace(text=self.verdicts.pop(0) if self.verdicts else APPROVE)
 
-    def __call__(self, system: str, prompt: str, model: str) -> llm.Reply:
+    def __call__(self, system: str, prompt: str, model: str, root: Path) -> llm.Reply:
         self.patch_prompts.append(prompt)
         text = self.patches[min(len(self.patch_prompts), len(self.patches)) - 1]
         return llm.Reply(text, "patcher", "sha")

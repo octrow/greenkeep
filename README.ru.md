@@ -71,7 +71,7 @@ uv tool install git+https://github.com/octrow/greenkeep
 Ещё понадобятся:
 
 - git и [GitHub CLI](https://cli.github.com/) с выполненным `gh auth login` (только для `--push`);
-- [Claude Code](https://docs.claude.com/en/docs/claude-code) с выполненным входом, вызывается через [claude-subprocess](https://github.com/octrow/claude-cli) (`omniroute run claude -p`): Sonnet пишет патчи, Opus проверяет их прямо в клоне, только на чтение.
+- [Claude Code](https://docs.claude.com/en/docs/claude-code) с выполненным входом, вызывается через [claude-subprocess](https://github.com/octrow/claude-cli) (`omniroute run claude -p`): оба работают прямо в клоне, только на чтение: Sonnet пишет патчи, Opus их проверяет.
 
 ## Использование
 
