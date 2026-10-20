@@ -147,7 +147,11 @@ Config `~/.config/greenkeep/config.toml`:
 ```toml
 budget = 3            # merged PRs per weekday
 weekend_budget = 1
-repos = ["~/dev/my-repo", "owner/name-without-local-checkout"]
+repos = [
+  "~/dev/my-repo",
+  "owner/name-without-local-checkout",
+  { path = "~/dev/monorepo", tests = "app" },  # the suite runs from app/, not the root
+]
 focus = ["~/dev/my-repo"]   # optional: these run first every run
 ```
 

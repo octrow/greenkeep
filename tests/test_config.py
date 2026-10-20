@@ -50,3 +50,12 @@ def test_focus_outside_repos_fails_at_load(tmp_path):
     cfg.write_text('repos = ["octrow/a"]\nfocus = ["octrow/typo"]\n')
     with pytest.raises(ConfigError, match="not in `repos`"):
         load(cfg)
+
+
+def test_repo_entry_can_name_its_test_root(tmp_path):
+    (tmp_path / "jobs").mkdir()
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(f'repos = [{{ path = "{tmp_path}/jobs", tests = "pipeline" }}]\n'
+                   f'focus = ["{tmp_path}/jobs"]\n')
+    [t] = load(cfg).repos
+    assert t.name == "jobs" and t.tests == "pipeline" and t.focus

@@ -29,6 +29,7 @@ class Target:
     """A tended repo: a local checkout, or `owner/name` cloned straight from GitHub."""
     spec: str
     focus: bool = False  # a Focus repo: run before the others every run
+    tests: str = ""  # its test root: the folder its suite runs from, relative to the repo
 
     @property
     def path(self) -> Path | None:
@@ -64,20 +65,31 @@ def load(path: Path = CONFIG_FILE) -> Config:
         data = tomllib.loads(path.read_text())
     except (OSError, tomllib.TOMLDecodeError) as exc:
         raise ConfigError(f"cannot read {path}: {exc}") from exc
-    repos = data.get("repos")
-    if not isinstance(repos, list) or not all(isinstance(r, str) for r in repos):
-        raise ConfigError(f"{path}: `repos` must be a list of paths or owner/name strings")
+    entries = data.get("repos")
+    if not isinstance(entries, list) or not all(_entry_ok(r) for r in entries):
+        raise ConfigError(f"{path}: `repos` must list paths or owner/name strings, or "
+                          "{ path = ..., tests = ... } tables")
+    # a table names the repo's test root; a plain string runs its suite from the root
+    repos = [r if isinstance(r, str) else r["path"] for r in entries]
+    tests = {r["path"]: r.get("tests", "") for r in entries if isinstance(r, dict)}
     focus = data.get("focus", [])
     if not isinstance(focus, list) or not all(isinstance(r, str) for r in focus):
         raise ConfigError(f"{path}: `focus` must be a list of entries from `repos`")
     if stray := sorted(set(focus) - set(repos)):
         raise ConfigError(f"{path}: focus entries not in `repos`: {', '.join(stray)}")
-    targets = [Target(r, r in focus) for r in repos]
+    targets = [Target(r, r in focus, tests.get(r, "")) for r in repos]
     for t in targets:
         _ = t.path  # a typo in the config fails at load, not halfway through a run
     return Config(targets,
                   int(data.get("budget", DEFAULT_BUDGET)),
                   int(data.get("weekend_budget", DEFAULT_WEEKEND_BUDGET)))
+
+
+def _entry_ok(entry: object) -> bool:
+    if isinstance(entry, dict):
+        return (isinstance(entry.get("path"), str) and isinstance(entry.get("tests", ""), str)
+                and set(entry) <= {"path", "tests"})
+    return isinstance(entry, str)
 
 
 def paused(pause_file: Path = PAUSE_FILE) -> bool:

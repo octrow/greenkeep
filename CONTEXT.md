@@ -14,6 +14,10 @@ _Avoid_: target, managed repo, project
 A tended repo the owner marked in the config as a current priority; every run reaches it before the other tended repos.
 _Avoid_: pinned repo, favourite, priority repo
 
+**Test root**:
+The folder of a tended repo its test suite runs from, as the owner runs it; the repo root unless the config names another.
+_Avoid_: test dir, project dir, workspace member
+
 **Bootstrap stage**:
 The state of a tended repo whose tests do not yet cover the code; only test-only, safe-category and test-first fix changes are allowed.
 _Avoid_: onboarding, warm-up

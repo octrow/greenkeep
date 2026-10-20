@@ -93,13 +93,13 @@ class Lint(Kind):
             raise GateFailure("ruff still reports the finding")
 
 
-def characterization_path(f: Finding, root: Path) -> str:
-    """Where the repo would put it: tests/<subpackage>/test_<module>.py when that folder
-    exists, else tests/; the full dotted name only if the short one is taken."""
-    parts = llm.module_name(f.path).split(".")
-    folder = Path("tests", *parts[1:-1])
+def characterization_path(f: Finding, root: Path, test_root: str = "") -> str:
+    """Where the repo would put it: tests/<subpackage>/test_<module>.py under the test root
+    when that folder exists, else tests/; the full dotted name only if the short one is taken."""
+    parts = llm.module_name(f.path.removeprefix(f"{test_root}/")).split(".")
+    folder = Path(test_root, "tests", *parts[1:-1])
     if not (root / folder).is_dir():
-        folder = Path("tests")
+        folder = Path(test_root, "tests")
     name = f"test_{parts[-1]}.py"
     if (root / folder / name).exists():
         name = f"test_{'_'.join(parts)}.py"
@@ -124,7 +124,7 @@ def _related_tests(ws: Workspace, f: Finding) -> dict[str, str]:
     dotted = llm.module_name(f.path)
     parent, _, leaf = dotted.rpartition(".")
     imports = re.compile(rf"\b{re.escape(dotted)}\b|from {re.escape(parent)} import .*\b{leaf}\b")
-    on_the_way = Path(characterization_path(f, ws.root)).parents
+    on_the_way = Path(characterization_path(f, ws.root, ws.tests)).parents
     found = {}
     for path in sorted(p for p in ws.tracked() if is_test_path(p)):
         if len(found) >= MAX_CONTEXT_FILES:
@@ -159,10 +159,10 @@ class Untested(Kind):
         return MISSING_TESTS
 
     def attemptable(self, job: Job, f: Finding) -> bool:
-        return not (job.ws.root / characterization_path(f, job.ws.root)).exists()
+        return not (job.ws.root / characterization_path(f, job.ws.root, job.ws.tests)).exists()
 
     def produce(self, job: Job, f: Finding, feedback: str) -> Change:
-        rel = characterization_path(f, job.ws.root)
+        rel = characterization_path(f, job.ws.root, job.ws.tests)
         target = job.ws.root / rel
         if target.exists():
             raise GateFailure(f"{rel} already exists")

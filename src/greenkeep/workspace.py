@@ -50,6 +50,7 @@ class Workspace:
     scratch: Path  # coverage data etc., outside the clone so it is never committed
     base_branch: str = ""
     origin: str = ""  # clone URL; its https form links issues and PRs
+    tests: str = ""  # test root: where the suite runs from, relative to `root`
 
     def git(self, *args: str, check: bool = True) -> str:
         return sh(["git", *args], self.root, check=check).stdout
@@ -104,7 +105,7 @@ def clone(target: Target) -> Workspace:
     sh(["git", "clone", "-q", *reference, origin, str(root)], run_dir)
     if src and (src / ".env").is_file():
         shutil.copy2(src / ".env", root / ".env")
-    ws = Workspace(name, root, scratch, origin=origin)
+    ws = Workspace(name, root, scratch, origin=origin, tests=target.tests)
     ws.base_branch = ws.git("rev-parse", "--abbrev-ref", "HEAD").strip()
     return ws
 
@@ -133,13 +134,14 @@ def run_tests(ws: Workspace) -> TestRun:
     """Full suite under coverage. No tests at all counts as green with empty coverage."""
     data = ws.scratch / ".coverage"
     data.unlink(missing_ok=True)
+    cwd = ws.root / ws.tests
     try:
         proc = sh(["uv", "run", "--with", "pytest", "--with", "coverage", "coverage", "run",
                    f"--data-file={data}", "--source=.", "--omit=tests/*,.venv/*",
                    "-m", "pytest", "-q", "-p", "no:cacheprovider",
                    # a repo's own `addopts = --cov` would hijack the tracer: 0% everywhere.
                    # ponytail: drops every addopt (markers too); parse them if that bites
-                   "-p", "no:pytest_cov", "-o", "addopts="], ws.root, check=False)
+                   "-p", "no:pytest_cov", "-o", "addopts="], cwd, check=False)
     except WorkspaceError as exc:  # a hanging test is a red suite, not a crashed run
         return TestRun(False, {}, str(exc))
     tail = (proc.stdout + proc.stderr)[-3000:]
@@ -149,8 +151,10 @@ def run_tests(ws: Workspace) -> TestRun:
     # without tests. With nothing measured at all, coverage refuses to report.
     out = ws.scratch / "cov.json"
     rep = sh(["uv", "run", "--with", "coverage", "coverage", "json", f"--data-file={data}",
-              "-o", str(out), "-q"], ws.root, check=False)
+              "-o", str(out), "-q"], cwd, check=False)
     cov = json.loads(out.read_text()) if rep.returncode == 0 else {"files": {}}
+    if ws.tests:  # coverage names files from the test root; everything else from the repo
+        cov["files"] = {f"{ws.tests}/{k}": v for k, v in cov.get("files", {}).items()}
     return TestRun(True, cov, tail, no_tests=proc.returncode == PYTEST_NO_TESTS)
 
 

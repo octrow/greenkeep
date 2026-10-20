@@ -42,7 +42,7 @@ def test_context_has_the_tests_that_import_the_module_and_their_conftest(tmp_pat
     for name, text in files.items():
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / name).write_text(text)
-    ws = SimpleNamespace(root=tmp_path, tracked=lambda: set(files))
+    ws = SimpleNamespace(root=tmp_path, tests="", tracked=lambda: set(files))
     ctx = related_context(ws, untested("src/pkg/db/repo.py"))
     assert set(ctx) == {"tests/conftest.py", "tests/test_a.py",
                         "pyproject.toml [tool.pytest] / [tool.ruff]"}
@@ -52,3 +52,8 @@ def test_context_has_the_tests_that_import_the_module_and_their_conftest(tmp_pat
 def test_line_budget_scales_with_the_module_but_has_a_floor():
     assert line_budget("x\n" * 10) == 120
     assert line_budget("x\n" * 200) == 300
+
+
+def test_new_tests_go_under_the_test_root(tmp_path):
+    assert (characterization_path(untested("app/gui/page.py"), tmp_path, "app")
+            == "app/tests/test_page.py")

@@ -210,3 +210,11 @@ def test_repo_in_cool_down_is_not_even_cloned(tmp_path, monkeypatch):
     state.cool_down("demo")
     run.run_repo(Target(str(src)), run.Options(False, 3, "x", True), state, digest)
     assert digest.cooling == 1 and not workspace.CACHE.exists()
+
+
+def test_test_root_runs_the_suite_from_its_folder(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"app/demo.py": CODE, "app/test_demo.py": TEST})
+    ws = workspace.clone(Target(str(src), tests="app"))
+    workspace.sync(ws)
+    tests = workspace.run_tests(ws)
+    assert tests.ok and "app/demo.py" in tests.cov["files"]  # paths stay repo-relative
