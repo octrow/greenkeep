@@ -13,14 +13,16 @@ DEFAULT_DB = Path.home() / ".local/share/greenkeep/state.db"
 SCHEMA = """CREATE TABLE IF NOT EXISTS finding (
     repo TEXT, fp TEXT, status TEXT DEFAULT 'open', attempts INT DEFAULT 0,
     issue INT, pr INT, updated TEXT DEFAULT CURRENT_TIMESTAMP, sha TEXT, title TEXT, url TEXT,
-    PRIMARY KEY (repo, fp))"""
+    merged_at TEXT, PRIMARY KEY (repo, fp))"""
 # per-repo and per-run marks: a repo's cool-down end, the day the last run finished
 MARKS = "CREATE TABLE IF NOT EXISTS mark (key TEXT PRIMARY KEY, value TEXT)"
 COOL_DOWN = timedelta(days=7)
 BUDGET_FREE = "vuln:"  # security fingerprints: they neither need nor spend the budget
 # columns added after the first release, for databases created before them
 MIGRATIONS = {column: f"ALTER TABLE finding ADD COLUMN {column} TEXT"
-              for column in ("sha", "title", "url")}
+              for column in ("sha", "title", "url", "merged_at")}
+# before merged_at, `updated` was the merge time, and any later write moved it
+BACKFILL_MERGED_AT = "UPDATE finding SET merged_at=updated WHERE status='merged'"
 
 
 @dataclass(frozen=True)
@@ -42,6 +44,9 @@ class State:
         for column, ddl in MIGRATIONS.items():
             if column not in columns:
                 self.db.execute(ddl)
+                if column == "merged_at":
+                    self.db.execute(BACKFILL_MERGED_AT)
+        self.db.commit()
 
     def _row(self, repo: str, fp: str) -> tuple | None:
         return self.db.execute("SELECT status, attempts, issue FROM finding "
@@ -63,7 +68,9 @@ class State:
         if unknown := set(fields) - COLUMNS:  # column names are spliced into the SQL
             raise ValueError(f"unknown finding columns: {sorted(unknown)}")
         cols = ", ".join(f"{k}=?" for k in fields)
-        self.db.execute(f"UPDATE finding SET {cols}, updated=CURRENT_TIMESTAMP "
+        # merged_at, not `updated`, dates a merge: later writes (a backfilled sha) move `updated`
+        merged = ", merged_at=CURRENT_TIMESTAMP" if fields.get("status") == "merged" else ""
+        self.db.execute(f"UPDATE finding SET {cols}, updated=CURRENT_TIMESTAMP{merged} "
                         "WHERE repo=? AND fp=?", (*fields.values(), repo, fp))
         self.db.commit()
 
@@ -90,14 +97,14 @@ class State:
 
     def last_merge(self, repo: str) -> str:
         """When greenkeep last merged in this repo ("" if never): oldest goes first."""
-        row = self.db.execute("SELECT max(updated) FROM finding WHERE repo=? AND "
+        row = self.db.execute("SELECT max(merged_at) FROM finding WHERE repo=? AND "
                               "status='merged'", (repo,)).fetchone()
         return row[0] or ""
 
     def merged_today(self) -> int:
-        # `updated` is stored in UTC; the budget is per local day
+        # merged_at is stored in UTC; the budget is per local day
         return self.db.execute("SELECT count(*) FROM finding WHERE status='merged' AND "
-                               "date(updated, 'localtime') = date('now', 'localtime') "
+                               "date(merged_at, 'localtime') = date('now', 'localtime') "
                                "AND fp NOT LIKE ?", (BUDGET_FREE + "%",)).fetchone()[0]
 
     def _mark(self, key: str) -> str:

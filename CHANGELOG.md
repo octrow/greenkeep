@@ -11,6 +11,7 @@
 - Security fixes no longer spend the daily budget, and a spent budget still visits every repo for them.
 - The timer fires hourly; one scheduled run per day, done once its digest is sent, so an interrupted run starts over. The digest ends with `Quiet: N clean, M waiting for budget (…), K in cool-down`.
 - The patcher runs inside the clone with read-only tools too: without them it asked to read the modules under test as plain text and returned no code.
+- Merges are dated by their own `merged_at`: a later write to an old merge (the revert check backfilling its commit) no longer counts it against today's budget.
 - Test root: a config entry `{ path = ..., tests = "pipeline" }` runs that repo's suite from a subfolder; coverage paths stay repo-relative and new tests go under it.
 - `uv sync --all-packages`: workspace members' dependencies are installed for the tests. A patcher reply without a code block is logged in full.
 - Config file, systemd timer, Telegram digest, pause and auto-pause on a reverted merge, NiceGUI dashboard.

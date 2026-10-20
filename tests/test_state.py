@@ -60,3 +60,26 @@ def test_a_run_is_done_for_the_day_once_recorded(tmp_path):
     assert not st.ran_today()
     st.record_run()
     assert State(tmp_path / "s.db").ran_today()
+
+
+def test_a_later_write_to_an_old_merge_does_not_make_it_todays(tmp_path):
+    st = State(tmp_path / "s.db")
+    st.set("r", "a", status="merged", pr=1)
+    st.db.execute("UPDATE finding SET merged_at='2026-10-15 18:24:25', updated=merged_at")
+    st.set("r", "a", sha="abc")  # e.g. the revert check backfilling the merge commit
+    assert st.merged_today() == 0
+    assert st.last_merge("r") == "2026-10-15 18:24:25"
+
+
+def test_old_database_gets_merge_times_from_updated(tmp_path):
+    import sqlite3
+    db = tmp_path / "s.db"
+    old = sqlite3.connect(db)
+    old.execute("CREATE TABLE finding (repo TEXT, fp TEXT, status TEXT DEFAULT 'open', "
+                "attempts INT DEFAULT 0, issue INT, pr INT, updated TEXT, "
+                "PRIMARY KEY (repo, fp))")
+    old.execute("INSERT INTO finding VALUES ('r', 'a', 'merged', 0, 1, 2, '2026-10-15 18:24:25')")
+    old.commit()
+    old.close()
+    State(db).db.close()
+    assert State(db).last_merge("r") == "2026-10-15 18:24:25"  # survived reopening
