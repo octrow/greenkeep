@@ -42,7 +42,7 @@ def _empty_hunts(job: Job, path: str) -> int:
 
 
 def pick(job: Job) -> str | None:
-    """The biggest covered module not hunted since it last changed: its tests can show a bug,
+    """The biggest covered module not yet left alone as it is now: its tests can show a bug,
     and the gate's coverage rule holds for a fix in it."""
     files = job.base.tests.cov.get("files", {})
     fit = [(data["summary"]["num_statements"], path) for path, data in files.items()
@@ -77,9 +77,12 @@ def hunt(job: Job) -> list[Finding]:
     found = [f for f in (_finding(job, path, c) for c in kept)
              if f and job.state.is_workable(job.ws.name, f.fingerprint)]
     if not found:
-        empty = _empty_hunts(job, path) + 1
-        job.state.set_mark(_mark(job, path), f"{_sha(job, path)} {empty}")
+        _record_empty_hunt(job, path)
     return found
+
+
+def _record_empty_hunt(job: Job, path: str) -> None:
+    job.state.set_mark(_mark(job, path), f"{_sha(job, path)} {_empty_hunts(job, path) + 1}")
 
 
 def _surviving_claims(job: Job, path: str) -> list[llm.Claim] | None:
