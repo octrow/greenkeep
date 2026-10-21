@@ -18,7 +18,15 @@ from .core import Change, GateFailure, Job, lint
 from .edits import EditError, apply_edits, parse_edits, python_block
 from .findings import Finding, rank
 from .gate import coverage_violations, is_test_path, line_is_covered
-from .workspace import PYTEST_FAILED, TestRun, Workspace, WorkspaceError, ruff_fix, test_file_exit
+from .workspace import (
+    PYTEST_FAILED,
+    TestRun,
+    Workspace,
+    WorkspaceError,
+    ruff_fix,
+    ruff_fix_new_test,
+    test_file_exit,
+)
 
 log = logging.getLogger("greenkeep")
 
@@ -209,7 +217,7 @@ class Untested(Kind):
             log.debug("  reply without a code block:\n%s", reply.text)
             raise
         target.write_text(code)
-        ruff_fix(job.ws, rel)  # safe fixes only: an unused import must not cost an attempt
+        ruff_fix_new_test(job.ws, rel)  # an unused import or variable must not cost an attempt
         return Change([rel], reply.model, reply.prompt_sha)
 
     def check_scope(self, job: Job, f: Finding, paths: list[str]) -> None:
@@ -275,8 +283,10 @@ class Bug(Kind):
         source = (job.ws.root / f.path).read_text()
         prompt = llm.bug_prompt(f, source, related_context(job.ws, f), feedback)
         reply = llm.ask(llm.BUG_SYSTEM, prompt, job.opts.model, job.ws.root)
-        edited = apply_edits(job.ws.root, parse_edits(reply.text), job.ws.tracked(),
-                             new_tests=True)
+        tracked = job.ws.tracked()
+        edited = apply_edits(job.ws.root, parse_edits(reply.text), tracked, new_tests=True)
+        for path in set(edited) - tracked:  # the new test file
+            ruff_fix_new_test(job.ws, path)
         return Change(edited, reply.model, reply.prompt_sha)
 
     def check_scope(self, job: Job, f: Finding, paths: list[str]) -> None:

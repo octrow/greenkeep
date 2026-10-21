@@ -102,14 +102,15 @@ def test_bad_llm_reply_parks_finding_after_three_attempts(tmp_path, monkeypatch)
 
 
 def test_patch_that_adds_lint_findings_is_rejected_then_retried(tmp_path, monkeypatch):
-    src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
-    # F841 has no safe automatic fix, so only a new attempt can get rid of it
-    dirty = CHAR_TEST.replace("def test_a():\n", "def test_a():\n    unused = a(1)\n")
+    pyproject = PYPROJECT + '[tool.ruff.lint]\nextend-select = ["E721"]\n'
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG, "pyproject.toml": pyproject})
+    # E721's fix is unsafe and not one greenkeep applies, so only a new attempt can fix it
+    dirty = CHAR_TEST.replace("def test_a():\n", "def test_a():\n    assert type(a(1)) == int\n")
     prompts = fake_llm(monkeypatch, [dirty, CHAR_TEST]).patch_prompts
     state, clone = dry_run(src)
     assert state.merged_today() == 1
-    assert "adds lint findings" in prompts[1] and "F841" in prompts[1]
-    assert "unused = a(1)" not in (clone / "tests/test_demo.py").read_text()
+    assert "adds lint findings" in prompts[1] and "E721" in prompts[1]
+    assert "type(a(1))" not in (clone / "tests/test_demo.py").read_text()
 
 
 UNUSED_VAR = "def add(a, b):\n    total = 0\n    return a + b\n"
@@ -132,12 +133,15 @@ def test_redact_masks_env_values():
     assert run.redact("token=abcdef123 failed", ["abcdef123"]) == "token=*** failed"
 
 
-def test_safe_lint_in_generated_tests_is_fixed_without_an_attempt(tmp_path, monkeypatch):
+def test_fixable_lint_in_generated_tests_is_fixed_without_an_attempt(tmp_path, monkeypatch):
     src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
-    dirty = CHAR_TEST.replace("```python\n", "```python\nimport os\n")
+    # F401 has a safe fix, F841 only an unsafe one: both are fine on a brand-new test file
+    dirty = CHAR_TEST.replace("```python\n", "```python\nimport os\n").replace(
+        "def test_a():\n", "def test_a():\n    unused = a(1)\n")
     fake = fake_llm(monkeypatch, [dirty])
-    state, _ = dry_run(src)
+    state, clone = dry_run(src)
     assert state.merged_today() == 1 and len(fake.patch_prompts) == 1
+    assert "unused" not in (clone / "tests/test_demo.py").read_text()
 
 
 def test_summary_picks_pytest_closing_line():

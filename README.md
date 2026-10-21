@@ -187,13 +187,11 @@ runs until you delete the pause file, which says which merge it was), opt-in bug
 
 Next, roughly in this order:
 
-1. **Better generated tests**: the patcher sees the repo's ruff rules but still trips them
-   (RUF059, SIM115); try a full `ruff --fix` on the new test file before the gate.
-2. **Bug hunt in uncovered code**: today it only hunts modules at 50%+ coverage.
-3. **Keep the repo's `addopts`**: today the suite runs with `-o addopts=` so a repo's own
+1. **Bug hunt in uncovered code**: today it only hunts modules at 50%+ coverage.
+2. **Keep the repo's `addopts`**: today the suite runs with `-o addopts=` so a repo's own
    `--cov` can't hijack coverage, which also drops its markers and other options.
-4. **Readiness checks** (license, metadata, README sections, CI badge) for new repos; the
+3. **Readiness checks** (license, metadata, README sections, CI badge) for new repos; the
    current public ones already pass them.
-5. JS/TS as a second language plugin.
+4. JS/TS as a second language plugin.
 
 Design: [CONTEXT.md](CONTEXT.md) (glossary), [docs/adr](docs/adr) (decisions).

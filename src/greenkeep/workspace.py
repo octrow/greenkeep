@@ -20,6 +20,7 @@ log = logging.getLogger(__name__)
 CACHE = Path.home() / ".cache/greenkeep"
 TEST_TIMEOUT = 1800
 PYTEST_NO_TESTS = 5
+UNSAFE_OK = "F841,RUF059"  # unused variable, unused unpacked variable
 # kept across attempt resets: secrets copied in, and the synced venv
 KEEP_ON_RESET = (".env", ".venv")
 MIN_SECRET_LEN = 6  # shorter .env values (ports, flags) would mask half the output
@@ -206,3 +207,11 @@ def ruff_fix(ws: Workspace, path: str, rule: str | None = None) -> None:
     """Ruff's safe fixes on one file: one rule, or whatever the repo's own config selects."""
     select = ["--select", rule] if rule else []
     sh(["uvx", "ruff", "check", "--fix", *select, "--exit-zero", path], ws.root)
+
+
+def ruff_fix_new_test(ws: Workspace, path: str) -> None:
+    """A test file greenkeep just wrote: safe fixes, plus the unsafe ones that only drop
+    an unused name. Not every unsafe fix: E721's turns `type(x) == int` into `int == int`."""
+    ruff_fix(ws, path)
+    sh(["uvx", "ruff", "check", "--fix", "--unsafe-fixes", "--select", UNSAFE_OK,
+        "--exit-zero", path], ws.root)
