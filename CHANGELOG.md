@@ -14,6 +14,7 @@
 - Merges are dated by their own `merged_at`: a later write to an old merge (the revert check backfilling its commit) no longer counts it against today's budget.
 - Test root: a config entry `{ path = ..., tests = "pipeline" }` runs that repo's suite from a subfolder; coverage paths stay repo-relative and new tests go under it.
 - `uv sync --all-packages`: workspace members' dependencies are installed for the tests. A patcher reply without a code block is logged in full.
+- Bug hunt: an unchanged module is left alone after two empty hunts in a row, not one (the Hunter saw the same real bug in about half its looks).
 - A bug fix may append its test to the module's existing test file (added lines only, no conftest.py): the reviewer rejected new files that re-created the repo's fixtures.
 - Models are pinned by provider (`claude/claude-sonnet-5-5`, `claude/claude-opus-5-5`): through OmniRoute a bare `claude-sonnet-5-5` went to a free combo and was answered by another model under the same label, which caused the 600s timeouts. Hunter and Skeptic run at medium effort with the module in the prompt and a 300s limit; one hunt call went from a timeout to 15s.
 - Bug hunt: the Hunter no longer reports races or timing bugs, and the Skeptic rejects behaviour the code, comments or tests mark as a choice (both claims on nicegui-kit's run pool were of these kinds).
@@ -22,7 +23,7 @@
 - Readiness checks: `[project]` description, readme and urls, README install and usage sections, a CI badge. Each failed check is a `docs:` fix PR that may touch only README.md or the `[project]` table; the link fields and the badge are written by greenkeep itself, the words by the patcher and then reviewed. A missing LICENSE or README goes to the digest once, under Needs you.
 - The repo's own pytest `addopts` apply again (markers, `-m`, `--strict-markers`…): only pytest-cov and xdist options are dropped, since they break greenkeep's coverage.
 - A new test file also gets ruff's unsafe fixes for unused variables (F841, RUF059), so one does not cost an attempt; other unsafe fixes stay off (E721's turns `type(x) == int` into `int == int`).
-- Bug hunt, opt-in per repo (`hunt = true`): once a repo has nothing else to do, Sonnet suspects up to 3 bugs in its biggest covered module and Opus keeps only those it cannot refute. Each is a test-first fix: the gate requires the new test to fail without the change and the suite to pass with it. An unchanged module is not hunted twice.
+- Bug hunt, opt-in per repo (`hunt = true`): once a repo has nothing else to do, Sonnet suspects up to 3 bugs in its biggest covered module and Opus keeps only those it cannot refute. Each is a test-first fix: the gate requires the new test to fail without the change and the suite to pass with it. An unchanged module is left alone after two empty hunts.
 - A module that imports a database or broker client (psycopg, asyncpg, redis, …) gets no generated tests: a clone runs no such service, so they only cost attempts.
 - Config file, systemd timer, Telegram digest, pause and auto-pause on a reverted merge, NiceGUI dashboard.
 

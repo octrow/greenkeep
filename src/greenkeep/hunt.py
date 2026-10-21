@@ -1,7 +1,7 @@
 """Bug hunt: the Hunter suspects bugs in one module, the Skeptic keeps what it cannot refute.
 
 What survives is a finding like any other; the gate's red-then-green test is the referee
-(docs/adr/0002). One module per repo per run, never the same unchanged module twice.
+(docs/adr/0002). One module per repo per run; an unchanged module is left alone after two empty hunts.
 """
 
 from __future__ import annotations
@@ -20,6 +20,9 @@ from .gate import is_test_path
 log = logging.getLogger("greenkeep")
 
 TITLE_MAX = 60
+# the Hunter finds a real bug in about half its looks at one module: one empty look is not
+# enough to leave an unchanged module alone
+EMPTY_HUNTS = 2
 
 
 def _sha(job: Job, path: str) -> str:
@@ -30,6 +33,14 @@ def _mark(job: Job, path: str) -> str:
     return f"hunt:{job.ws.name}:{path}"
 
 
+def _empty_hunts(job: Job, path: str) -> int:
+    """Empty hunts in a row on the module as it is now (a mark from before the count: done)."""
+    sha, _, count = job.state.mark(_mark(job, path)).partition(" ")
+    if sha != _sha(job, path):
+        return 0
+    return int(count) if count else EMPTY_HUNTS
+
+
 def pick(job: Job) -> str | None:
     """The biggest covered module not hunted since it last changed: its tests can show a bug,
     and the gate's coverage rule holds for a fix in it."""
@@ -38,7 +49,7 @@ def pick(job: Job) -> str | None:
            if not is_test_path(path) and (job.ws.root / path).is_file()
            and data["summary"]["num_statements"] >= UNTESTED_MIN_STATEMENTS
            and data["summary"]["percent_covered"] >= UNTESTED_PERCENT
-           and job.state.mark(_mark(job, path)) != _sha(job, path)]
+           and _empty_hunts(job, path) < EMPTY_HUNTS]
     return max(fit)[1] if fit else None
 
 
@@ -54,8 +65,8 @@ def _finding(job: Job, path: str, c: llm.Claim) -> Finding | None:
 
 
 def hunt(job: Job) -> list[Finding]:
-    """Workable bug findings in one module. The module is marked hunted only when none are
-    left: a bug still open (timed out) is found again next run and gets its next attempt."""
+    """Workable bug findings in one module. An empty hunt counts toward leaving the module
+    alone; a bug still open (timed out) is found again next run and gets its next attempt."""
     path = pick(job)
     if path is None:
         return []
@@ -66,7 +77,8 @@ def hunt(job: Job) -> list[Finding]:
     found = [f for f in (_finding(job, path, c) for c in kept)
              if f and job.state.is_workable(job.ws.name, f.fingerprint)]
     if not found:
-        job.state.set_mark(_mark(job, path), _sha(job, path))
+        empty = _empty_hunts(job, path) + 1
+        job.state.set_mark(_mark(job, path), f"{_sha(job, path)} {empty}")
     return found
 
 

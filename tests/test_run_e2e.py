@@ -334,9 +334,9 @@ def test_nothing_hunted_when_the_skeptic_refutes_every_claim(tmp_path, monkeypat
     monkeypatch.setattr(llm, "run_claude", claude)
     state = run.State(Path(":memory:"))
     opts = run.Options(push=False, budget=3, model="x", keep=False)
-    for _ in range(2):  # the second run finds the unchanged module already hunted
+    for _ in range(3):  # two empty hunts, then the unchanged module is left alone
         run.run_repo(Target(str(src), hunt=True), opts, state, Digest())
-    assert len(calls) == 2 and not fake.patch_prompts
+    assert len(calls) == 4 and not fake.patch_prompts
 
 
 def test_a_bug_fix_may_not_edit_an_existing_test(tmp_path, monkeypatch):
