@@ -74,3 +74,10 @@ def test_empty_search_creates_a_new_test_file_only_when_allowed(tmp_path):
     source = NEW_TEST.replace("tests/test_b.py", "pkg/b.py")
     with pytest.raises(EditError):  # and never a source file
         apply_edits(tmp_path, parse_edits(source), frozenset(), new_tests=True)
+
+
+def test_a_new_test_file_never_lands_in_a_dot_folder(tmp_path):
+    for path in ("tests/../.venv/lib/x.py", ".venv/lib/tests/test_x.py", ".git/tests/test_x.py"):
+        with pytest.raises(EditError):
+            apply_edits(tmp_path, parse_edits(NEW_TEST.replace("tests/test_b.py", path)),
+                        frozenset(), new_tests=True)

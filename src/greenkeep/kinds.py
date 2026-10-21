@@ -18,7 +18,7 @@ from .core import Change, GateFailure, Job, lint
 from .edits import EditError, apply_edits, parse_edits, python_block
 from .findings import Finding, rank
 from .gate import coverage_violations, is_test_path, line_is_covered
-from .workspace import TestRun, Workspace, ruff_fix, run_tests
+from .workspace import PYTEST_FAILED, TestRun, Workspace, WorkspaceError, ruff_fix, test_file_exit
 
 log = logging.getLogger("greenkeep")
 
@@ -280,21 +280,33 @@ class Bug(Kind):
         return Change(edited, reply.model, reply.prompt_sha)
 
     def check_scope(self, job: Job, f: Finding, paths: list[str]) -> None:
-        others = [p for p in paths if p != f.path]
-        if f.path not in paths or not others or not all(map(is_test_path, others)):
-            raise GateFailure(f"a bug fix changes {f.path} and adds a test, nothing else: "
-                              f"{paths}")
+        tests = [p for p in paths if p != f.path]
+        # new test files only: an edited existing test or conftest could redefine "correct"
+        before = set(job.ws.git("ls-tree", "-r", "--name-only", "HEAD").splitlines())
+        new = [p for p in tests if is_test_path(p) and p not in before
+               and Path(p).name != "conftest.py"]
+        if f.path not in paths or not tests or new != tests:
+            raise GateFailure(f"a bug fix changes {f.path} and adds new test files, nothing "
+                              f"else: {paths}")
         if bad := coverage_violations(job.ws.git("diff", "-U0", "--", f.path),
                                       job.base.tests.cov):
             raise GateFailure(f"changed lines were not covered before the change: {bad}")
-        fixed = (job.ws.root / f.path).read_text()
+        for test in new:
+            if (code := _exit_without_fix(job, f, test)) != PYTEST_FAILED:
+                raise GateFailure(f"{test} does not fail on the unfixed code (pytest exit "
+                                  f"{code}; a collection error or a timeout is not a "
+                                  "failure): it does not show the bug")
+
+
+def _exit_without_fix(job: Job, f: Finding, test: str) -> int:
+    fixed = (job.ws.root / f.path).read_text()
+    try:
         job.ws.git("checkout", "-q", "HEAD", "--", f.path)
-        try:
-            unfixed = run_tests(job.ws)
-        finally:
-            (job.ws.root / f.path).write_text(fixed)
-        if unfixed.ok:
-            raise GateFailure("the new test passes without the fix: it does not show the bug")
+        return test_file_exit(job.ws, test)
+    except WorkspaceError:
+        return -1  # a hang without the fix proves nothing
+    finally:
+        (job.ws.root / f.path).write_text(fixed)
 
 
 KINDS: dict[str, Kind] = {"bug": Bug(), "ruff": Lint(), "untested": Untested(), "vuln": Vulnerability(),

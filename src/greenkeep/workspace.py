@@ -155,6 +155,19 @@ class TestRun:
     no_tests: bool = False  # pytest collected nothing (exit 5)
 
 
+PYTEST_FAILED = 1  # tests ran and some failed; 2+ is a collection error or interrupt
+
+
+def test_file_exit(ws: Workspace, path: str) -> int:
+    """pytest's exit code for one test file (repo-relative), run from the test root."""
+    rel = path.removeprefix(f"{ws.tests}/") if ws.tests else path
+    # `-m`, like run_tests: the test root importable the same way. `-B`: the unfixed
+    # module's .pyc would outlive a same-size, same-second restore of the fixed one
+    return sh(["uv", "run", "--with", "pytest", "python", "-B", "-m", "pytest", "-q",
+               "-p", "no:cacheprovider",
+               "-o", "addopts=", rel], ws.root / ws.tests, check=False).returncode
+
+
 def run_tests(ws: Workspace) -> TestRun:
     """Full suite under coverage. No tests at all counts as green with empty coverage."""
     data = ws.scratch / ".coverage"

@@ -333,3 +333,28 @@ def test_nothing_hunted_when_the_skeptic_refutes_every_claim(tmp_path, monkeypat
     for _ in range(2):  # the second run finds the unchanged module already hunted
         run.run_repo(Target(str(src), hunt=True), opts, state, Digest())
     assert len(calls) == 2 and not fake.patch_prompts
+
+
+def test_a_bug_fix_may_not_edit_an_existing_test(tmp_path, monkeypatch):
+    edit = ("tests/test_demo.py\n<<<<<<< SEARCH\n    assert clamp(11, 0, 10) is not None\n"
+            "=======\n    assert clamp(11, 0, 10) == 10\n>>>>>>> REPLACE\n")
+    state, fake = hunt_run(tmp_path, monkeypatch, FIX + edit)
+    assert state.merged_today() == 0
+    assert "adds new test files" in fake.patch_prompts[-1]
+
+
+def test_an_unreadable_hunter_reply_leaves_the_module_for_the_next_run(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": CLAMP, "tests/test_demo.py": CLAMP_TEST})
+    fake_llm(monkeypatch, ["unused"])
+    calls = []
+
+    def claude(prompt: str, **kw) -> SimpleNamespace:
+        calls.append(prompt)
+        return SimpleNamespace(text="I could not decide.")
+
+    monkeypatch.setattr(llm, "run_claude", claude)
+    state = run.State(Path(":memory:"))
+    opts = run.Options(push=False, budget=3, model="x", keep=False)
+    for _ in range(2):
+        run.run_repo(Target(str(src), hunt=True), opts, state, Digest())
+    assert len(calls) == 2

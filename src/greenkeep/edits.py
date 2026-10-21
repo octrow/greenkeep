@@ -41,9 +41,10 @@ def _target(root: Path, rel: str, allowed: frozenset[str], *, new: bool = False)
     target = (root / rel).resolve()
     if not target.is_relative_to(root.resolve()):
         raise EditError(f"path outside repo: {rel}")
-    if new and is_test_path(rel) and not target.exists():
-        return target
-    if target.relative_to(root.resolve()).as_posix() not in allowed:
+    clean = target.relative_to(root.resolve()).as_posix()
+    if new and is_test_path(clean) and not clean.startswith(".") and not target.exists():
+        return target  # not under .git/.venv: a reset keeps those, the gate never sees them
+    if clean not in allowed:
         raise EditError(f"not a tracked file the patch may edit: {rel}")
     return target
 

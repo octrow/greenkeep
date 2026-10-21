@@ -251,7 +251,13 @@ def _hunted(job: Job, enabled: bool) -> list[Finding]:
     """Bug hunt, once nothing else is left and the budget can still take a fix."""
     if not enabled or job.state.merged_today() >= job.opts.budget:
         return []
-    return hunt.hunt(job)
+    try:
+        return hunt.hunt(job)
+    except ATTEMPT_FAILURES as exc:
+        if _not_the_change(exc):
+            raise
+        log.warning("%s: bug hunt failed: %s", job.ws.name, exc)
+        return []
 
 
 def _work_repo(job: Job, hunting: bool = False) -> None:

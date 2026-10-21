@@ -122,8 +122,8 @@ def characterization_prompt(f: Finding, source: str, context: dict[str, str], bu
 BUG_SYSTEM = """You fix exactly one bug in a Python repository, test first.
 Rules:
 - Add one pytest test that fails on the current code because of the stated bug and
-  passes once it is fixed. Put it in the repo's existing test file for the module, or in
-  a new test file under the repo's tests folder; match the repo's test style.
+  passes once it is fixed, in a NEW test file under the repo's tests folder (never edit
+  existing tests or conftest.py); match the repo's test style.
 - Fix the bug in the stated file with the smallest change. Do not touch other code,
   public names or formatting.
 - Pure, fast, deterministic test: no network, no real external services, no sleeping.
@@ -136,7 +136,7 @@ exact lines copied from the file
 replacement lines
 >>>>>>> REPLACE
 - SEARCH must copy the current lines character for character and be unique in the file.
-  For a new test file leave SEARCH empty and put the whole file in the replacement.
+  For the new test file leave SEARCH empty and put the whole file in the replacement.
 """
 
 
@@ -181,24 +181,24 @@ def _claude_json(system: str, prompt: str, model: str, root: Path) -> object:
     return extract_json_or_none(res.text)
 
 
-def hunt(path: str, model: str, root: Path) -> list[Claim]:
-    """The Hunter: suspected bugs in one module; a reply it cannot read means none."""
+def hunt(path: str, model: str, root: Path) -> list[Claim] | None:
+    """The Hunter: suspected bugs in one module; None for a reply it cannot read."""
     data = _claude_json(HUNT_SYSTEM, f"Module: {path}", model, root)
     bugs = data.get("bugs") if isinstance(data, dict) else None
     if not isinstance(bugs, list):
-        return []
+        return None
     return [Claim(b["line"], str(b["title"]), str(b["why"])) for b in bugs
             if isinstance(b, dict) and isinstance(b.get("line"), int)
             and b.get("title") and b.get("why")][:MAX_CLAIMS]
 
 
-def doubt(path: str, claims: list[Claim], model: str, root: Path) -> list[Claim]:
-    """The Skeptic: only the claims it could not refute. Fail closed: unclear keeps none."""
+def doubt(path: str, claims: list[Claim], model: str, root: Path) -> list[Claim] | None:
+    """The Skeptic: only the claims it could not refute; None for a reply it cannot read."""
     listed = "\n".join(f"{i}. line {c.line}: {c.title}: {c.why}" for i, c in enumerate(claims))
     data = _claude_json(SKEPTIC_SYSTEM, f"Module: {path}\nClaims:\n{listed}", model, root)
     keep = data.get("keep") if isinstance(data, dict) else None
     if not isinstance(keep, list):
-        return []
+        return None
     return [c for i, c in enumerate(claims) if i in keep]
 
 
