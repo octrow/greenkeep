@@ -188,10 +188,8 @@ runs until you delete the pause file, which says which merge it was), opt-in bug
 Next, roughly in this order:
 
 1. **Bug hunt in uncovered code**: today it only hunts modules at 50%+ coverage.
-2. **Keep the repo's `addopts`**: today the suite runs with `-o addopts=` so a repo's own
-   `--cov` can't hijack coverage, which also drops its markers and other options.
-3. **Readiness checks** (license, metadata, README sections, CI badge) for new repos; the
+2. **Readiness checks** (license, metadata, README sections, CI badge) for new repos; the
    current public ones already pass them.
-4. JS/TS as a second language plugin.
+3. JS/TS as a second language plugin.
 
 Design: [CONTEXT.md](CONTEXT.md) (glossary), [docs/adr](docs/adr) (decisions).

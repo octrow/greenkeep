@@ -362,3 +362,15 @@ def test_an_unreadable_hunter_reply_leaves_the_module_for_the_next_run(tmp_path,
     for _ in range(2):
         run.run_repo(Target(str(src), hunt=True), opts, state, Digest())
     assert len(calls) == 2
+
+
+def test_the_repos_addopts_still_apply_without_its_coverage_options(tmp_path, monkeypatch):
+    pyproject = PYPROJECT + ('[tool.pytest.ini_options]\naddopts = "--cov=demo -m \'not slow\'"\n'
+                             'markers = ["slow"]\n')
+    slow = "import pytest\n\n\n@pytest.mark.slow\ndef test_needs_a_server():\n    assert False\n"
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": CODE, "tests/test_demo.py": TEST,
+                                            "tests/test_slow.py": slow,
+                                            "pyproject.toml": pyproject})
+    fake_llm(monkeypatch, ["unused"])
+    state, _ = dry_run(src)
+    assert state.merged_today() == 1  # baseline green: the slow test stayed deselected

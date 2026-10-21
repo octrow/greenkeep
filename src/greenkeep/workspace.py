@@ -3,12 +3,15 @@ ever read (as a `--reference` object store and for its `.env`), never changed.""
 
 from __future__ import annotations
 
+import configparser
 import json
 import logging
 import os
+import shlex
 import shutil
 import subprocess
 import time
+import tomllib
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -21,6 +24,11 @@ CACHE = Path.home() / ".cache/greenkeep"
 TEST_TIMEOUT = 1800
 PYTEST_NO_TESTS = 5
 UNSAFE_OK = "F841,RUF059"  # unused variable, unused unpacked variable
+# addopts that would break coverage: pytest-cov is disabled (its tracer hijacks ours), and
+# xdist workers run outside `coverage run`. Each name also covers its `--opt=value` form.
+DROPPED_OPTS = ("--cov", "--no-cov", "--dist", "--numprocesses", "-n")
+DROPPED_WITH_VALUE = frozenset({"--cov", "--cov-report", "--cov-config", "--cov-fail-under",
+                                "--cov-context", "--dist", "--numprocesses", "-n", "-p"})
 # kept across attempt resets: secrets copied in, and the synced venv
 KEEP_ON_RESET = (".env", ".venv")
 MIN_SECRET_LEN = 6  # shorter .env values (ports, flags) would mask half the output
@@ -156,6 +164,56 @@ class TestRun:
     no_tests: bool = False  # pytest collected nothing (exit 5)
 
 
+def kept_addopts(addopts: str | list[str]) -> list[str]:
+    """A repo's addopts without the coverage and xdist options (and `-p pytest_cov`)."""
+    tokens = shlex.split(addopts) if isinstance(addopts, str) else list(addopts)
+    kept, skip_value = [], False
+    for i, tok in enumerate(tokens):
+        if skip_value:
+            skip_value = False
+            continue
+        nxt = tokens[i + 1] if i + 1 < len(tokens) else "-"
+        if tok == "-p" and "cov" in nxt or tok.startswith(DROPPED_OPTS):
+            skip_value = tok in DROPPED_WITH_VALUE and not nxt.startswith("-")
+            continue
+        kept.append(tok)
+    return kept
+
+
+# where pytest looks, in its own order; "" is pyproject's [tool.pytest(.ini_options)]
+PYTEST_CONFIGS = (("pytest.toml", "pytest"), (".pytest.toml", "pytest"),
+                  ("pytest.ini", "pytest"), (".pytest.ini", "pytest"), ("pyproject.toml", ""),
+                  ("tox.ini", "pytest"), ("setup.cfg", "tool:pytest"))
+
+
+def _config_addopts(path: Path, section: str) -> str | list[str] | None:
+    """The file's addopts, or None when it has no pytest section (pytest.ini always counts)."""
+    if path.suffix == ".toml":
+        try:
+            data = tomllib.loads(path.read_text())
+        except tomllib.TOMLDecodeError:
+            return None
+        table = data.get("tool", {}).get("pytest") if not section else data.get(section)
+        return None if table is None else table.get("ini_options", table).get("addopts", [])
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.read(path)
+    if parser.has_section(section):
+        return parser.get(section, "addopts", fallback="")
+    return "" if path.name in ("pytest.ini", ".pytest.ini") else None
+
+
+def repo_addopts(root: Path) -> list[str]:
+    """The addopts pytest would read from `root`, minus the options that break coverage."""
+    for name, section in PYTEST_CONFIGS:
+        if (root / name).is_file() and (found := _config_addopts(root / name, section)) is not None:
+            return kept_addopts(found)
+    return []
+
+
+def _addopts(ws: Workspace) -> list[str]:
+    return ["-o", f"addopts={shlex.join(repo_addopts(ws.root / ws.tests))}"]
+
+
 PYTEST_FAILED = 1  # tests ran and some failed; 2+ is a collection error or interrupt
 
 
@@ -166,7 +224,7 @@ def test_file_exit(ws: Workspace, path: str) -> int:
     # module's .pyc would outlive a same-size, same-second restore of the fixed one
     return sh(["uv", "run", "--with", "pytest", "python", "-B", "-m", "pytest", "-q",
                "-p", "no:cacheprovider",
-               "-o", "addopts=", rel], ws.root / ws.tests, check=False).returncode
+               *_addopts(ws), rel], ws.root / ws.tests, check=False).returncode
 
 
 def run_tests(ws: Workspace) -> TestRun:
@@ -178,9 +236,9 @@ def run_tests(ws: Workspace) -> TestRun:
         proc = sh(["uv", "run", "--with", "pytest", "--with", "coverage", "coverage", "run",
                    f"--data-file={data}", "--source=.", "--omit=tests/*,.venv/*",
                    "-m", "pytest", "-q", "-p", "no:cacheprovider",
-                   # a repo's own `addopts = --cov` would hijack the tracer: 0% everywhere.
-                   # ponytail: drops every addopt (markers too); parse them if that bites
-                   "-p", "no:pytest_cov", "-o", "addopts="], cwd, check=False)
+                   # pytest-cov would hijack the tracer (0% everywhere): off, and its
+                   # options dropped from the repo's addopts, which otherwise still apply
+                   "-p", "no:pytest_cov", *_addopts(ws)], cwd, check=False)
     except WorkspaceError as exc:  # a hanging test is a red suite, not a crashed run
         return TestRun(False, {}, str(exc))
     tail = (proc.stdout + proc.stderr)[-3000:]
