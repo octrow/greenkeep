@@ -295,21 +295,28 @@ class Bug(Kind):
 
     def check_scope(self, job: Job, f: Finding, paths: list[str]) -> None:
         tests = [p for p in paths if p != f.path]
-        # new test files only: an edited existing test or conftest could redefine "correct"
-        before = set(job.ws.git("ls-tree", "-r", "--name-only", "HEAD").splitlines())
-        new = [p for p in tests if is_test_path(p) and p not in before
-               and Path(p).name != "conftest.py"]
-        if f.path not in paths or not tests or new != tests:
-            raise GateFailure(f"a bug fix changes {f.path} and adds new test files, nothing "
-                              f"else: {paths}")
+        # tests may only be added: an edited existing test or conftest could redefine
+        # "correct", but a test appended where the repo keeps them is what a reviewer wants
+        added = [p for p in tests if is_test_path(p) and Path(p).name != "conftest.py"
+                 and _only_added(job, p)]
+        if f.path not in paths or not tests or added != tests:
+            raise GateFailure(f"a bug fix changes {f.path} and adds tests (new lines in test "
+                              f"files, never changed or removed ones), nothing else: {paths}")
         if bad := coverage_violations(job.ws.git("diff", "-U0", "--", f.path),
                                       job.base.tests.cov):
             raise GateFailure(f"changed lines were not covered before the change: {bad}")
-        for test in new:
+        for test in added:
             if (code := _exit_without_fix(job, f, test)) != PYTEST_FAILED:
                 raise GateFailure(f"{test} does not fail on the unfixed code (pytest exit "
                                   f"{code}; a collection error or a timeout is not a "
                                   "failure): it does not show the bug")
+
+
+def _only_added(job: Job, path: str) -> bool:
+    """A new file, or an existing one whose diff removes and changes no line."""
+    diff = job.ws.git("diff", "-U0", "HEAD", "--", path)
+    return not any(line.startswith("-") and not line.startswith("---")
+                   for line in diff.splitlines())
 
 
 def _exit_without_fix(job: Job, f: Finding, test: str) -> int:

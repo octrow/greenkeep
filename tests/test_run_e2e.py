@@ -344,7 +344,7 @@ def test_a_bug_fix_may_not_edit_an_existing_test(tmp_path, monkeypatch):
             "=======\n    assert clamp(11, 0, 10) == 10\n>>>>>>> REPLACE\n")
     state, fake = hunt_run(tmp_path, monkeypatch, FIX + edit)
     assert state.merged_today() == 0
-    assert "adds new test files" in fake.patch_prompts[-1]
+    assert "never changed or removed ones" in fake.patch_prompts[-1]
 
 
 def test_an_unreadable_hunter_reply_leaves_the_module_for_the_next_run(tmp_path, monkeypatch):
@@ -412,3 +412,11 @@ def test_owner_hears_about_a_missing_license_once(tmp_path):
         run._tell_owner(ws, state, digest)
     assert digests[0].owner == ["demo: has no LICENSE: pick one", "demo: has no README.md"]
     assert digests[1].owner == []
+
+
+def test_a_bug_test_may_be_appended_where_the_repo_keeps_its_tests(tmp_path, monkeypatch):
+    append = ("tests/test_demo.py\n<<<<<<< SEARCH\n    assert clamp(11, 0, 10) is not None\n"
+              "=======\n    assert clamp(11, 0, 10) is not None\n\n\n"
+              "def test_clamp_above_hi():\n    assert clamp(11, 0, 10) == 10\n>>>>>>> REPLACE\n")
+    state, _ = hunt_run(tmp_path, monkeypatch, FIX + append)
+    assert state.merged_today() == 1

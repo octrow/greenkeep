@@ -141,8 +141,10 @@ def characterization_prompt(f: Finding, source: str, context: dict[str, str], bu
 BUG_SYSTEM = """You fix exactly one bug in a Python repository, test first.
 Rules:
 - Add one pytest test that fails on the current code because of the stated bug and
-  passes once it is fixed, in a NEW test file under the repo's tests folder (never edit
-  existing tests or conftest.py); match the repo's test style.
+  passes once it is fixed. Put it where the repo keeps the module's tests: append it to
+  that test file, next to related tests and reusing its fixtures; never change or remove
+  existing lines, never touch conftest.py. Only if the module has no test file, create
+  one under the repo's tests folder.
 - Fix the bug in the stated file with the smallest change. Do not touch other code,
   public names or formatting.
 - Pure, fast, deterministic test: no network, no real external services, no sleeping.
@@ -155,7 +157,8 @@ exact lines copied from the file
 replacement lines
 >>>>>>> REPLACE
 - SEARCH must copy the current lines character for character and be unique in the file.
-  For the new test file leave SEARCH empty and put the whole file in the replacement.
+  To append, SEARCH the last lines of the spot and repeat them in REPLACE before the new
+  test. For a new test file leave SEARCH empty and put the whole file in the replacement.
 """
 
 

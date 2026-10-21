@@ -14,6 +14,7 @@
 - Merges are dated by their own `merged_at`: a later write to an old merge (the revert check backfilling its commit) no longer counts it against today's budget.
 - Test root: a config entry `{ path = ..., tests = "pipeline" }` runs that repo's suite from a subfolder; coverage paths stay repo-relative and new tests go under it.
 - `uv sync --all-packages`: workspace members' dependencies are installed for the tests. A patcher reply without a code block is logged in full.
+- A bug fix may append its test to the module's existing test file (added lines only, no conftest.py): the reviewer rejected new files that re-created the repo's fixtures.
 - Models are pinned by provider (`claude/claude-sonnet-5-5`, `claude/claude-opus-5-5`): through OmniRoute a bare `claude-sonnet-5-5` went to a free combo and was answered by another model under the same label, which caused the 600s timeouts. Hunter and Skeptic run at medium effort with the module in the prompt and a 300s limit; one hunt call went from a timeout to 15s.
 - Bug hunt: the Hunter no longer reports races or timing bugs, and the Skeptic rejects behaviour the code, comments or tests mark as a choice (both claims on nicegui-kit's run pool were of these kinds).
 - The patcher, reviewer and bug hunt run without the owner's Claude Code settings (hooks, plugins, CLAUDE.md): a role's prompt no longer depends on the machine, and a call is a third faster and cheaper (63s → 40s on a README section). Each call's duration is in the full log.
