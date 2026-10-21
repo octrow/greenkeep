@@ -14,6 +14,7 @@
 - Merges are dated by their own `merged_at`: a later write to an old merge (the revert check backfilling its commit) no longer counts it against today's budget.
 - Test root: a config entry `{ path = ..., tests = "pipeline" }` runs that repo's suite from a subfolder; coverage paths stay repo-relative and new tests go under it.
 - `uv sync --all-packages`: workspace members' dependencies are installed for the tests. A patcher reply without a code block is logged in full.
+- A failed dependency upgrade parks at once: `uv lock` fails the same way every time, so a second and third attempt only cost time.
 - Readiness checks: `[project]` description, readme and urls, README install and usage sections, a CI badge. Each failed check is a `docs:` fix PR that may touch only README.md or the `[project]` table; the link fields and the badge are written by greenkeep itself, the words by the patcher and then reviewed. A missing LICENSE or README goes to the digest once, under Needs you.
 - The repo's own pytest `addopts` apply again (markers, `-m`, `--strict-markers`…): only pytest-cov and xdist options are dropped, since they break greenkeep's coverage.
 - A new test file also gets ruff's unsafe fixes for unused variables (F841, RUF059), so one does not cost an attempt; other unsafe fixes stay off (E721's turns `type(x) == int` into `int == int`).

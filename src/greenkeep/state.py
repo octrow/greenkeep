@@ -78,10 +78,11 @@ class State:
         row = self._row(repo, fp)
         return row[1] if row else 0
 
-    def add_attempt(self, repo: str, fp: str) -> None:
-        """Count one attempt; the last allowed one parks the finding."""
+    def add_attempt(self, repo: str, fp: str, *, last: bool = False) -> None:
+        """Count one attempt; the last allowed one (or one marked `last`) parks the finding."""
         n = self.attempts(repo, fp) + 1
-        self.set(repo, fp, attempts=n, **({"status": "parked"} if n >= MAX_ATTEMPTS else {}))
+        park = last or n >= MAX_ATTEMPTS
+        self.set(repo, fp, attempts=n, **({"status": "parked"} if park else {}))
 
     def merges(self, repo: str) -> list[tuple[str, int | None, str | None]]:
         """(fingerprint, PR, merge commit) of every live greenkeep merge in the repo."""

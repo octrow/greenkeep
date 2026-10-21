@@ -159,11 +159,13 @@ def _review(job: Job, f: Finding, change: Change) -> Change:
 
 
 def _record_failure(job: Job, f: Finding, reason: str) -> None:
-    job.state.add_attempt(job.ws.name, f.fingerprint)
+    retries = kind_of(f).retries
+    job.state.add_attempt(job.ws.name, f.fingerprint, last=not retries)
     n = job.state.attempts(job.ws.name, f.fingerprint)
-    log.info("  attempt %d/%d failed: %s", n, MAX_ATTEMPTS, reason.splitlines()[0])
+    log.info("  attempt %d/%d failed: %s", n, MAX_ATTEMPTS if retries else 1,
+             reason.splitlines()[0])
     log.debug("  full failure:\n%s", reason)
-    if n < MAX_ATTEMPTS:
+    if retries and n < MAX_ATTEMPTS:
         return
     issue = job.state.issue(job.ws.name, f.fingerprint)
     job.digest.parked.append(f"{job.ws.name}: {f.title}"

@@ -49,6 +49,8 @@ def test_deterministic_fixes_make_their_check_pass(tmp_path):
     assert rules(root) == []
     data = tomllib.loads((root / "pyproject.toml").read_text())
     assert data["project"]["readme"] == "README.md" and data["tool"] == {"x": {"y": 1}}
+    assert (root / "pyproject.toml").read_text().startswith(
+        '[project]\nname = "d"\ndescription = "x"\nreadme = "README.md"\n')
     assert data["project"]["urls"]["Issues"] == f"{URL}/issues"
     lines = (root / "README.md").read_text().splitlines()
     assert lines[0] == "# demo" and "workflows/ci.yml/badge.svg" in lines[2]

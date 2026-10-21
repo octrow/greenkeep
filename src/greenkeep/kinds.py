@@ -53,6 +53,7 @@ class Kind(ABC):
     """Defaults: an LLM-reviewed change with no extra rules. Kinds override what differs."""
     gate_note = ""
     exempt_from_budget = False
+    retries = True  # False: the same input gives the same failure, a retry only costs time
 
     @abstractmethod
     def priority(self, f: Finding) -> int:
@@ -238,6 +239,8 @@ class Untested(Kind):
 class Dependency(Kind):
     """A lockfile-only upgrade of one package; `uv lock` writes it, so nothing to review."""
     gate_note = "only uv.lock changed; full test suite green on the upgraded lock."
+    # ponytail: a network error in `uv lock` parks it too; tell them apart if that bites
+    retries = False
 
     def produce(self, job: Job, f: Finding, feedback: str) -> Change:
         deps.upgrade(job.ws, f.rule)

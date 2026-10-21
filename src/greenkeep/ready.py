@@ -113,15 +113,23 @@ def _project_header(root: Path) -> int | None:
     return next((i for i, text in enumerate(lines) if PROJECT_HEADER.match(text)), None)
 
 
-def _insert_under_project(root: Path, line: str) -> None:
+def _insert_under_project(root: Path, line: str, after: str) -> None:
+    """Below the one-line `after = ...` key of [project] when there is one, else the header."""
     # ponytail: rewrites line endings as \n; keep CRLF if a CRLF repo shows up
     path, at = root / PYPROJECT, _project_header(root)
     lines = path.read_text().splitlines()
+    key = re.compile(rf"^{after}\s*=\s*(\".*\"|'.*')\s*(#.*)?$")
+    for i in range(at + 1, len(lines)):
+        if lines[i].startswith("["):
+            break
+        if key.match(lines[i]):
+            at = i
+            break
     path.write_text("\n".join([*lines[:at + 1], line, *lines[at + 1:]]) + "\n")
 
 
 def _fix_readme_field(root: Path, url: str) -> None:
-    _insert_under_project(root, f'readme = "{README}"')
+    _insert_under_project(root, f'readme = "{README}"', after="description")
 
 
 def _fix_urls(root: Path, url: str) -> None:
