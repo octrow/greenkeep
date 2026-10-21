@@ -5,13 +5,14 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import tomllib
 from dataclasses import dataclass, replace
 from datetime import date
 from textwrap import shorten
 
 from claude_cli import ClaudeCliError, UsageLimitError
 
-from . import deps, github, hunt, llm, reverts
+from . import deps, github, hunt, llm, ready, reverts
 from .config import Target
 from .core import Baseline, Change, GateFailure, Job, Options, lint
 from .digest import Digest
@@ -37,7 +38,7 @@ TRAILER = "Co-Authored-By: greenkeep <greenkeep@users.noreply.github.com>"
 # failing every run. ponytail: a gateway outage also burns attempts (one finding per
 # repo per run); add a health ping before the run if that starts parking good findings
 ATTEMPT_FAILURES = (GateFailure, EditError, WorkspaceError, ClaudeCliError, OSError,
-                    UnicodeError)
+                    UnicodeError, tomllib.TOMLDecodeError)
 
 
 def _measured(tests: TestRun) -> bool:
@@ -51,7 +52,7 @@ def baseline(ws: Workspace, tests: TestRun) -> Baseline:
     """All findings, in the work order their kinds define."""
     ruff = lint(ws)
     found = [*ruff, *(untested_findings(tests.cov) if _measured(tests) else []),
-             *deps.collect(ws)]
+             *deps.collect(ws), *ready.collect(ws.root, github.web_url(ws.origin))]
     ordered = sorted(found, key=lambda f: kind_of(f).priority(f))  # stable within a kind
     return Baseline(tests, frozenset(f.fingerprint for f in ruff), ordered)
 
@@ -190,7 +191,7 @@ def _land(job: Job, fix: Fix) -> None:
 
 def work(job: Job, f: Finding) -> bool:
     """Up to the remaining attempts on one finding; True once its fix is merged."""
-    job.state.set(job.ws.name, f.fingerprint, title=f.title, url=web_url(job.ws.origin))
+    job.state.set(job.ws.name, f.fingerprint, title=f.title, url=github.web_url(job.ws.origin))
     issue = _ensure_issue(job, f)
     feedback = ""
     while job.state.is_workable(job.ws.name, f.fingerprint):
@@ -215,12 +216,6 @@ def _timed_out(exc: Exception) -> bool:
 def _not_the_change(exc: Exception) -> bool:
     """Quota and rate limits say nothing about the change: they stop the repo, not count."""
     return isinstance(exc, UsageLimitError) or str(exc).startswith(("HTTP 429", "HTTP 503"))
-
-
-def web_url(origin: str) -> str:
-    """https://github.com/owner/name for an https or ssh GitHub remote, else ""."""
-    m = re.match(r"(?:https://|git@)github\.com[/:](.+?)(?:\.git)?/?$", origin)
-    return f"https://github.com/{m.group(1)}" if m else ""
 
 
 def clip(text: str) -> str:
@@ -302,6 +297,15 @@ def _cooling(target: Target, state: State) -> bool:
     return False
 
 
+def _tell_owner(ws: Workspace, state: State, digest: Digest) -> None:
+    """What only the owner can settle goes in the digest once, not every day."""
+    for note in ready.owner_notes(ws.root):
+        key = f"told:{ws.name}:{note}"
+        if not state.mark(key):
+            digest.owner.append(f"{ws.name}: {note}")
+            state.set_mark(key, date.today().isoformat())
+
+
 def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> None:
     if _cooling(target, state):
         digest.cooling += 1
@@ -317,7 +321,12 @@ def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> Non
             return
         if opts.push:
             github.ensure_labels(ws)
-        _work_repo(Job(ws, baseline(ws, tests), opts, state, digest), target.hunt)
+        base = baseline(ws, tests)
+        if opts.push:  # a dry run tells, but does not remember it told
+            _tell_owner(ws, state, digest)
+        else:
+            digest.owner += [f"{ws.name}: {note}" for note in ready.owner_notes(ws.root)]
+        _work_repo(Job(ws, base, opts, state, digest), target.hunt)
     finally:
         if not opts.keep:
             discard(ws)

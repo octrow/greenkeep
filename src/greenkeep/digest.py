@@ -19,6 +19,7 @@ class Digest:
     merged: list[str] = field(default_factory=list)
     parked: list[str] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)
+    owner: list[str] = field(default_factory=list)  # what only the owner can settle
     # repos with nothing to report: no findings, findings only past the budget, cooling down
     clean: int = 0
     waiting: list[str] = field(default_factory=list)
@@ -27,7 +28,7 @@ class Digest:
     def text(self, budget_left: int) -> str:
         lines = [(f"greenkeep: {len(self.merged)} merged, {len(self.parked)} parked, "
                  f"{len(self.problems)} problems; budget left today: {budget_left}")]
-        for title, items in (("Merged", self.merged), ("Needs you", self.parked),
+        for title, items in (("Merged", self.merged), ("Needs you", [*self.parked, *self.owner]),
                              ("Problems", self.problems)):
             if items:
                 lines += ["", f"{title}:", *(f"• {i}" for i in items)]

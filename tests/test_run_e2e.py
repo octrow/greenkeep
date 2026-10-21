@@ -4,12 +4,12 @@ import subprocess
 from types import SimpleNamespace
 from pathlib import Path
 
-from greenkeep import llm, run, workspace
+from greenkeep import github, llm, run, workspace
 from greenkeep.core import DEFAULT_REVIEW_MODEL
 from greenkeep.config import Target
 from greenkeep.digest import Digest
 
-PYPROJECT = '[project]\nname = "demo"\nversion = "0"\nrequires-python = ">=3.12"\n'
+PYPROJECT = '[project]\nname = "demo"\nversion = "0"\ndescription = "Demo"\nrequires-python = ">=3.12"\n'
 CODE = "import os\n\n\ndef add(a, b):\n    return a + b\n"
 TEST = "from demo import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n"
 BIG = "def a(x):\n    if x:\n        return 1\n    return 2\n\n\ndef b(y):\n    z = y * 2\n" \
@@ -180,9 +180,9 @@ def test_clip_keeps_reason_line_and_tail():
 
 
 def test_web_url_from_remotes():
-    assert run.web_url("https://github.com/o/r.git") == "https://github.com/o/r"
-    assert run.web_url("git@github.com:o/r.git") == "https://github.com/o/r"
-    assert run.web_url("/tmp/origin.git") == ""
+    assert github.web_url("https://github.com/o/r.git") == "https://github.com/o/r"
+    assert github.web_url("git@github.com:o/r.git") == "https://github.com/o/r"
+    assert github.web_url("/tmp/origin.git") == ""
 
 
 def test_timed_out_attempt_counts_and_the_finding_waits_for_the_next_run(tmp_path, monkeypatch):
@@ -374,3 +374,41 @@ def test_the_repos_addopts_still_apply_without_its_coverage_options(tmp_path, mo
     fake_llm(monkeypatch, ["unused"])
     state, _ = dry_run(src)
     assert state.merged_today() == 1  # baseline green: the slow test stayed deselected
+
+
+NO_DESCRIPTION = PYPROJECT.replace('description = "Demo"\n', "")
+DESCRIBE = ('pyproject.toml\n<<<<<<< SEARCH\nversion = "0"\n=======\nversion = "0"\n'
+            'description = "Adds numbers."\n>>>>>>> REPLACE\n')
+
+
+def test_missing_description_is_written_reviewed_and_merged(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": CODE.replace("import os\n\n\n", ""),
+                                            "tests/test_demo.py": TEST,
+                                            "pyproject.toml": NO_DESCRIPTION})
+    fake = fake_llm(monkeypatch, [DESCRIBE])
+    state, clone = dry_run(src)
+    assert state.merged_today() == 1 and fake.reviews == 1
+    assert 'description = "Adds numbers."' in (clone / "pyproject.toml").read_text()
+
+
+def test_a_readiness_fix_may_change_only_its_own_field(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": CODE.replace("import os\n\n\n", ""),
+                                            "tests/test_demo.py": TEST,
+                                            "pyproject.toml": NO_DESCRIPTION})
+    # inside [project], but not the field the finding is about
+    sneaky = DESCRIBE + ('pyproject.toml\n<<<<<<< SEARCH\nrequires-python = ">=3.12"\n=======\n'
+                         'requires-python = ">=3.11"\n>>>>>>> REPLACE\n')
+    fake = fake_llm(monkeypatch, [sneaky])
+    state, _ = dry_run(src)
+    assert state.merged_today() == 0
+    assert "only [project] description" in fake.patch_prompts[-1]
+
+
+def test_owner_hears_about_a_missing_license_once(tmp_path):
+    ws = SimpleNamespace(name="demo", root=tmp_path)
+    state = run.State(Path(":memory:"))
+    digests = [Digest(), Digest()]
+    for digest in digests:
+        run._tell_owner(ws, state, digest)
+    assert digests[0].owner == ["demo: has no LICENSE: pick one", "demo: has no README.md"]
+    assert digests[1].owner == []

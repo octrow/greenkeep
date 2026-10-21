@@ -13,6 +13,12 @@ NUMBER = re.compile(r"/(\d+)\s*$")
 CHECKS_TIMEOUT = 1800
 
 
+def web_url(origin: str) -> str:
+    """https://github.com/owner/name for an https or ssh GitHub remote, else ""."""
+    m = re.match(r"(?:https://|git@)github\.com[/:](.+?)(?:\.git)?/?$", origin)
+    return f"https://github.com/{m.group(1)}" if m else ""
+
+
 def _gh(ws: Workspace, *args: str) -> str:
     return sh(["gh", *args], ws.root).stdout.strip()
 

@@ -13,11 +13,12 @@ import tomllib
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from . import deps, llm
+from . import deps, llm, ready
 from .core import Change, GateFailure, Job, lint
 from .edits import EditError, apply_edits, parse_edits, python_block
 from .findings import Finding, rank
 from .gate import coverage_violations, is_test_path, line_is_covered
+from .github import web_url
 from .workspace import (
     PYTEST_FAILED,
     TestRun,
@@ -36,8 +37,8 @@ TEST_LINES_RATIO = 1.5  # new tests: at most 1.5x the module, but never below th
 MIN_TEST_LINES = 120
 CONTEXT_LINES = 200  # per file shown to the patcher
 MAX_CONTEXT_FILES = 4
-# work order: security, lint bugs, missing tests, upgrades, lint style
-SECURITY, BUGS, MISSING_TESTS, UPGRADES, STYLE = range(5)
+# work order: security, lint bugs, missing tests, upgrades, readiness, lint style
+SECURITY, BUGS, MISSING_TESTS, UPGRADES, READINESS, STYLE = range(6)
 # clients of services a clone does not run: tests for such a module only mock them
 SERVICE_CLIENTS = frozenset({
     "psycopg", "psycopg2", "asyncpg", "pymysql", "aiomysql", "redis", "pymongo", "motor",
@@ -319,8 +320,53 @@ def _exit_without_fix(job: Job, f: Finding, test: str) -> int:
         (job.ws.root / f.path).write_text(fixed)
 
 
-KINDS: dict[str, Kind] = {"bug": Bug(), "ruff": Lint(), "untested": Untested(), "vuln": Vulnerability(),
-                          "outdated": Outdated()}
+class Readiness(Kind):
+    """A failed readiness check: README or pyproject.toml only, never code."""
+    gate_note = ("only README.md or pyproject.toml's [project] changed; the check passes now; "
+                 "full test suite green.")
+
+    def commit_type(self, f: Finding) -> str:
+        return "docs"
+
+    def priority(self, f: Finding) -> int:
+        return READINESS
+
+    def produce(self, job: Job, f: Finding, feedback: str) -> Change:
+        if fix := ready.FIXES.get(f.rule):
+            fix(job.ws.root, web_url(job.ws.origin))
+            return Change([f.path], "greenkeep", deterministic=True)
+        prompt = llm.ready_prompt(f, (job.ws.root / f.path).read_text(), feedback)
+        reply = llm.ask(llm.READY_SYSTEM, prompt, job.opts.model, job.ws.root)
+        edited = apply_edits(job.ws.root, parse_edits(reply.text), job.ws.tracked())
+        return Change(edited, reply.model, reply.prompt_sha)
+
+    def check_scope(self, job: Job, f: Finding, paths: list[str]) -> None:
+        if paths != [f.path]:
+            raise GateFailure(f"a readiness fix changes {f.path} only: {paths}")
+        if field := ready.FIELDS.get(f.rule):
+            _check_one_field(job, f.path, field)
+        if any(a.fingerprint == f.fingerprint
+               for a in ready.collect(job.ws.root, web_url(job.ws.origin))):
+            raise GateFailure(f"the check still fails: {f.message}")
+
+
+def _check_one_field(job: Job, path: str, field: str) -> None:
+    """pyproject.toml may change in the finding's own [project] field and nowhere else."""
+    try:
+        before = tomllib.loads(job.ws.git("show", f"HEAD:{path}"))
+        after = tomllib.loads((job.ws.root / path).read_text())
+    except tomllib.TOMLDecodeError as exc:
+        raise GateFailure(f"{path} is no longer valid TOML: {exc}") from exc
+
+    def rest(data: dict) -> dict:
+        return {**data, "project": {**data.get("project", {}), field: None}}
+
+    if rest(before) != rest(after):
+        raise GateFailure(f"only [project] {field} of {path} may change")
+
+
+KINDS: dict[str, Kind] = {"bug": Bug(), "ready": Readiness(), "ruff": Lint(),
+                          "untested": Untested(), "vuln": Vulnerability(), "outdated": Outdated()}
 
 
 def kind_of(f: Finding) -> Kind:

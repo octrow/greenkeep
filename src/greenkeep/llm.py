@@ -202,6 +202,30 @@ def doubt(path: str, claims: list[Claim], model: str, root: Path) -> list[Claim]
     return [c for i, c in enumerate(claims) if i in keep]
 
 
+READY_SYSTEM = """You improve how one repository looks to a stranger: one change to one file.
+Rules:
+- Write only facts you checked in the repository with the read-only tools: the real
+  install command, entry points from pyproject.toml, what the code does. Never invent
+  features, badges, links or commands.
+- Match the file's language (English or Russian), tone and heading style. Keep it short:
+  a README section is a heading, one sentence and a code block; a description is one line.
+- Touch nothing else in the file.
+- Reply ONLY with SEARCH/REPLACE blocks in this exact format:
+path/to/file
+<<<<<<< SEARCH
+exact lines copied from the file
+=======
+replacement lines
+>>>>>>> REPLACE
+- SEARCH must copy the current lines character for character and be unique in the file.
+"""
+
+
+def ready_prompt(f: Finding, text: str, feedback: str) -> str:
+    return _with_feedback([f"Finding: {f.message}", "", f"Current contents of {f.path}:",
+                           "```", text, "```"], feedback)
+
+
 REVIEW_SYSTEM = """You review one automated change to a Python repository before it is merged
 without a human. The change already passed: full test suite green, changed lines were
 covered by tests before the change, no new lint findings, no tool suppressions.
@@ -215,6 +239,8 @@ Approve only if ALL hold:
   and they are deterministic (no network, real clock, sleep, randomness without seed).
 - New tests read like the repo's own: same place, naming, fixtures and style; they do
   not duplicate existing tests, restate constants, pin accidental crashes or bloat.
+- A README or pyproject.toml change states only what is true of the repo (commands,
+  entry points, features) and matches the file's language and style.
 - The repo would look better to a senior reviewer with this change than without it.
 You are inside the repository with the change applied: read the files you need (the
 changed ones, the code they touch, neighbouring tests). Change nothing. Never open .env.

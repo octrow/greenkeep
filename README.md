@@ -183,13 +183,13 @@ Done: ruff, coverage and dependency findings (vulnerabilities neither need nor s
 upgrades need 60% coverage), gate, Sonnet patcher + Opus reviewer, issue → PR → merge,
 config, daily timer, digest (with a one-line `Quiet:` summary), pause, cool-down, dashboard, auto-pause (a reverted greenkeep merge stops all
 runs until you delete the pause file, which says which merge it was), opt-in bug hunt
-(Hunter → Skeptic, then a test-first fix whose test must fail without it).
+(Hunter → Skeptic, then a test-first fix whose test must fail without it), readiness checks
+(pyproject description/readme/urls, README install and usage sections, CI badge; a missing
+LICENSE or README is left to you, once, in the digest).
 
 Next, roughly in this order:
 
 1. **Bug hunt in uncovered code**: today it only hunts modules at 50%+ coverage.
-2. **Readiness checks** (license, metadata, README sections, CI badge) for new repos; the
-   current public ones already pass them.
-3. JS/TS as a second language plugin.
+2. JS/TS as a second language plugin.
 
 Design: [CONTEXT.md](CONTEXT.md) (glossary), [docs/adr](docs/adr) (decisions).
