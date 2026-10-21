@@ -188,9 +188,7 @@ Next, roughly in this order:
 1. **Bug hunt**: LLM-found bugs (Hunter → Skeptic → Referee) through the same gate.
 2. **Better generated tests**:
    - the patcher sees the repo's ruff rules but still trips them (RUF059, SIM115); try a
-     full `ruff --fix` on the new test file before the gate;
-   - modules that only run against a service (Postgres) can't gain coverage in a clone;
-     skip them instead of spending three attempts.
+     full `ruff --fix` on the new test file before the gate.
 3. **Keep the repo's `addopts`**: today the suite runs with `-o addopts=` so a repo's own
    `--cov` can't hijack coverage, which also drops its markers and other options.
 4. **Readiness checks** (license, metadata, README sections, CI badge) for new repos; the

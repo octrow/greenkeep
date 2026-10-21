@@ -14,6 +14,7 @@
 - Merges are dated by their own `merged_at`: a later write to an old merge (the revert check backfilling its commit) no longer counts it against today's budget.
 - Test root: a config entry `{ path = ..., tests = "pipeline" }` runs that repo's suite from a subfolder; coverage paths stay repo-relative and new tests go under it.
 - `uv sync --all-packages`: workspace members' dependencies are installed for the tests. A patcher reply without a code block is logged in full.
+- A module that imports a database or broker client (psycopg, asyncpg, redis, …) gets no generated tests: a clone runs no such service, so they only cost attempts.
 - Config file, systemd timer, Telegram digest, pause and auto-pause on a reverted merge, NiceGUI dashboard.
 
 ## 0.1.0 - 2026-10-15

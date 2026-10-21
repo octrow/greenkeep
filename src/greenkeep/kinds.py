@@ -6,6 +6,7 @@ review) are the same for every kind; only what lives here differs.
 
 from __future__ import annotations
 
+import ast
 import logging
 import re
 import tomllib
@@ -29,6 +30,10 @@ CONTEXT_LINES = 200  # per file shown to the patcher
 MAX_CONTEXT_FILES = 4
 # work order: security, lint bugs, missing tests, upgrades, lint style
 SECURITY, BUGS, MISSING_TESTS, UPGRADES, STYLE = range(5)
+# clients of services a clone does not run: tests for such a module only mock them
+SERVICE_CLIENTS = frozenset({
+    "psycopg", "psycopg2", "asyncpg", "pymysql", "aiomysql", "redis", "pymongo", "motor",
+    "pika", "aio_pika", "aiokafka", "kafka", "elasticsearch", "clickhouse_driver", "boto3"})
 
 
 def _percent(cov: dict, path: str) -> float:
@@ -155,6 +160,24 @@ def _tool_settings(root: Path) -> dict[str, str]:
     return {"pyproject.toml [tool.pytest] / [tool.ruff]": repr(settings)} if settings else {}
 
 
+def needs_service(source: str) -> bool:
+    """The module imports a database or broker client, so only a live service covers it."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names = [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom) and not node.level:
+            names = [node.module or ""]
+        else:
+            continue
+        if any(n.split(".")[0] in SERVICE_CLIENTS for n in names):
+            return True
+    return False
+
+
 class Untested(Kind):
     gate_note = ("only test files added, within the line budget; full test suite green; "
                  "module coverage grew; no new lint findings.")
@@ -166,7 +189,9 @@ class Untested(Kind):
         return MISSING_TESTS
 
     def attemptable(self, job: Job, f: Finding) -> bool:
-        return not (job.ws.root / characterization_path(f, job.ws.root, job.ws.tests)).exists()
+        if (job.ws.root / characterization_path(f, job.ws.root, job.ws.tests)).exists():
+            return False
+        return not needs_service((job.ws.root / f.path).read_text())
 
     def produce(self, job: Job, f: Finding, feedback: str) -> Change:
         rel = characterization_path(f, job.ws.root, job.ws.tests)

@@ -3,7 +3,14 @@ from types import SimpleNamespace
 import pytest
 
 from greenkeep.findings import Finding
-from greenkeep.kinds import Kind, characterization_path, kind_of, line_budget, related_context
+from greenkeep.kinds import (
+    Kind,
+    characterization_path,
+    kind_of,
+    line_budget,
+    needs_service,
+    related_context,
+)
 
 
 def finding(kind: str, rule: str) -> Finding:
@@ -57,3 +64,11 @@ def test_line_budget_scales_with_the_module_but_has_a_floor():
 def test_new_tests_go_under_the_test_root(tmp_path):
     assert (characterization_path(untested("app/gui/page.py"), tmp_path, "app")
             == "app/tests/test_page.py")
+
+
+def test_a_module_that_talks_to_a_service_gets_no_generated_tests():
+    assert needs_service("import asyncpg\n")
+    assert needs_service("from psycopg.rows import dict_row\n")
+    assert needs_service("def f():\n    import redis\n")
+    assert not needs_service("import json\nfrom pkg import redis_keys\n")
+    assert not needs_service("def broken(:\n")
