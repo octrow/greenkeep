@@ -168,8 +168,10 @@ HUNT_SYSTEM = """You look for real bugs in one module of a Python repository.
 A bug is code that gives a wrong result, raises, or corrupts data on an input or state
 its callers can really produce. Not a bug: style, naming, missing type hints, performance,
 missing validation of inputs no caller passes, behaviour the docstring or tests intend.
-Report only bugs a short pytest test can show through the module's own functions,
-without network or external services. Read the module, its callers and its tests with
+Not reportable here: races, timing and ordering between threads, tasks or processes,
+signals, and anything else a test can only show with sleeps or luck.
+Report only bugs a short, deterministic pytest test can show through the module's own
+functions, without network or external services. Read the module, its callers and its tests with
 the read-only tools first. Report at most 3; none is a fine answer.
 Reply ONLY with JSON: {"bugs": [{"line": <int>, "title": "<under 60 chars>",
 "why": "<the input, what happens, what should happen>"}]}
@@ -179,7 +181,10 @@ SKEPTIC_SYSTEM = """Another model claims these bugs in one module of a Python re
 Try to refute each claim: read the code, its callers and its tests with the read-only
 tools. A claim stands only if you can name a concrete input a caller can really pass,
 what the code does with it, and why that is wrong rather than intended. Reject anything
-speculative, stylistic or already handled.
+speculative, stylistic or already handled. Reject a claim when a comment, docstring,
+test or the surrounding code suggests the behaviour is a choice (a cancel that wins over
+a clean exit, a default that drops data on purpose). Reject races and timing claims: no
+short deterministic test can show them.
 Reply ONLY with JSON: {"keep": [<indexes of the claims that stand>]}
 """
 
