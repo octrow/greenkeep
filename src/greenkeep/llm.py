@@ -9,6 +9,8 @@ pinned models and prompts.
 from __future__ import annotations
 
 import hashlib
+import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +22,21 @@ from .findings import Finding
 LLM_TIMEOUT = 600  # claude -p on a 20k-char prompt has hit 300s
 REVIEW_TIMEOUT = 900
 READ_TOOLS = "Read,Grep,Glob"  # neither role may write: greenkeep applies the reply
+# none of the owner's Claude Code settings: their hooks, plugins and CLAUDE.md would make a
+# role's prompt depend on the machine it runs on (and cost a third more time and tokens)
+SETTING_SOURCES = ""
+
+log = logging.getLogger("greenkeep")
+
+
+def _claude(prompt: str, model: str, effort: str, root: Path, timeout: int):
+    """One read-only Claude Code call in the clone; its duration goes to the log."""
+    start = time.monotonic()
+    try:
+        return run_claude(prompt, model=model, effort=effort, tools=READ_TOOLS, cwd=root,
+                          backend="cli", timeout=timeout, setting_sources=SETTING_SOURCES)
+    finally:
+        log.debug("  %s (%s) took %.0fs", model, effort, time.monotonic() - start)
 EXCERPT_RADIUS = 40
 WHOLE_FILE_LINES = 300
 MAX_CLAIMS = 3  # per hunt: the Skeptic and the patcher pay for every one
@@ -69,8 +86,7 @@ class Reply:
 
 def ask(system: str, prompt: str, model: str, root: Path) -> Reply:
     """The patcher, in the clone at `root`: it may read the repo, its reply is the change."""
-    res = run_claude(f"{system}\n{prompt}", model=model, effort="medium", tools=READ_TOOLS,
-                     cwd=root, backend="cli", timeout=LLM_TIMEOUT)
+    res = _claude(f"{system}\n{prompt}", model, "medium", root, LLM_TIMEOUT)
     sha = hashlib.sha1((system + prompt).encode()).hexdigest()[:12]
     return Reply(res.text, model, sha)
 
@@ -176,8 +192,7 @@ class Claim:
 
 
 def _claude_json(system: str, prompt: str, model: str, root: Path) -> object:
-    res = run_claude(f"{system}\n{prompt}", model=model, effort="high", tools=READ_TOOLS,
-                     cwd=root, backend="cli", timeout=REVIEW_TIMEOUT)
+    res = _claude(f"{system}\n{prompt}", model, "high", root, REVIEW_TIMEOUT)
     return extract_json_or_none(res.text)
 
 
@@ -263,8 +278,8 @@ def review_prompt(f: Finding, diff: str) -> str:
 def review(f: Finding, diff: str, model: str, root: Path) -> Verdict:
     """Claude Code in the clone at `root`. Fail closed: a reply that is not a clear
     approval is a rejection."""
-    res = run_claude(f"{REVIEW_SYSTEM}\n{review_prompt(f, diff)}", model=model, effort="high",
-                     tools=READ_TOOLS, cwd=root, backend="cli", timeout=REVIEW_TIMEOUT)
+    res = _claude(f"{REVIEW_SYSTEM}\n{review_prompt(f, diff)}", model, "high", root,
+                  REVIEW_TIMEOUT)
     data = extract_json_or_none(res.text)
     if not isinstance(data, dict):
         return Verdict(False, f"unreadable review reply: {res.text[:200]!r}", model)
