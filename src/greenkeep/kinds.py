@@ -18,7 +18,7 @@ from .core import Change, GateFailure, Job, lint
 from .edits import EditError, apply_edits, parse_edits, python_block
 from .findings import Finding, rank
 from .gate import coverage_violations, is_test_path, line_is_covered
-from .workspace import TestRun, Workspace, ruff_fix
+from .workspace import TestRun, Workspace, ruff_fix, run_tests
 
 log = logging.getLogger("greenkeep")
 
@@ -259,7 +259,45 @@ class Outdated(Dependency):
         return not tests.no_tests and total >= OUTDATED_MIN_COVERAGE
 
 
-KINDS: dict[str, Kind] = {"ruff": Lint(), "untested": Untested(), "vuln": Vulnerability(),
+class Bug(Kind):
+    """A bug the hunt found: a test that fails before the fix and passes after it is the
+    proof, so no model has the last word on whether the bug is real."""
+    gate_note = ("the new test fails without the fix; full test suite green with it; every "
+                 "changed source line was covered before the change; no new lint findings.")
+
+    def commit_type(self, f: Finding) -> str:
+        return "fix"
+
+    def priority(self, f: Finding) -> int:
+        return BUGS
+
+    def produce(self, job: Job, f: Finding, feedback: str) -> Change:
+        source = (job.ws.root / f.path).read_text()
+        prompt = llm.bug_prompt(f, source, related_context(job.ws, f), feedback)
+        reply = llm.ask(llm.BUG_SYSTEM, prompt, job.opts.model, job.ws.root)
+        edited = apply_edits(job.ws.root, parse_edits(reply.text), job.ws.tracked(),
+                             new_tests=True)
+        return Change(edited, reply.model, reply.prompt_sha)
+
+    def check_scope(self, job: Job, f: Finding, paths: list[str]) -> None:
+        others = [p for p in paths if p != f.path]
+        if f.path not in paths or not others or not all(map(is_test_path, others)):
+            raise GateFailure(f"a bug fix changes {f.path} and adds a test, nothing else: "
+                              f"{paths}")
+        if bad := coverage_violations(job.ws.git("diff", "-U0", "--", f.path),
+                                      job.base.tests.cov):
+            raise GateFailure(f"changed lines were not covered before the change: {bad}")
+        fixed = (job.ws.root / f.path).read_text()
+        job.ws.git("checkout", "-q", "HEAD", "--", f.path)
+        try:
+            unfixed = run_tests(job.ws)
+        finally:
+            (job.ws.root / f.path).write_text(fixed)
+        if unfixed.ok:
+            raise GateFailure("the new test passes without the fix: it does not show the bug")
+
+
+KINDS: dict[str, Kind] = {"bug": Bug(), "ruff": Lint(), "untested": Untested(), "vuln": Vulnerability(),
                           "outdated": Outdated()}
 
 

@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from .gate import is_test_path
+
 BLOCK = re.compile(
     r"^(?P<path>[^\n<>=]+?)\s*\n<<<<<<< SEARCH\n(?P<search>.*?)\n?=======\n"
     r"(?P<replace>.*?)\n?>>>>>>> REPLACE", re.DOTALL | re.MULTILINE)
@@ -33,23 +35,36 @@ def parse_edits(reply: str) -> list[Edit]:
     return edits
 
 
-def _target(root: Path, rel: str, allowed: frozenset[str]) -> Path:
-    """Only files git tracks: never .git, .venv, untracked or generated files."""
+def _target(root: Path, rel: str, allowed: frozenset[str], *, new: bool = False) -> Path:
+    """Only files git tracks: never .git, .venv, untracked or generated files. `new`: a
+    test file that does not exist yet."""
     target = (root / rel).resolve()
     if not target.is_relative_to(root.resolve()):
         raise EditError(f"path outside repo: {rel}")
+    if new and is_test_path(rel) and not target.exists():
+        return target
     if target.relative_to(root.resolve()).as_posix() not in allowed:
         raise EditError(f"not a tracked file the patch may edit: {rel}")
     return target
 
 
-def apply_edits(root: Path, edits: list[Edit], allowed: frozenset[str]) -> list[str]:
-    """Apply every edit or raise; each non-empty SEARCH must occur exactly once."""
+def apply_edits(root: Path, edits: list[Edit], allowed: frozenset[str], *,
+                new_tests: bool = False) -> list[str]:
+    """Apply every edit or raise; each non-empty SEARCH must occur exactly once.
+    `new_tests`: an empty SEARCH may create a test file that does not exist yet."""
     touched = []
     for e in edits:
-        target = _target(root, e.path, allowed)
         if not e.search.strip():
-            raise EditError(f"empty SEARCH for {e.path}")
+            if not new_tests:
+                raise EditError(f"empty SEARCH for {e.path}")
+            target = _target(root, e.path, allowed, new=True)
+            if target.exists():
+                raise EditError(f"empty SEARCH for an existing file: {e.path}")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(e.replace + "\n")
+            touched.append(e.path)
+            continue
+        target = _target(root, e.path, allowed)
         try:
             text = target.read_text()
         except (OSError, UnicodeDecodeError) as exc:

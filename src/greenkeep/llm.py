@@ -1,4 +1,4 @@
-"""The patcher and reviewer roles: fixed prompts, one finding per call, on Claude Code.
+"""The patcher, reviewer and bug hunt roles: fixed prompts, one finding per call, on Claude Code.
 
 Both run inside the clone with read-only tools. The patcher reads what the module it tests
 leans on (without that it wrote tool calls as text and no code); the reviewer judges the
@@ -22,6 +22,7 @@ REVIEW_TIMEOUT = 900
 READ_TOOLS = "Read,Grep,Glob"  # neither role may write: greenkeep applies the reply
 EXCERPT_RADIUS = 40
 WHOLE_FILE_LINES = 300
+MAX_CLAIMS = 3  # per hunt: the Skeptic and the patcher pay for every one
 
 FIX_SYSTEM = """You fix exactly one lint finding in a Python repository.
 Rules:
@@ -118,12 +119,97 @@ def characterization_prompt(f: Finding, source: str, context: dict[str, str], bu
     return _with_feedback(parts, feedback)
 
 
+BUG_SYSTEM = """You fix exactly one bug in a Python repository, test first.
+Rules:
+- Add one pytest test that fails on the current code because of the stated bug and
+  passes once it is fixed. Put it in the repo's existing test file for the module, or in
+  a new test file under the repo's tests folder; match the repo's test style.
+- Fix the bug in the stated file with the smallest change. Do not touch other code,
+  public names or formatting.
+- Pure, fast, deterministic test: no network, no real external services, no sleeping.
+- You may read the repository with the read-only tools first.
+- Reply ONLY with SEARCH/REPLACE blocks in this exact format:
+path/to/file.py
+<<<<<<< SEARCH
+exact lines copied from the file
+=======
+replacement lines
+>>>>>>> REPLACE
+- SEARCH must copy the current lines character for character and be unique in the file.
+  For a new test file leave SEARCH empty and put the whole file in the replacement.
+"""
+
+
+def bug_prompt(f: Finding, source: str, context: dict[str, str], feedback: str) -> str:
+    parts = [f"Bug in {f.path} (import as `{module_name(f.path)}`), line {f.line}:",
+             f.message, "", f"Current contents of {f.path}:", "```python", source, "```"]
+    for path, text in context.items():
+        parts += ["", f"Existing {path}:", "```", text, "```"]
+    return _with_feedback(parts, feedback)
+
+
+HUNT_SYSTEM = """You look for real bugs in one module of a Python repository.
+A bug is code that gives a wrong result, raises, or corrupts data on an input or state
+its callers can really produce. Not a bug: style, naming, missing type hints, performance,
+missing validation of inputs no caller passes, behaviour the docstring or tests intend.
+Report only bugs a short pytest test can show through the module's own functions,
+without network or external services. Read the module, its callers and its tests with
+the read-only tools first. Report at most 3; none is a fine answer.
+Reply ONLY with JSON: {"bugs": [{"line": <int>, "title": "<under 60 chars>",
+"why": "<the input, what happens, what should happen>"}]}
+"""
+
+SKEPTIC_SYSTEM = """Another model claims these bugs in one module of a Python repository.
+Try to refute each claim: read the code, its callers and its tests with the read-only
+tools. A claim stands only if you can name a concrete input a caller can really pass,
+what the code does with it, and why that is wrong rather than intended. Reject anything
+speculative, stylistic or already handled.
+Reply ONLY with JSON: {"keep": [<indexes of the claims that stand>]}
+"""
+
+
+@dataclass(frozen=True)
+class Claim:
+    line: int
+    title: str
+    why: str
+
+
+def _claude_json(system: str, prompt: str, model: str, root: Path) -> object:
+    res = run_claude(f"{system}\n{prompt}", model=model, effort="high", tools=READ_TOOLS,
+                     cwd=root, backend="cli", timeout=REVIEW_TIMEOUT)
+    return extract_json_or_none(res.text)
+
+
+def hunt(path: str, model: str, root: Path) -> list[Claim]:
+    """The Hunter: suspected bugs in one module; a reply it cannot read means none."""
+    data = _claude_json(HUNT_SYSTEM, f"Module: {path}", model, root)
+    bugs = data.get("bugs") if isinstance(data, dict) else None
+    if not isinstance(bugs, list):
+        return []
+    return [Claim(b["line"], str(b["title"]), str(b["why"])) for b in bugs
+            if isinstance(b, dict) and isinstance(b.get("line"), int)
+            and b.get("title") and b.get("why")][:MAX_CLAIMS]
+
+
+def doubt(path: str, claims: list[Claim], model: str, root: Path) -> list[Claim]:
+    """The Skeptic: only the claims it could not refute. Fail closed: unclear keeps none."""
+    listed = "\n".join(f"{i}. line {c.line}: {c.title}: {c.why}" for i, c in enumerate(claims))
+    data = _claude_json(SKEPTIC_SYSTEM, f"Module: {path}\nClaims:\n{listed}", model, root)
+    keep = data.get("keep") if isinstance(data, dict) else None
+    if not isinstance(keep, list):
+        return []
+    return [c for i, c in enumerate(claims) if i in keep]
+
+
 REVIEW_SYSTEM = """You review one automated change to a Python repository before it is merged
 without a human. The change already passed: full test suite green, changed lines were
 covered by tests before the change, no new lint findings, no tool suppressions.
 Approve only if ALL hold:
 - It addresses the stated finding and nothing else (no drive-by edits).
 - A lint fix keeps runtime behaviour identical.
+- A bug fix: the new test shows the stated bug through the module's real API, and the
+  fix is the smallest change that makes it pass without changing other behaviour.
 - New tests assert real current behaviour of the module: no tautologies (`assert True`,
   asserting a mock returns what it was told), the unit under test is not mocked away,
   and they are deterministic (no network, real clock, sleep, randomness without seed).

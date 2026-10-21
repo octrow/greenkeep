@@ -59,3 +59,14 @@ def test_repo_entry_can_name_its_test_root(tmp_path):
                    f'focus = ["{tmp_path}/jobs"]\n')
     [t] = load(cfg).repos
     assert t.name == "jobs" and t.tests == "pipeline" and t.focus
+
+
+def test_bug_hunt_is_off_unless_a_repo_entry_turns_it_on(tmp_path):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(f'repos = [{{ path = "{tmp_path}/a", hunt = true }}, "{tmp_path}/b"]\n')
+    assert [t.hunt for t in load(cfg).repos] == [True, False]
+    cfg.write_text(f'repos = [{{ path = "{tmp_path}/a", hunt = "yes" }}]\n')
+    with pytest.raises(ConfigError):
+        load(cfg)

@@ -266,3 +266,70 @@ def test_ruff_fix_also_fixes_the_lint_it_introduces(tmp_path, monkeypatch):
     assert state.merged_today() == 1 and not fake.patch_prompts
     assert (clone / "demo.py").read_text().startswith(
         "from collections.abc import Iterator\nfrom os import sep\n")
+
+
+CLAMP = ("def clamp(x, lo, hi):\n    if x < lo:\n        return lo\n    if x > hi:\n"
+         "        return lo\n    return x\n")
+CLAMP_TEST = ("from demo import clamp\n\n\ndef test_clamp():\n    assert clamp(5, 0, 10) == 5\n"
+              "    assert clamp(-1, 0, 10) == 0\n    assert clamp(11, 0, 10) is not None\n")
+CLAIMS = ('{"bugs": [{"line": 5, "title": "clamp returns lo above hi", '
+          '"why": "clamp(11, 0, 10) gives 0, should be 10"}]}')
+FIX = "demo.py\n<<<<<<< SEARCH\n    if x > hi:\n        return lo\n=======\n" \
+      "    if x > hi:\n        return hi\n>>>>>>> REPLACE\n"
+
+
+def bug_test(body: str) -> str:
+    return ("tests/test_clamp_above.py\n<<<<<<< SEARCH\n=======\nfrom demo import clamp\n\n\n"
+            f"def test_clamp_above_hi():\n    {body}\n>>>>>>> REPLACE\n")
+
+
+def hunt_run(tmp_path, monkeypatch, patch: str) -> tuple[run.State, FakeLLM]:
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": CLAMP, "tests/test_demo.py": CLAMP_TEST})
+    fake = fake_llm(monkeypatch, [patch])
+    replies = {llm.HUNT_SYSTEM: CLAIMS, llm.SKEPTIC_SYSTEM: '{"keep": [0]}'}
+
+    def claude(prompt: str, **kw) -> SimpleNamespace:
+        for system, text in replies.items():
+            if prompt.startswith(system):
+                return SimpleNamespace(text=text)
+        return fake.review(prompt, **kw)
+
+    monkeypatch.setattr(llm, "run_claude", claude)
+    state = run.State(Path(":memory:"))
+    opts = run.Options(push=False, budget=3, model="x", keep=True)
+    run.run_repo(Target(str(src), hunt=True), opts, state, Digest())
+    return state, fake
+
+
+def test_hunted_bug_is_fixed_test_first(tmp_path, monkeypatch):
+    state, fake = hunt_run(tmp_path, monkeypatch,
+                           FIX + bug_test("assert clamp(11, 0, 10) == 10"))
+    assert state.merged_today() == 1 and fake.reviews == 1
+    clone = next(workspace.CACHE.glob("run-demo-*/demo"))
+    assert "return hi" in (clone / "demo.py").read_text()
+    assert (clone / "tests/test_clamp_above.py").exists()
+
+
+def test_a_test_that_passes_without_the_fix_does_not_prove_the_bug(tmp_path, monkeypatch):
+    state, fake = hunt_run(tmp_path, monkeypatch,
+                           FIX + bug_test("assert clamp(5, 0, 10) == 5"))
+    assert state.merged_today() == 0 and fake.reviews == 0
+    assert "does not show the bug" in fake.patch_prompts[-1]
+
+
+def test_nothing_hunted_when_the_skeptic_refutes_every_claim(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": CLAMP, "tests/test_demo.py": CLAMP_TEST})
+    fake = fake_llm(monkeypatch, ["unused"])
+    calls = []
+
+    def claude(prompt: str, **kw) -> SimpleNamespace:
+        calls.append(prompt)
+        return SimpleNamespace(text=CLAIMS if prompt.startswith(llm.HUNT_SYSTEM)
+                               else '{"keep": []}')
+
+    monkeypatch.setattr(llm, "run_claude", claude)
+    state = run.State(Path(":memory:"))
+    opts = run.Options(push=False, budget=3, model="x", keep=False)
+    for _ in range(2):  # the second run finds the unchanged module already hunted
+        run.run_repo(Target(str(src), hunt=True), opts, state, Digest())
+    assert len(calls) == 2 and not fake.patch_prompts

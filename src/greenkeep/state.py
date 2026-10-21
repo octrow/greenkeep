@@ -107,22 +107,22 @@ class State:
                                "date(merged_at, 'localtime') = date('now', 'localtime') "
                                "AND fp NOT LIKE ?", (BUDGET_FREE + "%",)).fetchone()[0]
 
-    def _mark(self, key: str) -> str:
+    def mark(self, key: str) -> str:
         row = self.db.execute("SELECT value FROM mark WHERE key=?", (key,)).fetchone()
         return row[0] if row else ""
 
-    def _set_mark(self, key: str, value: str) -> None:
+    def set_mark(self, key: str, value: str) -> None:
         self.db.execute("INSERT OR REPLACE INTO mark (key, value) VALUES (?, ?)", (key, value))
         self.db.commit()
 
     def cool_down(self, repo: str, repo_head: str, tool_head: str) -> date:
         """Leave the repo alone for a week; returns the day it is worked again."""
         until = date.today() + COOL_DOWN
-        self._set_mark(f"cool-down:{repo}", f"{until.isoformat()} {repo_head} {tool_head}")
+        self.set_mark(f"cool-down:{repo}", f"{until.isoformat()} {repo_head} {tool_head}")
         return until
 
     def cool_down_of(self, repo: str) -> CoolDown | None:
-        until, _, heads = self._mark(f"cool-down:{repo}").partition(" ")
+        until, _, heads = self.mark(f"cool-down:{repo}").partition(" ")
         if not until:
             return None
         repo_head, _, tool_head = heads.partition(" ")
@@ -134,7 +134,7 @@ class State:
 
     def record_run(self) -> None:
         """The scheduled run is done for today: the digest went out."""
-        self._set_mark("run", date.today().isoformat())
+        self.set_mark("run", date.today().isoformat())
 
     def ran_today(self) -> bool:
-        return self._mark("run") == date.today().isoformat()
+        return self.mark("run") == date.today().isoformat()

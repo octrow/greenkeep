@@ -151,6 +151,7 @@ repos = [
   "~/dev/my-repo",
   "owner/name-without-local-checkout",
   { path = "~/dev/monorepo", tests = "app" },  # the suite runs from app/, not the root
+  { path = "~/dev/lib", hunt = true },  # bug hunt once nothing else is left to do
 ]
 focus = ["~/dev/my-repo"]   # optional: these run first every run
 ```
@@ -181,14 +182,14 @@ systemctl --user daemon-reload && systemctl --user enable --now greenkeep.timer
 Done: ruff, coverage and dependency findings (vulnerabilities neither need nor spend the daily budget;
 upgrades need 60% coverage), gate, Sonnet patcher + Opus reviewer, issue → PR → merge,
 config, daily timer, digest (with a one-line `Quiet:` summary), pause, cool-down, dashboard, auto-pause (a reverted greenkeep merge stops all
-runs until you delete the pause file, which says which merge it was).
+runs until you delete the pause file, which says which merge it was), opt-in bug hunt
+(Hunter → Skeptic, then a test-first fix whose test must fail without it).
 
 Next, roughly in this order:
 
-1. **Bug hunt**: LLM-found bugs (Hunter → Skeptic → Referee) through the same gate.
-2. **Better generated tests**:
-   - the patcher sees the repo's ruff rules but still trips them (RUF059, SIM115); try a
-     full `ruff --fix` on the new test file before the gate.
+1. **Better generated tests**: the patcher sees the repo's ruff rules but still trips them
+   (RUF059, SIM115); try a full `ruff --fix` on the new test file before the gate.
+2. **Bug hunt in uncovered code**: today it only hunts modules at 50%+ coverage.
 3. **Keep the repo's `addopts`**: today the suite runs with `-o addopts=` so a repo's own
    `--cov` can't hijack coverage, which also drops its markers and other options.
 4. **Readiness checks** (license, metadata, README sections, CI badge) for new repos; the

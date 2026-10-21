@@ -11,7 +11,7 @@ from textwrap import shorten
 
 from claude_cli import ClaudeCliError, UsageLimitError
 
-from . import deps, github, llm, reverts
+from . import deps, github, hunt, llm, reverts
 from .config import Target
 from .core import Baseline, Change, GateFailure, Job, Options, lint
 from .digest import Digest
@@ -247,8 +247,15 @@ def _within_budget(job: Job, f: Finding) -> bool:
     return kind_of(f).exempt_from_budget or job.state.merged_today() < job.opts.budget
 
 
-def _work_repo(job: Job) -> None:
-    candidates = _candidates(job)[:MAX_FINDINGS_PER_REPO]
+def _hunted(job: Job, enabled: bool) -> list[Finding]:
+    """Bug hunt, once nothing else is left and the budget can still take a fix."""
+    if not enabled or job.state.merged_today() >= job.opts.budget:
+        return []
+    return hunt.hunt(job)
+
+
+def _work_repo(job: Job, hunting: bool = False) -> None:
+    candidates = _candidates(job)[:MAX_FINDINGS_PER_REPO] or _hunted(job, hunting)
     if not candidates:
         job.digest.clean += 1
         return
@@ -304,7 +311,7 @@ def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> Non
             return
         if opts.push:
             github.ensure_labels(ws)
-        _work_repo(Job(ws, baseline(ws, tests), opts, state, digest))
+        _work_repo(Job(ws, baseline(ws, tests), opts, state, digest), target.hunt)
     finally:
         if not opts.keep:
             discard(ws)

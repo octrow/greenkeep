@@ -58,3 +58,19 @@ def test_python_block():
 def test_python_block_keeps_fences_inside_the_code():
     reply = '```python\ndef test_md():\n    assert render("```x```") == "x"\n```\n'
     assert python_block(reply) == 'def test_md():\n    assert render("```x```") == "x"\n'
+
+
+NEW_TEST = "tests/test_b.py\n<<<<<<< SEARCH\n=======\ndef test_b():\n    pass\n>>>>>>> REPLACE\n"
+
+
+def test_empty_search_creates_a_new_test_file_only_when_allowed(tmp_path):
+    with pytest.raises(EditError):
+        apply_edits(tmp_path, parse_edits(NEW_TEST), frozenset())
+    assert apply_edits(tmp_path, parse_edits(NEW_TEST), frozenset(), new_tests=True) \
+        == ["tests/test_b.py"]
+    assert (tmp_path / "tests/test_b.py").read_text() == "def test_b():\n    pass\n"
+    with pytest.raises(EditError):  # never over an existing file
+        apply_edits(tmp_path, parse_edits(NEW_TEST), frozenset(), new_tests=True)
+    source = NEW_TEST.replace("tests/test_b.py", "pkg/b.py")
+    with pytest.raises(EditError):  # and never a source file
+        apply_edits(tmp_path, parse_edits(source), frozenset(), new_tests=True)

@@ -101,7 +101,7 @@ Pause set by greenkeep itself when its own merged fix PRs get reverted.
 _Avoid_: circuit breaker
 
 **Bug hunt**:
-The later, optional mode where an LLM searches for bugs itself (Hunter → Skeptic → Referee) and its findings go through the same gate.
+The optional mode where an LLM searches one module for bugs itself (Hunter → Skeptic) once a tended repo has no other workable finding; each bug that survives is fixed as a test-first fix, and the test failing before the fix is the referee.
 _Avoid_: free agent, exploration mode
 
 ### Roles

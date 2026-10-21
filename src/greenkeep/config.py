@@ -30,6 +30,7 @@ class Target:
     spec: str
     focus: bool = False  # a Focus repo: run before the others every run
     tests: str = ""  # its test root: the folder its suite runs from, relative to the repo
+    hunt: bool = False  # bug hunt: an LLM looks for bugs once nothing else is left to do
 
     @property
     def path(self) -> Path | None:
@@ -68,16 +69,17 @@ def load(path: Path = CONFIG_FILE) -> Config:
     entries = data.get("repos")
     if not isinstance(entries, list) or not all(_entry_ok(r) for r in entries):
         raise ConfigError(f"{path}: `repos` must list paths or owner/name strings, or "
-                          "{ path = ..., tests = ... } tables")
+                          "{ path = ..., tests = ..., hunt = true } tables")
     # a table names the repo's test root; a plain string runs its suite from the root
     repos = [r if isinstance(r, str) else r["path"] for r in entries]
-    tests = {r["path"]: r.get("tests", "") for r in entries if isinstance(r, dict)}
+    tables = {r["path"]: r for r in entries if isinstance(r, dict)}
     focus = data.get("focus", [])
     if not isinstance(focus, list) or not all(isinstance(r, str) for r in focus):
         raise ConfigError(f"{path}: `focus` must be a list of entries from `repos`")
     if stray := sorted(set(focus) - set(repos)):
         raise ConfigError(f"{path}: focus entries not in `repos`: {', '.join(stray)}")
-    targets = [Target(r, r in focus, tests.get(r, "")) for r in repos]
+    targets = [Target(r, r in focus, tables.get(r, {}).get("tests", ""),
+                      tables.get(r, {}).get("hunt", False)) for r in repos]
     for t in targets:
         _ = t.path  # a typo in the config fails at load, not halfway through a run
     return Config(targets,
@@ -88,7 +90,8 @@ def load(path: Path = CONFIG_FILE) -> Config:
 def _entry_ok(entry: object) -> bool:
     if isinstance(entry, dict):
         return (isinstance(entry.get("path"), str) and isinstance(entry.get("tests", ""), str)
-                and set(entry) <= {"path", "tests"})
+                and isinstance(entry.get("hunt", False), bool)
+                and set(entry) <= {"path", "tests", "hunt"})
     return isinstance(entry, str)
 
 
