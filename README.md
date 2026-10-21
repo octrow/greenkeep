@@ -84,8 +84,8 @@ greenkeep ~/dev/repo-a --push --budget 3     # open issues and PRs, merge on gre
 |---|---|---|
 | `--push` | off | Open a plan issue and a fix PR, wait for the required checks, squash-merge |
 | `--budget N` | 3 | Merged fix PRs per day, across all repos |
-| `--model NAME` | `claude-sonnet-5-5` | Claude Code model that writes the patches |
-| `--review-model NAME` | `claude-opus-5-5` | Claude Code model that reviews each patch inside the clone |
+| `--model NAME` | `claude/claude-sonnet-5-5` | Claude Code model that writes the patches |
+| `--review-model NAME` | `claude/claude-opus-5-5` | Claude Code model that reviews each patch inside the clone |
 | `--keep` | off | Keep the throwaway clones in `~/.cache/greenkeep` for inspection |
 
 A run makes at most one fix per repo, so it's meant to run on a schedule. A daily cron line is enough:

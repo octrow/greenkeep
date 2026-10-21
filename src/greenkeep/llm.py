@@ -21,6 +21,9 @@ from .findings import Finding
 
 LLM_TIMEOUT = 600  # claude -p on a 20k-char prompt has hit 300s
 REVIEW_TIMEOUT = 900
+# a hunt is optional work on a clean repo: a slow one is dropped, not waited for
+# (effort high and no source in the prompt ran 15 min on one 300-line module)
+HUNT_TIMEOUT = 300
 READ_TOOLS = "Read,Grep,Glob"  # neither role may write: greenkeep applies the reply
 # none of the owner's Claude Code settings: their hooks, plugins and CLAUDE.md would make a
 # role's prompt depend on the machine it runs on (and cost a third more time and tokens)
@@ -171,15 +174,16 @@ missing validation of inputs no caller passes, behaviour the docstring or tests 
 Not reportable here: races, timing and ordering between threads, tasks or processes,
 signals, and anything else a test can only show with sleeps or luck.
 Report only bugs a short, deterministic pytest test can show through the module's own
-functions, without network or external services. Read the module, its callers and its tests with
-the read-only tools first. Report at most 3; none is a fine answer.
+functions, without network or external services. The module is below; read only what you need to
+decide (its tests, a caller or two) with the read-only tools. Report at most 3; none is a
+fine answer.
 Reply ONLY with JSON: {"bugs": [{"line": <int>, "title": "<under 60 chars>",
 "why": "<the input, what happens, what should happen>"}]}
 """
 
 SKEPTIC_SYSTEM = """Another model claims these bugs in one module of a Python repository.
-Try to refute each claim: read the code, its callers and its tests with the read-only
-tools. A claim stands only if you can name a concrete input a caller can really pass,
+Try to refute each claim: the module is below; read only what you need (its tests, a
+caller or two) with the read-only tools. A claim stands only if you can name a concrete input a caller can really pass,
 what the code does with it, and why that is wrong rather than intended. Reject anything
 speculative, stylistic or already handled. Reject a claim when a comment, docstring,
 test or the surrounding code suggests the behaviour is a choice (a cancel that wins over
@@ -196,14 +200,15 @@ class Claim:
     why: str
 
 
-def _claude_json(system: str, prompt: str, model: str, root: Path) -> object:
-    res = _claude(f"{system}\n{prompt}", model, "high", root, REVIEW_TIMEOUT)
-    return extract_json_or_none(res.text)
+def _hunt_json(system: str, path: str, extra: str, model: str, root: Path) -> object:
+    source = (root / path).read_text(errors="replace")
+    prompt = f"{system}\nModule {path}:\n```python\n{source}\n```\n{extra}"
+    return extract_json_or_none(_claude(prompt, model, "medium", root, HUNT_TIMEOUT).text)
 
 
 def hunt(path: str, model: str, root: Path) -> list[Claim] | None:
     """The Hunter: suspected bugs in one module; None for a reply it cannot read."""
-    data = _claude_json(HUNT_SYSTEM, f"Module: {path}", model, root)
+    data = _hunt_json(HUNT_SYSTEM, path, "", model, root)
     bugs = data.get("bugs") if isinstance(data, dict) else None
     if not isinstance(bugs, list):
         return None
@@ -215,7 +220,7 @@ def hunt(path: str, model: str, root: Path) -> list[Claim] | None:
 def doubt(path: str, claims: list[Claim], model: str, root: Path) -> list[Claim] | None:
     """The Skeptic: only the claims it could not refute; None for a reply it cannot read."""
     listed = "\n".join(f"{i}. line {c.line}: {c.title}: {c.why}" for i, c in enumerate(claims))
-    data = _claude_json(SKEPTIC_SYSTEM, f"Module: {path}\nClaims:\n{listed}", model, root)
+    data = _hunt_json(SKEPTIC_SYSTEM, path, f"Claims:\n{listed}", model, root)
     keep = data.get("keep") if isinstance(data, dict) else None
     if not isinstance(keep, list):
         return None

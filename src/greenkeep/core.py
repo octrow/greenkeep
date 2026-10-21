@@ -12,8 +12,11 @@ from .workspace import TestRun, Workspace, ruff_json
 # pinned models, not combos: a combo answers with a different model from run to run.
 # Benchmark 2026-10-15: opus = sonnet > grok-4.7 as patcher; sonnet writes, opus reviews.
 # Both run on Claude Code (claude -p): the reviewer reads the repo with tools.
-DEFAULT_MODEL = "claude-sonnet-5-5"
-DEFAULT_REVIEW_MODEL = "claude-opus-5-5"
+# The provider prefix is the pin: OmniRoute maps a bare `claude-sonnet-*` to its free-stack
+# combo, which served poolside/laguna (300s+ timeouts) under a claude-sonnet-5-5 label;
+# `claude/...` routes straight to the Claude subscription (the same Hunter call: 15s).
+DEFAULT_MODEL = "claude/claude-sonnet-5-5"
+DEFAULT_REVIEW_MODEL = "claude/claude-opus-5-5"
 
 
 class GateFailure(Exception):
