@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 from greenkeep import cli
 from greenkeep.config import Target
@@ -23,3 +24,13 @@ def test_spent_budget_still_visits_every_repo_for_security(monkeypatch):
     cli._run_all([Target("octrow/a"), Target("octrow/b")],
                  Options(False, 0, None, False, None), State(Path(":memory:")))
     assert seen == ["a", "b"]
+
+
+def test_a_named_repo_keeps_its_config_entry_test_root_and_hunt(monkeypatch, tmp_path):
+    (tmp_path / "jobs").mkdir()
+    entry = Target(str(tmp_path / "jobs"), tests="pipeline", hunt=True)
+    monkeypatch.setattr(cli, "load", lambda: SimpleNamespace(repos=[entry]))
+    a = cli._parse_args([str(tmp_path / "jobs"), "octrow/other"])
+    targets, _ = cli._targets(a)
+    assert targets[0].tests == "pipeline" and targets[0].hunt
+    assert targets[1] == Target("octrow/other")

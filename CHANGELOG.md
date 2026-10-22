@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A characterization test retry corrects the previous attempt's file (shown to the patcher with the failure) instead of writing a new one: re-rolls failed a different way each time (a wrong assert, then over the line budget, then new lint).
+- `greenkeep <repo>` on a repo from the config keeps its entry, so a dry run uses the repo's test root and bug hunt setting.
 - From a review of the first 32 merged PRs (4 judged bad):
   - A lint fix may change only the file of its finding.
   - An unused `noqa` with an explanation after its codes (`RUF100`) goes to the patcher: ruff's own fix deleted the explanation too (whisper-gpu#2). The patcher keeps such text as a plain comment, uses the rule's documented fix (`contextlib.suppress` for S110) and never adds a logger only to please the linter (linux-coding#23); the reviewer rejects such workarounds.

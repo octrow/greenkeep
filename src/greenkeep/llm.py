@@ -139,14 +139,19 @@ def module_name(path: str, test_root: str = "") -> str:
 
 
 def characterization_prompt(f: Finding, source: str, context: dict[str, str], budget: int,
-                            feedback: str, test_root: str = "") -> str:
-    """`context`: path -> text of the repo's related tests, conftest and pytest settings."""
+                            feedback: str, test_root: str = "", previous: str = "") -> str:
+    """`context`: path -> text of the repo's related tests, conftest and pytest settings.
+    `previous`: the file the failed attempt wrote, so a retry corrects it, not re-rolls."""
     name = module_name(f.path, test_root)
     parts = [f"Module {f.path} (import as `{name}`) is {f.message}.",
              f"Write tests for its public functions and classes, at most {budget} lines.",
              "", "```python", source, "```"]
     for path, text in context.items():
         parts += ["", f"Existing {path}:", "```", text, "```"]
+    if previous:
+        parts += ["", "Your previous test file:", "```python", previous, "```",
+                  "Correct it: keep the tests that passed, fix or drop the ones the failure "
+                  "names, and stay within the line budget."]
     return _with_feedback(parts, feedback)
 
 

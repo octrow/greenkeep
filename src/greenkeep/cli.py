@@ -12,7 +12,7 @@ from datetime import date
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from .config import DEFAULT_BUDGET, PAUSE_FILE, Target, load, pause, paused
+from .config import DEFAULT_BUDGET, PAUSE_FILE, ConfigError, Target, load, pause, paused
 from .core import DEFAULT_MODEL, DEFAULT_REVIEW_MODEL, Options
 from .digest import Digest, send
 from .reverts import AutoPause
@@ -53,9 +53,19 @@ def _setup_logging() -> None:
 
 def _targets(a: argparse.Namespace) -> tuple[list[Target], int]:
     if a.repos:
-        return [Target(r) for r in a.repos], a.budget or DEFAULT_BUDGET
+        # a repo in the config keeps its entry (test root, hunt), so a dry run matches
+        known = {t.path or t.spec: t for t in _configured()}
+        named = [Target(r) for r in a.repos]
+        return [known.get(t.path or t.spec, t) for t in named], a.budget or DEFAULT_BUDGET
     cfg = load()
     return cfg.repos, a.budget or cfg.budget_on(date.today())
+
+
+def _configured() -> list[Target]:
+    try:
+        return load().repos
+    except ConfigError:  # no config: a dry run on named repos needs none
+        return []
 
 
 def _run_all(targets: list[Target], opts: Options, state: State) -> Digest:

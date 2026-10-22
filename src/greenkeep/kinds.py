@@ -35,6 +35,8 @@ log = logging.getLogger("greenkeep")
 URGENT_RANK = 2  # S/F/B ruff rules are bugs: "fix:", and they go before tests
 OUTDATED_MIN_COVERAGE = 60.0  # below it a green suite says too little about an upgrade
 TEST_LINES_RATIO = 1.5  # new tests: at most 1.5x the module, but never below the floor
+# the patcher overshoots a line budget by 5-20%: it is asked for less than the gate allows
+PROMPT_BUDGET_SHARE = 0.85
 MIN_TEST_LINES = 120
 CONTEXT_LINES = 200  # per file shown to the patcher
 MAX_CONTEXT_FILES = 4
@@ -215,8 +217,12 @@ class Untested(Kind):
             raise GateFailure(f"{rel} already exists")
         source = (job.ws.root / f.path).read_text()
         context = related_context(job.ws, f)
-        prompt = llm.characterization_prompt(f, source, context, line_budget(source), feedback,
-                                             job.ws.tests)
+        # the reset between attempts removes the file; scratch/ outlives it
+        kept = job.ws.scratch / f"previous-{target.name}"
+        previous = kept.read_text() if feedback and kept.is_file() else ""
+        asked = int(line_budget(source) * PROMPT_BUDGET_SHARE)
+        prompt = llm.characterization_prompt(f, source, context, asked, feedback,
+                                             job.ws.tests, previous)
         reply = llm.ask(llm.TEST_SYSTEM, prompt, job.opts.model, job.ws.root)
         target.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -226,6 +232,7 @@ class Untested(Kind):
             raise
         target.write_text(code)
         ruff_fix_new_test(job.ws, rel)  # an unused import or variable must not cost an attempt
+        kept.write_text(target.read_text())
         return Change([rel], reply.model, reply.prompt_sha)
 
     def check_scope(self, job: Job, f: Finding, paths: list[str]) -> None:
