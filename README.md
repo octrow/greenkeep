@@ -38,10 +38,29 @@ tidy: B006: Do not use mutable data structures for argument defaults (src/tidy/t
 
 In a dry run, "merged" means merged into a throwaway clone. With `--push` the same change becomes a plan issue and a fix PR on GitHub, which is squash-merged once the required CI checks pass.
 
+## What it found and fixed
+
+The first week on the author's 19 tended repos (2026-10-15 to 2026-10-22), from greenkeep's state database and the PRs themselves:
+
+| | Merged | How |
+|---|---|---|
+| Vulnerable dependencies | 17 | `uv lock --upgrade-package`, lockfile only: certifi [PYSEC-2026-4320](https://github.com/octrow/buy-smarter/pull/18) in 9 repos on one day, [Pillow](https://github.com/octrow/finance-insights/pull/10), [werkzeug](https://github.com/octrow/finance-insights/pull/12), [aiohttp](https://github.com/octrow/tiktok-lazy-follower/pull/3)… |
+| Outdated dependencies | 2 | same, same major only ([alembic](https://github.com/octrow/buy-smarter/pull/15)) |
+| Lint findings | 12 | 6 by `ruff --fix`, 6 patched by the LLM, e.g. a file handle that was never closed ([finance-insights#6](https://github.com/octrow/finance-insights/pull/6)) |
+| Characterization tests | 1 | [repo-scout#10](https://github.com/octrow/repo-scout/pull/10) |
+
+32 PRs in 16 repos. A separate review of all 32 (Opus, reading every diff) judged 23 good, 5 acceptable and 4 bad:
+
+- [repo-scout#10](https://github.com/octrow/repo-scout/pull/10): 559 lines of tests for a vendored copy of another repo's module, from the first version that had no reviewer and no line budget. Vendored code now gets no findings.
+- [whisper-gpu#2](https://github.com/octrow/whisper-gpu/pull/2): `ruff --fix` for unused `noqa` comments also deleted the explanations written after them. That rule now goes to the patcher, which keeps them.
+- [linux-coding#23](https://github.com/octrow/linux-coding/pull/23) and [claude-cli#4](https://github.com/octrow/claude-cli/pull/4): correct but worse code — a logger added to a test only to please `S110`, a string reflowed to column 0. The patcher and reviewer prompts now ask for the rule's idiomatic fix.
+
+What it did not manage: 20 findings were parked after three attempts, 16 of them characterization tests (wrong guesses about behaviour, new lint, a reviewer rejection, tests put where the repo does not keep them). Writing good tests for untested code is the hardest job it has, and the one it fails most.
+
 ## How it works
 
 1. Clone: each repo you pass is cloned into `~/.cache/greenkeep`; your checkout is never touched. If its tests are red before greenkeep changes anything, the repo is skipped.
-2. Find: findings come from deterministic tools only: ruff (security, bug and pyflakes rules first) and coverage (modules with no tests at all).
+2. Find: findings come from deterministic tools only: pip-audit (vulnerable dependencies), ruff (security, bug and pyflakes rules first), coverage (poorly tested modules), outdated dependencies and readiness checks. An opt-in bug hunt adds model-suspected bugs, each fixed test first.
 3. Patch: for each finding the LLM gets the finding and its code and returns SEARCH/REPLACE edits. For an untested module it writes characterization tests that pin down what the code does today.
 4. Gate: the change is kept only if the full suite passes, every changed line was covered before the change (for a new test file: module coverage grew), and ruff reports nothing new.
 5. Merge or park: a passing change is committed (and with `--push`, opened as a PR and merged on green). A finding gets three attempts; after that it is parked and labelled `needs-human`.
@@ -104,7 +123,7 @@ State (attempts per finding, merges per day) lives in `~/.local/share/greenkeep/
 
 ## How it differs
 
-- Dependabot, Renovate: they bump dependencies. greenkeep doesn't bump anything yet; it fixes code findings and adds tests. Both can run on the same repo.
+- Dependabot, Renovate: they bump dependencies, with a PR per bump. greenkeep only bumps a dependency for a known vulnerability or a same-major update, and only merges it on a green suite; most of its work is code findings and tests. Both can run on the same repo.
 - ruff `--fix`, pre-commit.ci autofix: they apply only the fixes ruff can make mechanically. greenkeep uses ruff's safe fix when there is one and calls the LLM only for findings ruff can't fix, like `B006` above; both kinds go through the same gate and get their own PR.
 - Coding agents (Copilot coding agent, OpenHands, Sweep): an agent decides what to change and how much. Here a deterministic tool picks the problem, the patch is limited to one finding, and nothing merges unless tests already covered every line it touched. The agents can do more; greenkeep aims to be boring and repeatable.
 - [patchwork](https://github.com/patched-codes/patchwork): closest in spirit (AutoFix flows). It doesn't own the schedule, the daily budget, the coverage gate or the issue → PR → merge loop, and greenkeep is built around those.
