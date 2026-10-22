@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from greenkeep.core import GateFailure
 from greenkeep.findings import Finding
 from greenkeep.kinds import (
     Kind,
@@ -85,3 +86,9 @@ def test_a_module_that_talks_to_a_service_gets_no_generated_tests():
     assert needs_service("def f():\n    import redis\n")
     assert not needs_service("import json\nfrom pkg import redis_keys\n")
     assert not needs_service("def broken(:\n")
+
+
+def test_a_lint_fix_may_change_only_the_file_of_its_finding():
+    f = Finding("ruff", "S110", "tests/test_app.py", 88, "m", "ruff:S110:x")
+    with pytest.raises(GateFailure, match="only"):
+        kind_of(f).check_scope(None, f, ["tests/test_app.py", "src/app/core.py"])

@@ -108,8 +108,8 @@ class Lint(Kind):
         return Change(edited, reply.model, reply.prompt_sha)
 
     def check_scope(self, job: Job, f: Finding, paths: list[str]) -> None:
-        if not is_test_path(f.path) and any(map(is_test_path, paths)):
-            raise GateFailure(f"a source fix may not touch tests: {paths}")
+        if paths != [f.path]:
+            raise GateFailure(f"a lint fix may change only {f.path}: {paths}")
         if bad := coverage_violations(job.ws.git("diff", "-U0"), job.base.tests.cov):
             raise GateFailure(f"changed lines were not covered before the change: {bad}")
         if any(a.fingerprint == f.fingerprint for a in lint(job.ws, f.path)):
@@ -121,7 +121,7 @@ def characterization_path(f: Finding, root: Path, test_root: str = "") -> str:
     when that folder exists, else tests/, or the test root itself when the repo has no
     tests/ but keeps test files there; the full dotted name if a test file anywhere in the
     repo has the short one (pytest's default import mode fails on two same-named files)."""
-    parts = llm.module_name(f.path.removeprefix(f"{test_root}/")).split(".")
+    parts = llm.module_name(f.path, test_root).split(".")
     folder = Path(test_root, "tests", *parts[1:-1])
     if not (root / folder).is_dir():
         folder = Path(test_root, "tests")
@@ -148,7 +148,7 @@ def related_context(ws: Workspace, f: Finding) -> dict[str, str]:
 
 
 def _related_tests(ws: Workspace, f: Finding) -> dict[str, str]:
-    dotted = llm.module_name(f.path)
+    dotted = llm.module_name(f.path, ws.tests)
     parent, _, leaf = dotted.rpartition(".")
     imports = re.compile(rf"\b{re.escape(dotted)}\b|from {re.escape(parent)} import .*\b{leaf}\b")
     on_the_way = Path(characterization_path(f, ws.root, ws.tests)).parents
@@ -215,7 +215,8 @@ class Untested(Kind):
             raise GateFailure(f"{rel} already exists")
         source = (job.ws.root / f.path).read_text()
         context = related_context(job.ws, f)
-        prompt = llm.characterization_prompt(f, source, context, line_budget(source), feedback)
+        prompt = llm.characterization_prompt(f, source, context, line_budget(source), feedback,
+                                             job.ws.tests)
         reply = llm.ask(llm.TEST_SYSTEM, prompt, job.opts.model, job.ws.root)
         target.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -290,7 +291,7 @@ class Bug(Kind):
 
     def produce(self, job: Job, f: Finding, feedback: str) -> Change:
         source = (job.ws.root / f.path).read_text()
-        prompt = llm.bug_prompt(f, source, related_context(job.ws, f), feedback)
+        prompt = llm.bug_prompt(f, source, related_context(job.ws, f), feedback, job.ws.tests)
         reply = llm.ask(llm.BUG_SYSTEM, prompt, job.opts.model, job.ws.root)
         tracked = job.ws.tracked()
         edited = apply_edits(job.ws.root, parse_edits(reply.text), tracked, new_tests=True)

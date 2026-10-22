@@ -14,7 +14,7 @@ from claude_cli import ClaudeCliError, UsageLimitError
 
 from . import llm
 from .core import Job
-from .findings import UNTESTED_MIN_STATEMENTS, UNTESTED_PERCENT, Finding, _digest
+from .findings import UNTESTED_MIN_STATEMENTS, UNTESTED_PERCENT, Finding, _digest, is_vendored
 from .gate import is_test_path
 
 log = logging.getLogger("greenkeep")
@@ -47,6 +47,7 @@ def pick(job: Job) -> str | None:
     files = job.base.tests.cov.get("files", {})
     fit = [(data["summary"]["num_statements"], path) for path, data in files.items()
            if not is_test_path(path) and (job.ws.root / path).is_file()
+           and not is_vendored(job.ws.root, path)
            and data["summary"]["num_statements"] >= UNTESTED_MIN_STATEMENTS
            and data["summary"]["percent_covered"] >= UNTESTED_PERCENT
            and _empty_hunts(job, path) < EMPTY_HUNTS]

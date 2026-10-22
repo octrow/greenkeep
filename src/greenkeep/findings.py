@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
 
 from .gate import is_test_path
+
+# an unused `noqa` with words after its codes: ruff's own fix drops the words too, the
+# patcher keeps them as a plain comment
+NOQA_WITH_NOTE = re.compile(r"#\s*noqa(?::\s*[A-Z]+[0-9]+(?:\s*,\s*[A-Z]+[0-9]+)*)?\s+\S")
+VENDOR_DIRS = frozenset({"vendor", "_vendor", "vendored", "third_party"})
 
 # a module is "untested" below this coverage, if it is big enough to matter
 UNTESTED_PERCENT = 50.0
@@ -44,10 +51,12 @@ def ruff_findings(items: list[dict], *, root: str,
     for it in items:
         path = os.path.relpath(it["filename"], root)
         row = it["location"]["row"]
-        fp = f"ruff:{it['code']}:{path}:{_digest(read_line(path, row).strip())}"
+        text = read_line(path, row)
+        fp = f"ruff:{it['code']}:{path}:{_digest(text.strip())}"
         fix = it.get("fix") or {}
+        noted = it["code"] == "RUF100" and NOQA_WITH_NOTE.search(text)
         found.append(Finding("ruff", it["code"], path, row, it["message"], fp,
-                             fixable=fix.get("applicability") == "safe",
+                             fixable=fix.get("applicability") == "safe" and not noted,
                              title=f"{it['code']}: {it['message']} ({path}:{row})"))
     return sorted(found, key=lambda f: rank(f.rule))
 
@@ -64,3 +73,11 @@ def untested_findings(cov: dict) -> list[Finding]:
             found.append(Finding("untested", "coverage", path, 1, msg, f"untested:{path}",
                                  title=f"Add tests for {path}"))
     return found
+
+
+def is_vendored(root: Path, path: str) -> bool:
+    """Code copied from another project (a vendor folder, or a VENDORED.md beside it or
+    above it): its fixes and tests belong upstream."""
+    folders = list(PurePosixPath(path).parents)[:-1]  # the repo root's own note does not count
+    return bool(VENDOR_DIRS & set(PurePosixPath(path).parts[:-1])) \
+        or any((root / d / "VENDORED.md").is_file() for d in folders)

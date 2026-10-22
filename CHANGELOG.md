@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- From a review of the first 32 merged PRs (4 judged bad):
+  - A lint fix may change only the file of its finding.
+  - An unused `noqa` with an explanation after its codes (`RUF100`) goes to the patcher: ruff's own fix deleted the explanation too (whisper-gpu#2). The patcher keeps such text as a plain comment, uses the rule's documented fix (`contextlib.suppress` for S110) and never adds a logger only to please the linter (linux-coding#23); the reviewer rejects such workarounds.
+  - Vendored code (a `vendor`/`_vendor`/`third_party` folder, or a `VENDORED.md` beside or above the module) gets no findings or hunts: repo-scout#10 pinned a byte-identical copy of nicegui-kit's run pool in 559 lines.
+  - Characterization tests leave output that looks like a bug unasserted, and import the module the way the repo's tests do. The suggested import is relative to the test root: in jobs, tests run from `pipeline/` and the prompt said `pipeline.gmail_api_client`, which failed three attempts with `ModuleNotFoundError`.
 - A new test file gets the long name (`test_<package>_<module>.py`) when a test file with the short name exists anywhere in the repo, not only in its folder: a root `test_extract.py` and a new `tests/test_extract.py` made pytest stop on "import file mismatch", which parked two cc-bench findings.
 - A repo without a `tests/` folder that keeps its test files at the test root gets the new one there too: the reviewer rejected every cc-bench test file put in a new `tests/` (a dry run then merged the one for `arms.py`).
 - Each run removes the clones older than a day that an interrupted run left in `~/.cache/greenkeep` (a shutdown ends a run before its cleanup); 1.7 GB had piled up.

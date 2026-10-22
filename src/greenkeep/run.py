@@ -17,7 +17,7 @@ from .config import Target
 from .core import Baseline, Change, GateFailure, Job, Options, lint
 from .digest import Digest
 from .edits import EditError
-from .findings import Finding, untested_findings
+from .findings import Finding, is_vendored, untested_findings
 from .gate import suppressions
 from .kinds import kind_of
 from .state import MAX_ATTEMPTS, State
@@ -237,6 +237,7 @@ def redact(text: str, secrets: list[str]) -> str:
 def _candidates(job: Job) -> list[Finding]:
     return [f for f in job.base.findings
             if job.state.is_workable(job.ws.name, f.fingerprint)
+            and not is_vendored(job.ws.root, f.path)
             and kind_of(f).attemptable(job, f)]
 
 

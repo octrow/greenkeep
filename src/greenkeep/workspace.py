@@ -4,6 +4,7 @@ ever read (as a `--reference` object store and for its `.env`), never changed.""
 from __future__ import annotations
 
 import configparser
+import contextlib
 import json
 import logging
 import os
@@ -150,9 +151,10 @@ def sweep() -> None:
     run without its `finally`, and each such clone holds a synced venv (up to 450 MB)."""
     cutoff = time.time() - STALE_CLONE_SECONDS
     for run_dir in CACHE.glob("run-*"):
-        if run_dir.stat().st_mtime < cutoff:
-            log.info("removing a stale clone: %s", run_dir.name)
-            shutil.rmtree(run_dir, ignore_errors=True)
+        with contextlib.suppress(OSError):  # another run swept it first
+            if run_dir.stat().st_mtime < cutoff:
+                log.info("removing a stale clone: %s", run_dir.name)
+                shutil.rmtree(run_dir, ignore_errors=True)
 
 
 def sync(ws: Workspace) -> None:

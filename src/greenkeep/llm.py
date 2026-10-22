@@ -47,7 +47,12 @@ MAX_CLAIMS = 3  # per hunt: the Skeptic and the patcher pay for every one
 FIX_SYSTEM = """You fix exactly one lint finding in a Python repository.
 Rules:
 - Change as little code as possible. Never change behaviour, public names or formatting
-  elsewhere in the file.
+  elsewhere in the file. Keep the surrounding indentation and layout.
+- Use the fix the rule's documentation recommends (S110 for an exception that is expected:
+  `contextlib.suppress`). Never add a logger or helper only to satisfy the rule; add only
+  the imports that documented fix itself needs.
+- Never delete comment text that explains code; when removing a `noqa`, keep its
+  explanation as a plain comment.
 - You may read the repository with the read-only tools first.
 - Reply ONLY with one or more SEARCH/REPLACE blocks in this exact format:
 path/to/file.py
@@ -62,10 +67,13 @@ replacement lines
 TEST_SYSTEM = """You write characterization tests: pytest tests that pin down what the
 code does today, so it can be changed safely later.
 Rules:
-- Test the current behaviour as it is, even if it looks wrong. Do not modify the code.
+- Test the current behaviour as it is. Do not modify the code. Where the output looks
+  like a bug (a stray `\r`, a malformed message), leave that detail unasserted: a test
+  must not make fixing it look like a regression.
 - Pure, fast, deterministic tests: no network, no real external services, no sleeping,
   no writing outside pytest's tmp_path. Mock subprocess, HTTP clients and clocks.
-- Import the module the way the package is installed (the import path is given).
+- Import the module the way the repo's existing tests import its modules; without any,
+  use the import path given.
 - Match the repo's existing tests (shown when there are any): their style, fixtures,
   conftest, async style and pytest settings. Do not repeat what they already cover.
 - Few, meaningful tests: the main behaviours and edge cases, within the line budget given.
@@ -118,7 +126,10 @@ def fix_prompt(f: Finding, source: str, feedback: str) -> str:
     return _with_feedback(parts, feedback)
 
 
-def module_name(path: str) -> str:
+def module_name(path: str, test_root: str = "") -> str:
+    """The dotted name tests import: relative to the test root the suite runs from."""
+    if test_root:
+        path = path.removeprefix(f"{test_root}/")
     parts = path.removesuffix(".py").split("/")
     if parts[0] == "src":
         parts = parts[1:]
@@ -128,9 +139,10 @@ def module_name(path: str) -> str:
 
 
 def characterization_prompt(f: Finding, source: str, context: dict[str, str], budget: int,
-                            feedback: str) -> str:
+                            feedback: str, test_root: str = "") -> str:
     """`context`: path -> text of the repo's related tests, conftest and pytest settings."""
-    parts = [f"Module {f.path} (import as `{module_name(f.path)}`) is {f.message}.",
+    name = module_name(f.path, test_root)
+    parts = [f"Module {f.path} (import as `{name}`) is {f.message}.",
              f"Write tests for its public functions and classes, at most {budget} lines.",
              "", "```python", source, "```"]
     for path, text in context.items():
@@ -162,8 +174,9 @@ replacement lines
 """
 
 
-def bug_prompt(f: Finding, source: str, context: dict[str, str], feedback: str) -> str:
-    parts = [f"Bug in {f.path} (import as `{module_name(f.path)}`), line {f.line}:",
+def bug_prompt(f: Finding, source: str, context: dict[str, str], feedback: str,
+               test_root: str = "") -> str:
+    parts = [f"Bug in {f.path} (import as `{module_name(f.path, test_root)}`), line {f.line}:",
              f.message, "", f"Current contents of {f.path}:", "```python", source, "```"]
     for path, text in context.items():
         parts += ["", f"Existing {path}:", "```", text, "```"]
@@ -259,7 +272,9 @@ without a human. The change already passed: full test suite green, changed lines
 covered by tests before the change, no new lint findings, no tool suppressions.
 Approve only if ALL hold:
 - It addresses the stated finding and nothing else (no drive-by edits).
-- A lint fix keeps runtime behaviour identical.
+- A lint fix keeps runtime behaviour identical and is the idiomatic fix for that rule, not
+  a workaround that only satisfies the linter (a logger added just to log a swallowed
+  exception, a string reflowed so it reads worse).
 - A bug fix: the new test shows the stated bug through the module's real API, and the
   fix is the smallest change that makes it pass without changing other behaviour.
 - New tests assert real current behaviour of the module: no tautologies (`assert True`,

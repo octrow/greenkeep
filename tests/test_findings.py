@@ -1,4 +1,6 @@
-from greenkeep.findings import ruff_findings, untested_findings
+import pytest
+
+from greenkeep.findings import is_vendored, ruff_findings, untested_findings
 
 RUFF = [
     {"code": "F401", "message": "`os` imported but unused", "filename": "/w/pkg/a.py",
@@ -49,3 +51,21 @@ def test_same_rule_twice_in_one_file_gets_distinct_titles():
     found = ruff_findings(items, root="/w", read_line=lambda p, n: "pass")
     assert [f.title for f in found] == ["S110: `try`-`except`-`pass` detected (u.py:4)",
                                         "S110: `try`-`except`-`pass` detected (u.py:12)"]
+
+
+@pytest.mark.parametrize(("line", "fixable"), [
+    ("except Exception:  # noqa: BLE001  (no nvidia-smi -> unknown)", False),
+    ("import os  # noqa: F401", True),
+    ("import os  # noqa: E501, F401", True),
+])
+def test_an_unused_noqa_with_a_note_goes_to_the_patcher_ruff_would_drop_the_note(line, fixable):
+    item = {**RUFF[0], "code": "RUF100", "fix": {"applicability": "safe"}}
+    assert ruff_findings([item], root="/w", read_line=lambda p, n: line)[0].fixable is fixable
+
+
+def test_vendored_code_is_left_to_its_upstream(tmp_path):
+    (tmp_path / "app/gui/kit").mkdir(parents=True)
+    (tmp_path / "app/gui/kit/VENDORED.md").write_text("copied from nicegui-kit")
+    assert is_vendored(tmp_path, "app/gui/kit/run_pool.py")
+    assert is_vendored(tmp_path, "src/pkg/_vendor/six.py")
+    assert not is_vendored(tmp_path, "app/gui/page.py")
