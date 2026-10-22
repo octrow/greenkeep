@@ -7,6 +7,7 @@ review) are the same for every kind; only what lives here differs.
 from __future__ import annotations
 
 import ast
+import glob
 import logging
 import re
 import tomllib
@@ -117,13 +118,14 @@ class Lint(Kind):
 
 def characterization_path(f: Finding, root: Path, test_root: str = "") -> str:
     """Where the repo would put it: tests/<subpackage>/test_<module>.py under the test root
-    when that folder exists, else tests/; the full dotted name only if the short one is taken."""
+    when that folder exists, else tests/; the full dotted name if a test file anywhere in the
+    repo has the short one (pytest's default import mode fails on two same-named files)."""
     parts = llm.module_name(f.path.removeprefix(f"{test_root}/")).split(".")
     folder = Path(test_root, "tests", *parts[1:-1])
     if not (root / folder).is_dir():
         folder = Path(test_root, "tests")
     name = f"test_{parts[-1]}.py"
-    if (root / folder / name).exists():
+    if glob.glob(f"**/{name}", root_dir=root, recursive=True):  # skips .venv, .git
         name = f"test_{'_'.join(parts)}.py"
     return str(folder / name)
 
