@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 
 CACHE = Path.home() / ".cache/greenkeep"
 TEST_TIMEOUT = 1800
+STALE_CLONE_SECONDS = 24 * 3600  # a run takes about an hour; older clones lost their run
 PYTEST_NO_TESTS = 5
 UNSAFE_OK = "F841,RUF059"  # unused variable, unused unpacked variable
 # addopts that would break coverage: pytest-cov is disabled (its tracer hijacks ours), and
@@ -142,6 +143,16 @@ def clone(target: Target) -> Workspace:
 
 def discard(ws: Workspace) -> None:
     shutil.rmtree(ws.root.parent, ignore_errors=True)
+
+
+def sweep() -> None:
+    """Remove the clones of runs that never reached `discard`: a shutdown's SIGTERM ends a
+    run without its `finally`, and each such clone holds a synced venv (up to 450 MB)."""
+    cutoff = time.time() - STALE_CLONE_SECONDS
+    for run_dir in CACHE.glob("run-*"):
+        if run_dir.stat().st_mtime < cutoff:
+            log.info("removing a stale clone: %s", run_dir.name)
+            shutil.rmtree(run_dir, ignore_errors=True)
 
 
 def sync(ws: Workspace) -> None:

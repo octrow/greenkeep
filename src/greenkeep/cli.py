@@ -18,6 +18,7 @@ from .digest import Digest, send
 from .reverts import AutoPause
 from .run import run_repo
 from .state import State
+from .workspace import sweep
 
 log = logging.getLogger("greenkeep")
 
@@ -36,7 +37,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--model", default=DEFAULT_MODEL, help="Claude Code model that writes patches")
     p.add_argument("--review-model", default=DEFAULT_REVIEW_MODEL,
                    help="Claude Code model that reviews each patch inside the clone")
-    p.add_argument("--keep", action="store_true", help="keep the throwaway clones")
+    p.add_argument("--keep", action="store_true", help="keep the throwaway clones (the next run a day later removes them)")
     return p.parse_args(argv)
 
 
@@ -92,6 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     if scheduled and state.ran_today():
         log.debug("already ran today")
         return 0
+    sweep()
     targets, budget = _targets(a)
     opts = Options(a.push, budget, a.model, a.keep, a.review_model)
     digest = _run_all(targets, opts, state)

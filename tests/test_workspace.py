@@ -1,6 +1,10 @@
+import os
+import time
+
 import pytest
 
-from greenkeep.workspace import kept_addopts, repo_addopts
+from greenkeep import workspace
+from greenkeep.workspace import kept_addopts, repo_addopts, sweep
 
 
 @pytest.mark.parametrize(("addopts", "kept"), [
@@ -24,3 +28,15 @@ def test_addopts_come_from_the_file_pytest_itself_would_read(tmp_path):
     (tmp_path / "pytest.ini").unlink()
     (tmp_path / "pyproject.toml").write_text('[tool.pytest]\naddopts = ["-q"]\n')
     assert repo_addopts(tmp_path) == ["-q"]
+
+
+def test_sweep_removes_clones_a_killed_run_left_but_not_a_running_one(tmp_path, monkeypatch):
+    monkeypatch.setattr(workspace, "CACHE", tmp_path)
+    old, fresh = tmp_path / "run-a-20261016-023412", tmp_path / "run-b-20261022-000000"
+    (old / "a").mkdir(parents=True)
+    (fresh / "b").mkdir(parents=True)
+    day_ago = time.time() - workspace.STALE_CLONE_SECONDS - 60
+    os.utime(old, (day_ago, day_ago))
+    sweep()
+    assert not old.exists()
+    assert fresh.exists()
