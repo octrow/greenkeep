@@ -3,6 +3,7 @@
 ## Unreleased
 
 - A new test file gets the long name (`test_<package>_<module>.py`) when a test file with the short name exists anywhere in the repo, not only in its folder: a root `test_extract.py` and a new `tests/test_extract.py` made pytest stop on "import file mismatch", which parked two cc-bench findings.
+- A repo without a `tests/` folder that keeps its test files at the test root gets the new one there too: the reviewer rejected every cc-bench test file put in a new `tests/` (a dry run then merged the one for `arms.py`).
 - Each run removes the clones older than a day that an interrupted run left in `~/.cache/greenkeep` (a shutdown ends a run before its cleanup); 1.7 GB had piled up.
 - Patcher and reviewer run on Claude Code (`claude -p`): Sonnet writes, Opus reviews inside the clone with read-only tools, so it judges a change against the repo, not the diff alone.
 - Generated tests: the patcher sees the module's existing tests, conftests and pytest/ruff settings, gets a line budget, and writes the file where the repo keeps its tests (`tests/<subpackage>/test_<module>.py`); the gate rejects oversized files.

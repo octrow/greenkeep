@@ -118,12 +118,15 @@ class Lint(Kind):
 
 def characterization_path(f: Finding, root: Path, test_root: str = "") -> str:
     """Where the repo would put it: tests/<subpackage>/test_<module>.py under the test root
-    when that folder exists, else tests/; the full dotted name if a test file anywhere in the
+    when that folder exists, else tests/, or the test root itself when the repo has no
+    tests/ but keeps test files there; the full dotted name if a test file anywhere in the
     repo has the short one (pytest's default import mode fails on two same-named files)."""
     parts = llm.module_name(f.path.removeprefix(f"{test_root}/")).split(".")
     folder = Path(test_root, "tests", *parts[1:-1])
     if not (root / folder).is_dir():
         folder = Path(test_root, "tests")
+    if not (root / folder).is_dir() and any((root / test_root).glob("test_*.py")):
+        folder = Path(test_root)  # the repo keeps its tests at the test root, not in tests/
     name = f"test_{parts[-1]}.py"
     if glob.glob(f"**/{name}", root_dir=root, recursive=True):  # skips .venv, .git
         name = f"test_{'_'.join(parts)}.py"

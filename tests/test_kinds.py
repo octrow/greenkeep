@@ -63,9 +63,15 @@ def test_line_budget_scales_with_the_module_but_has_a_floor():
 
 def test_a_new_test_file_never_shares_a_basename_with_another_test(tmp_path):
     # pytest's default import mode fails on two test_extract.py in folders without __init__
+    (tmp_path / "tests").mkdir()
     (tmp_path / "test_extract.py").write_text("")
     assert (characterization_path(untested("src/cc_bench/extract.py"), tmp_path)
             == "tests/test_cc_bench_extract.py")
+
+
+def test_a_repo_with_its_tests_at_the_root_gets_the_new_one_there_too(tmp_path):
+    (tmp_path / "test_session.py").write_text("")
+    assert characterization_path(untested("src/cc_bench/arms.py"), tmp_path) == "test_arms.py"
 
 
 def test_new_tests_go_under_the_test_root(tmp_path):
