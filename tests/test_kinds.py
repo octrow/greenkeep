@@ -1,3 +1,4 @@
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -117,3 +118,41 @@ def test_without_a_planner_nothing_is_planned(monkeypatch, tmp_path):
                           ws=SimpleNamespace(root=tmp_path))
     assert kinds.patch(job, "SYS", "TASK", hard=True).model == "sonnet"
     assert kinds.is_hard(finding("untested", "coverage")) and kinds.is_hard(finding("bug", "x"))
+
+
+def lint_job(tmp_path, source: str, executed: list[int], missing: list[int]) -> SimpleNamespace:
+    (tmp_path / "a.py").write_text(source)
+    cov = {"files": {"a.py": {"executed_lines": executed, "missing_lines": missing}}}
+    return SimpleNamespace(ws=SimpleNamespace(root=tmp_path),
+                           base=SimpleNamespace(tests=SimpleNamespace(cov=cov)))
+
+
+def test_a_lint_finding_needs_every_line_it_spans_covered(tmp_path):
+    # SIM103 in tiktok-lazy-follower: reported at 104, spans 105, which no test ran
+    job = lint_job(tmp_path, "x = 1\nif x:\n    y = 2\n", executed=[1, 2], missing=[3])
+    f = Finding("ruff", "SIM103", "a.py", 2, "m", "ruff:SIM103:a.py:d", end_line=3)
+    assert not kind_of(f).attemptable(job, f)
+    one_line = replace(f, end_line=2)
+    assert kind_of(one_line).attemptable(job, one_line)
+
+
+def test_a_complexity_finding_needs_the_whole_function_covered(tmp_path):
+    # ruff puts C901 on the name, and `def` runs at import: the body is what changes
+    source = "def f(x):\n    if x:\n        return 1\n    return 2\n"
+    f = Finding("ruff", "C901", "a.py", 1, "m", "ruff:C901:a.py:d", end_line=1)
+    assert not kind_of(f).attemptable(lint_job(tmp_path, source, [1, 2, 4], [3]), f)
+    assert kind_of(f).attemptable(lint_job(tmp_path, source, [1, 2, 3, 4], []), f)
+
+
+def test_fixing_one_of_several_identical_lines_passes_the_scope_check(monkeypatch):
+    # tg-bot-template BLE001: eight identical `except Exception:` lines in one file
+    fp = "ruff:BLE001:a.py:d"
+    job = SimpleNamespace(ws=SimpleNamespace(git=lambda *a: ""),
+                          base=SimpleNamespace(lint=frozenset({fp, fp + "#1"}),
+                                               tests=SimpleNamespace(cov={})))
+    f = Finding("ruff", "BLE001", "a.py", 3, "m", fp)
+    monkeypatch.setattr(kinds, "lint", lambda ws, *p: [replace(f, line=9)])  # the other copy
+    kind_of(f).check_scope(job, f, ["a.py"])
+    monkeypatch.setattr(kinds, "lint", lambda ws, *p: [f, replace(f, fingerprint=fp + "#1")])
+    with pytest.raises(GateFailure, match="still reports"):
+        kind_of(f).check_scope(job, f, ["a.py"])

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A lint finding is attempted only when every line it spans was covered, not just its first: SIM103 in tiktok-lazy-follower spans two lines, and all three attempts failed on the second. A complexity finding (C901, PLR0912, PLR0915) needs its whole function covered: ruff reports it on the name, and a refactor rewrites the body.
+- A bug the hunt finds on a line no test ran is dropped: the gate would reject every fix there.
+- During a boost a new test file is held to the repo's own ruff rules only; the boost rules are for existing code.
+- Identical lines in one file are separate findings (`#1`, `#2`… after the first): fixing one of eight `except Exception:` in tg-bot-template failed the gate as "ruff still reports the finding", and parking one hid all eight.
 - Claude not answering stops the run without counting an attempt, like the usage limit: logged out, an API 5xx or overload, or a connection error. Before, each such call burned an attempt with no pause, so a logout parked findings (with a public issue comment) and cooled repos down in seconds. A timeout or an API 4xx ("prompt is too long") still counts: it belongs to one finding, and stopping on it would stop every run there.
 - A repo in cool-down still gets its security fixes and its Dependabot merges; only the rest waits. Before, the whole repo was skipped for up to 7 days.
 - A merge GitHub refuses right after the PR opens is retried once it has worked out mergeability (`mergeStateStatus` no longer UNKNOWN). Required checks are watched only when the PR is BLOCKED: in a repo without them, `gh pr checks --required` failed and the attempt counted (repo-scout, 2026-10-29), which parks a dependency fix at once.

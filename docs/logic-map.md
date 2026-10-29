@@ -171,7 +171,7 @@ In: `Target`. Out: `Workspace`.
 Branches:
 - local checkout → its `origin` URL, `--reference-if-able` the checkout, copy its `.env`;
 - `owner/name` → clone `https://github.com/owner/name.git`;
-- boost → `extra_rules` = C901, PLR0912, PLR0915, SIM, PERF, UP, RUF (minus RUF001-003, RUF100) for every ruff call in this repo, the no-new-lint check included.
+- boost → `extra_rules` = C901, PLR0912, PLR0915, SIM, PERF, UP, RUF (minus RUF001-003, RUF100) for every ruff call in this repo, the no-new-lint check included, except on files the change adds (step 19).
 Fails: no origin or clone error → `WorkspaceError`, the repo is a problem line (step 24).
 The owner's checkout is never written.
 Module: `workspace`, `config`
@@ -203,7 +203,7 @@ Decides: the full list of problems in the repo.
 In: clone, baseline. Out: `Baseline` (tests, lint fingerprints, ordered findings).
 Push mode first: `gh label create greenkeep / needs-human --force` (fails on a non-GitHub origin).
 Sources:
-- ruff JSON with the repo's own config (+ boost rules); fingerprint `ruff:<code>:<path>:<digest of the line text>`, no line number (#11);
+- ruff JSON with the repo's own config (+ boost rules); fingerprint `ruff:<code>:<path>:<digest of the line text>`, no line number; identical lines in a file get `#1`, `#2`… in line order, the first keeps the plain one; the last line of ruff's range is kept (`end_line`);
 - `untested`: modules < 50% covered with ≥ 5 statements, if coverage measured anything or there are no tests;
 - `vuln`: `uv export` → `pip-audit`, only with a tracked `uv.lock`; target = lowest version fixing every advisory, same line preferred; one advisory with no fix → no finding for the package (#13); fingerprint holds the advisory ids;
 - `outdated`: `uv tree --outdated --depth 1` + PyPI, newest stable on the same major (minor for 0.x), the repo's own constraints not checked (#12); skipped when `.github/dependabot.yml` (not `.yaml`) has a `uv`/`pip` ecosystem;
@@ -229,7 +229,7 @@ Module: `kinds`, `findings`
 
 Decides: what this repo may work on now.
 Kept: state `open` or unseen; not vendored (vendor dir or a `VENDORED.md` above it); `attemptable`:
-- ruff: the finding's first line could pass the coverage rule (#1); always in test files;
+- ruff: every line from the finding's first to its last could pass the coverage rule; for C901/PLR0912/PLR0915 the last line is the function's end (`ast`); always in test files;
 - untested: no test file at the target path yet, and no database/broker client import;
 - outdated: suite exists and total coverage ≥ 60%;
 - vuln, ready: always.
@@ -242,7 +242,7 @@ Decides: whether to look for bugs, and in which module.
 Branches:
 - candidates exist, or `hunt` off, or budget spent → no hunt;
 - else pick the biggest module ≥ 50% covered, ≥ 5 statements, not hunted empty twice as it is now (mark `hunt:<repo>:<path>` = sha + count).
-Hunter (`--model`, 5 min) claims ≤ 3 bugs as JSON; Skeptic (`--review-model`) keeps what it cannot refute; each kept claim on a real line is a `bug` finding, its line's coverage unchecked (#14).
+Hunter (`--model`, 5 min) claims ≤ 3 bugs as JSON; Skeptic (`--review-model`) keeps what it cannot refute; each kept claim on a real line that could pass the coverage rule is a `bug` finding.
 Fails: timeout, CLI error or unreadable JSON → warning, no findings, module not marked; Claude unavailable (`llm.unavailable`) → raised (step 24).
 Module: `hunt`, `llm`, `run`
 
@@ -279,9 +279,9 @@ Module: `kinds`, `llm`, `edits`, `deps`, `ready`, `workspace`
 Decides: whether the change is safe to merge without a human.
 Checks in order:
 1. something changed;
-2. kind scope: lint → only its file, changed lines covered before, ruff no longer reports its fingerprint; untested → only test files, within the line budget; bug → its file + added test lines only, source lines covered, each new test fails on the unfixed code (exit 1); dependency → only `uv.lock`; ready → only its file and `[project]` field, the check passes;
+2. kind scope: lint → only its file, changed lines covered before, ruff reports fewer copies of its line than the baseline did; untested → only test files, within the line budget; bug → its file + added test lines only, source lines covered, each new test fails on the unfixed code (exit 1); dependency → only `uv.lock`; ready → only its file and `[project]` field, the check passes;
 3. no added `noqa`, `type: ignore`, `pragma: no cover`, `ruff:`, `pylint: disable`;
-4. no ruff finding whose fingerprint was not in the baseline (boost rules included, #2);
+4. no ruff finding whose fingerprint was not in the baseline (boost rules included; a file the change adds gets the repo's own rules only);
 5. full suite green (`uv run`, no explicit sync after `uv lock`, #19), not "no tests" where the baseline had tests;
 6. untested → module coverage grew.
 Fails: `GateFailure` with the reason (an attempt).
@@ -370,11 +370,8 @@ Module: `ui`, `port`
 ## Known gaps
 
 Details and fixes are in the plan (number in brackets).
-- A ruff finding is judged attemptable by its first line only; multi-line findings and complexity rules burn attempts on uncovered lines (#1); hunted bugs are not checked at all (#14).
-- During a boost, new test files must also pass the boost rules the repo never selected (#2).
 - Plan issues of findings that stop being reported are never closed; vuln and outdated fingerprints change with each advisory or release (#3).
 - A network outage at the start of the scheduled run marks the day done (#4).
-- Identical lines share one ruff fingerprint: fixing one copy fails the gate, parking one hides all (#11).
 - Outdated targets ignore the repo's own constraints: `uv lock` finds no solution and the finding parks (#12).
 - A package with one unfixable advisory gets no vuln finding for its fixable ones (#13).
 - A broken config crashes every hourly run with no digest (#15).

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -40,6 +41,7 @@ class Finding:
     fingerprint: str
     fixable: bool = False  # ruff can fix it deterministically, no LLM needed
     title: str = ""  # issue, PR and commit subject
+    end_line: int = 0  # the last line ruff's range reaches; 0: just `line`
 
 
 def _digest(text: str) -> str:
@@ -49,17 +51,22 @@ def _digest(text: str) -> str:
 def ruff_findings(items: list[dict], *, root: str,
                   read_line: Callable[[str, int], str]) -> list[Finding]:
     """Ruff JSON output -> findings, most severe rule families first."""
-    found = []
-    for it in items:
+    found, seen = [], Counter()
+    for it in sorted(items, key=lambda it: (it["filename"], it["location"]["row"])):
         path = os.path.relpath(it["filename"], root)
         row = it["location"]["row"]
         text = read_line(path, row)
         fp = f"ruff:{it['code']}:{path}:{_digest(text.strip())}"
+        # identical lines (8 × `except Exception:`) are separate findings; the first keeps
+        # the plain fingerprint, so state from before the index stays valid
+        seen[fp] += 1
+        fp += f"#{seen[fp] - 1}" if seen[fp] > 1 else ""
         fix = it.get("fix") or {}
         noted = it["code"] == "RUF100" and NOQA_WITH_NOTE.search(text)
         found.append(Finding("ruff", it["code"], path, row, it["message"], fp,
                              fixable=fix.get("applicability") == "safe" and not noted,
-                             title=f"{it['code']}: {it['message']} ({path}:{row})"))
+                             title=f"{it['code']}: {it['message']} ({path}:{row})",
+                             end_line=it.get("end_location", {}).get("row", row)))
     return sorted(found, key=lambda f: rank(f.rule))
 
 

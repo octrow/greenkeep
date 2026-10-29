@@ -69,7 +69,14 @@ def _check_no_new_lint(job: Job, paths: list[str]) -> None:
     if silenced := suppressions(job.ws.git("diff", "-U0", "HEAD")):
         raise GateFailure(f"the change silences tools instead of fixing code: {silenced}")
     py = [p for p in paths if p.endswith(".py")]
-    new = [a for a in (lint(job.ws, *py) if py else []) if a.fingerprint not in job.base.lint]
+    # a file greenkeep wrote (a new test) is held to the repo's own rules: a boost's extra
+    # rules are for improving existing code, and ruff_fix_new_test fixes by the repo's config
+    new_files = set(job.ws.git("diff", "--name-only", "--diff-filter=A", "-z", "HEAD").split("\0"))
+    added = [p for p in py if p in new_files]
+    old = [p for p in py if p not in new_files]
+    found = [*(lint(job.ws, *old) if old else []),
+             *(lint(replace(job.ws, extra_rules=()), *added) if added else [])]
+    new = [a for a in found if a.fingerprint not in job.base.lint]
     if new:
         raise GateFailure("the change adds lint findings: "
                           + "; ".join(f"{a.path}:{a.line} {a.rule} {a.message}" for a in new))

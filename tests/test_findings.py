@@ -74,3 +74,17 @@ def test_vendored_code_is_left_to_its_upstream(tmp_path):
 def test_a_rule_family_ranks_by_its_whole_prefix_so_sim_is_not_security():
     assert rank("S110") < rank("F401") < rank("C901") == rank("PLR0912") < rank("SIM102")
     assert rank("SIM102") == rank("PERF401") < rank("E501")
+
+
+def test_identical_lines_get_a_fingerprint_each_and_the_first_keeps_its_own():
+    items = [{"code": "BLE001", "message": "m", "filename": "/w/a.py",
+              "location": {"row": r, "column": 5}} for r in (9, 3)]
+    found = ruff_findings(items, root="/w", read_line=lambda p, n: "except Exception:")
+    alone = ruff_findings(items[1:], root="/w", read_line=lambda p, n: "except Exception:")
+    by_line = {f.line: f.fingerprint for f in found}
+    assert by_line[3] == alone[0].fingerprint and by_line[9] == alone[0].fingerprint + "#1"
+
+
+def test_ruff_findings_keep_the_last_line_they_span():
+    item = {**RUFF[0], "end_location": {"row": 4, "column": 1}}
+    assert ruff_findings([item], root="/w", read_line=lambda p, n: "x")[0].end_line == 4

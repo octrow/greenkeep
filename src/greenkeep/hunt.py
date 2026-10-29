@@ -15,7 +15,7 @@ from claude_cli import ClaudeCliError
 from . import llm
 from .core import Job
 from .findings import UNTESTED_MIN_STATEMENTS, UNTESTED_PERCENT, Finding, _digest, is_vendored
-from .gate import is_test_path
+from .gate import is_test_path, line_is_covered
 
 log = logging.getLogger("greenkeep")
 
@@ -55,9 +55,10 @@ def pick(job: Job) -> str | None:
 
 
 def _finding(job: Job, path: str, c: llm.Claim) -> Finding | None:
-    """None for a claim on a line the module does not have."""
+    """None for a claim on a line the module does not have, or one no test ran: the gate
+    would reject every fix there."""
     text = job.ws.read_line(path, c.line)
-    if not text.strip():
+    if not text.strip() or not line_is_covered(job.base.tests.cov, path, c.line):
         return None
     title = shorten(c.title, TITLE_MAX, placeholder="…")
     # the line number too: two claims on identical lines (`return None`) are two bugs

@@ -189,6 +189,15 @@ def test_web_url_from_remotes():
     assert github.web_url("/tmp/origin.git") == ""
 
 
+def test_in_a_boost_a_new_test_file_is_held_to_the_repo_rules_only(tmp_path, monkeypatch):
+    # RUF005 is a boost rule outside ruff's defaults: the test file is new, nothing to improve
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
+    fake_llm(monkeypatch, [CHAR_TEST.replace("assert a(0) == 2", "assert [0] + [a(0)] == [0, 2]")])
+    state = run.State(Path(":memory:"))
+    run.run_repo(Target(str(src), boost=True), run.Options(False, 3, "x", True), state, Digest())
+    assert state.merged_today() == 1
+
+
 def test_timed_out_attempt_counts_and_the_finding_waits_for_the_next_run(tmp_path, monkeypatch):
     src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
     calls = []

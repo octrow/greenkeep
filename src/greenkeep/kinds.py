@@ -112,7 +112,8 @@ class Lint(Kind):
 
     def attemptable(self, job: Job, f: Finding) -> bool:
         # an uncovered line is not attempted: it becomes workable once tests cover it
-        return line_is_covered(job.base.tests.cov, f.path, f.line)
+        return all(line_is_covered(job.base.tests.cov, f.path, n)
+                   for n in range(f.line, _last_line(job.ws.root, f) + 1))
 
     def produce(self, job: Job, f: Finding, feedback: str) -> Change:
         if f.fixable and not feedback:
@@ -134,8 +135,27 @@ class Lint(Kind):
             raise GateFailure(f"a lint fix may change only {f.path}: {paths}")
         if bad := coverage_violations(job.ws.git("diff", "-U0"), job.base.tests.cov):
             raise GateFailure(f"changed lines were not covered before the change: {bad}")
-        if any(a.fingerprint == f.fingerprint for a in lint(job.ws, f.path)):
+        # identical lines renumber once one is fixed (#1 becomes the plain one): count them
+        before = sum(_copies(fp) == _copies(f.fingerprint) for fp in job.base.lint)
+        after = sum(_copies(a.fingerprint) == _copies(f.fingerprint)
+                    for a in lint(job.ws, f.path))
+        if after >= before:
             raise GateFailure("ruff still reports the finding")
+
+
+def _copies(fingerprint: str) -> str:
+    """The fingerprint all identical lines share (without their `#n`)."""
+    return fingerprint.split("#")[0]
+
+
+def _last_line(root: Path, f: Finding) -> int:
+    """The last line a fix may change: a complexity refactor rewrites the whole function,
+    while ruff reports it on the name only."""
+    if is_hard(f):
+        for node in ast.walk(ast.parse((root / f.path).read_text())):
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.lineno == f.line:
+                return node.end_lineno or f.line
+    return max(f.end_line, f.line)
 
 
 def characterization_path(f: Finding, root: Path, test_root: str = "") -> str:
