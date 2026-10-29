@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Claude Code is called directly (`claude -p`), not through OmniRoute: the account the local Claude Code is logged in to pays. Through OmniRoute every call went to the one Claude account OmniRoute held (the owner's Pro), not the Team seat the owner chose. Models are plain ids again (`claude-sonnet-5-5`, `claude-opus-5-5`).
 - Outdated dependencies are left to Dependabot in a repo whose `.github/dependabot.yml` updates `uv` or `pip`: both opened the same bumps (4 Dependabot PRs closed as duplicates), and only Dependabot edits an `==` pin, which `uv lock --upgrade-package` cannot move past (all 5 bumps in jobs were parked). Vulnerabilities stay with greenkeep: it merges them the same day.
 - During a boost every tended repo bug-hunts once nothing else is left, not only those with `hunt = true`.
 - Boost: `boost_until` (a time with its offset) and `boost_budget` (default 15) in the config. Until then every hourly firing is a run and the budget is `boost_budget`, for nights when the owner wants to spend more of the subscription.

@@ -36,8 +36,10 @@ def _claude(prompt: str, model: str, effort: str, root: Path, timeout: int):
     """One read-only Claude Code call in the clone; its duration goes to the log."""
     start = time.monotonic()
     try:
+        # direct: the local Claude Code login pays (the owner picks it with clauth)
         return run_claude(prompt, model=model, effort=effort, tools=READ_TOOLS, cwd=root,
-                          backend="cli", timeout=timeout, setting_sources=SETTING_SOURCES)
+                          backend="cli", timeout=timeout, setting_sources=SETTING_SOURCES,
+                          direct=True)
     finally:
         log.debug("  %s (%s) took %.0fs", model, effort, time.monotonic() - start)
 EXCERPT_RADIUS = 40

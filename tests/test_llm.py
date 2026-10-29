@@ -14,6 +14,7 @@ def test_patcher_reads_the_clone_with_read_only_tools(monkeypatch, tmp_path):
     llm.ask("sys", "prompt", "m", tmp_path)
     assert seen["tools"] == llm.READ_TOOLS and seen["cwd"] == tmp_path
     assert seen["setting_sources"] == ""  # none of the owner's hooks, plugins or CLAUDE.md
+    assert seen["direct"]  # the local Claude Code login pays, not an OmniRoute connection
 
 
 def test_the_import_name_is_relative_to_the_test_root():

@@ -90,7 +90,7 @@ uv tool install git+https://github.com/octrow/greenkeep
 You also need:
 
 - git, and the [GitHub CLI](https://cli.github.com/) logged in with `gh auth login` (only for `--push`);
-- [Claude Code](https://docs.claude.com/en/docs/claude-code) logged in, called through [claude-subprocess](https://github.com/octrow/claude-cli) (`omniroute run claude -p`): both run inside the clone with read-only tools: Sonnet writes the patches, Opus reviews them.
+- [Claude Code](https://docs.claude.com/en/docs/claude-code) logged in, called through [claude-subprocess](https://github.com/octrow/claude-cli) as plain `claude -p`, so the account Claude Code is logged in to pays: both run inside the clone with read-only tools: Sonnet writes the patches, Opus reviews them.
 
 ## Usage
 
@@ -103,8 +103,8 @@ greenkeep ~/dev/repo-a --push --budget 3     # open issues and PRs, merge on gre
 |---|---|---|
 | `--push` | off | Open a plan issue and a fix PR, wait for the required checks, squash-merge |
 | `--budget N` | 3 | Merged fix PRs per day, across all repos |
-| `--model NAME` | `claude/claude-sonnet-5-5` | Claude Code model that writes the patches |
-| `--review-model NAME` | `claude/claude-opus-5-5` | Claude Code model that reviews each patch inside the clone |
+| `--model NAME` | `claude-sonnet-5-5` | Claude Code model that writes the patches |
+| `--review-model NAME` | `claude-opus-5-5` | Claude Code model that reviews each patch inside the clone |
 | `--keep` | off | Keep the throwaway clones in `~/.cache/greenkeep` for inspection |
 
 A run makes at most one fix per repo, so it's meant to run on a schedule. A daily cron line is enough:

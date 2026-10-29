@@ -90,7 +90,7 @@ uv tool install git+https://github.com/octrow/greenkeep
 Ещё понадобятся:
 
 - git и [GitHub CLI](https://cli.github.com/) с выполненным `gh auth login` (только для `--push`);
-- [Claude Code](https://docs.claude.com/en/docs/claude-code) с выполненным входом, вызывается через [claude-subprocess](https://github.com/octrow/claude-cli) (`omniroute run claude -p`): оба работают прямо в клоне, только на чтение: Sonnet пишет патчи, Opus их проверяет.
+- [Claude Code](https://docs.claude.com/en/docs/claude-code) с выполненным входом, вызывается через [claude-subprocess](https://github.com/octrow/claude-cli) как обычный `claude -p`, так что платит аккаунт, под которым вошёл Claude Code. Оба работают прямо в клоне, только на чтение: Sonnet пишет патчи, Opus их проверяет.
 
 ## Использование
 
@@ -103,8 +103,8 @@ greenkeep ~/dev/repo-a --push --budget 3     # open issues and PRs, merge on gre
 |---|---|---|
 | `--push` | выкл. | Открывает plan issue и PR, ждёт обязательных проверок, вливает squash-ом |
 | `--budget N` | 3 | Сколько PR с исправлениями влить за день, по всем репозиториям |
-| `--model NAME` | `claude/claude-sonnet-5-5` | Модель Claude Code, которая пишет патчи |
-| `--review-model NAME` | `claude/claude-opus-5-5` | Модель Claude Code, которая проверяет каждый патч в клоне |
+| `--model NAME` | `claude-sonnet-5-5` | Модель Claude Code, которая пишет патчи |
+| `--review-model NAME` | `claude-opus-5-5` | Модель Claude Code, которая проверяет каждый патч в клоне |
 | `--keep` | выкл. | Оставляет одноразовые клоны в `~/.cache/greenkeep` для разбора |
 
 За один запуск делается не больше одного исправления на репозиторий, поэтому greenkeep рассчитан на запуск по расписанию. Хватит строки в cron раз в день:
