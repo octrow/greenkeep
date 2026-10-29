@@ -1,5 +1,7 @@
 import pytest
 
+pytest_plugins = ["nicegui.testing.user_plugin"]  # temp storage path for the page tests
+
 
 @pytest.fixture(autouse=True)
 def git_identity(monkeypatch):

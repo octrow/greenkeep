@@ -35,3 +35,29 @@ def test_the_budget_shown_is_the_boost_budget_during_a_boost(monkeypatch):
     cfg = SimpleNamespace(budget_at=lambda now: 15 if now.tzinfo else 0)
     monkeypatch.setattr(ui, "load", lambda: cfg)
     assert ui.budget_today() == 15
+
+
+async def test_the_page_resumes_a_pause_and_says_when_the_run_queue_is_full(tmp_path, monkeypatch):
+    from nicegui.testing.user_simulation import user_simulation
+
+    from greenkeep import ui
+    from greenkeep.config import ConfigError
+    from greenkeep.state import State
+
+    def no_config():
+        raise ConfigError("none")
+
+    pause = tmp_path / "PAUSE"
+    pause.write_text("by hand")
+    monkeypatch.setattr(ui, "PAUSE_FILE", pause)
+    monkeypatch.setattr(ui, "LOG_FILE", tmp_path / "greenkeep.log")
+    monkeypatch.setattr(ui, "State", lambda: State(tmp_path / "state.db"))
+    monkeypatch.setattr(ui, "load", no_config)
+    monkeypatch.setattr(ui.run_pool, "submit", lambda *a, **k: None)  # the queue is full
+    async with user_simulation(root=ui.index) as user:
+        await user.open("/")
+        await user.should_see("Paused")
+        user.find("Resume").click()
+        assert not pause.exists()
+        user.find("Dry run now").click()
+        await user.should_see("queue is full")

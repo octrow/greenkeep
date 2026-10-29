@@ -114,10 +114,15 @@ def _filters() -> tuple[ui.select, ui.input]:
     with layout.filter_bar():
         status = ui.select(list(STATUSES), value="All").props("outlined dense")
         search = layout.search_field("Repo or finding")
-        layout.button("Dry run now", kind="normal", on_click=lambda: run_pool.submit(
-            ["uv", "run", "--project", str(PROJECT), "greenkeep"], label="greenkeep dry run",
-            cwd=PROJECT))
+        layout.button("Dry run now", kind="normal", on_click=_dry_run)
     return status, search
+
+
+def _dry_run() -> None:
+    run = run_pool.submit(["uv", "run", "--project", str(PROJECT), "greenkeep"],
+                          label="greenkeep dry run", cwd=PROJECT)
+    if run is None:
+        ui.notify("The run queue is full: wait for a run to finish", type="warning")
 
 
 def _log_card() -> ui.code:
@@ -176,6 +181,11 @@ def _marker() -> dict:
     return port.marker()
 
 
+async def _stop_runs() -> None:  # one-arg handlers would get the App
+    """A dry run (minutes of Claude calls) must not outlive the dashboard."""
+    await run_pool.terminate_all_live_processes()
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="greenkeep-ui", description=__doc__)
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
@@ -189,6 +199,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"port {a.port} is taken by another app, using {choice.port}", file=sys.stderr)
     texts.TEXTS.update(texts.EN)  # kit strings are Russian by default; greenkeep speaks English
     theme.apply_theme()
+    app.on_shutdown(_stop_runs)
     ui.run(host=port.HOST, port=choice.port, title="greenkeep", show=not a.no_show,
            reload=False)
     return 0
