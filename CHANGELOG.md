@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Claude not answering stops the run without counting an attempt, like the usage limit: logged out, an API 5xx or overload, or a connection error. Before, each such call burned an attempt with no pause, so a logout parked findings (with a public issue comment) and cooled repos down in seconds. A timeout or an API 4xx ("prompt is too long") still counts: it belongs to one finding, and stopping on it would stop every run there.
+- A repo in cool-down still gets its security fixes and its Dependabot merges; only the rest waits. Before, the whole repo was skipped for up to 7 days.
+- A merge GitHub refuses right after the PR opens is retried once it has worked out mergeability (`mergeStateStatus` no longer UNKNOWN). Required checks are watched only when the PR is BLOCKED: in a repo without them, `gh pr checks --required` failed and the attempt counted (repo-scout, 2026-10-29), which parks a dependency fix at once.
 - During a boost the reviewer's model (Opus) first plans each hard change: tests for untested code, bug fixes and complexity refactors (C901, PLR0912, PLR0915). It reads the repo and names the conventions to follow, what to change or test, and what to avoid; Sonnet writes the change from that plan, and Opus still reviews it. The PR names both (`claude-sonnet-5-5 + plan by claude-opus-5-5`), so the merge rate with and without a plan can be compared. Lint and other changes are not planned.
 - During a boost ruff also lints for improvements beyond the repo's own config: complexity (C901, PLR0912, PLR0915), SIM, PERF, UP and RUF (without the ambiguous-unicode rules, which flag Cyrillic text, and RUF100). Complexity goes first. The gate is unchanged, so a refactor lands only where tests covered every line it touches.
 - A ruff rule ranks by its whole letter prefix: `SIM` findings ranked as `S` (security) before, so they went first and got `fix:` subjects.

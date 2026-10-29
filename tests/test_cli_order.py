@@ -1,7 +1,8 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from claude_cli import UsageLimitError
+import pytest
+from claude_cli import ClaudeCliError, NotLoggedInError, UsageLimitError
 
 from greenkeep import cli
 from greenkeep.config import Target
@@ -39,12 +40,17 @@ def test_a_named_repo_keeps_its_config_entry_test_root_and_hunt(monkeypatch, tmp
     assert targets[1] == Target("octrow/other")
 
 
-def test_usage_limit_stops_the_run_and_leaves_the_day_open(monkeypatch):
+@pytest.mark.parametrize("error", [
+    UsageLimitError("claude hit a usage/rate limit"),
+    NotLoggedInError("claude reports 'Not logged in'"),
+    ClaudeCliError('claude exited 1: API Error: 529 {"type":"overloaded_error"}'),
+])
+def test_claude_unavailable_stops_the_run_and_leaves_the_day_open(monkeypatch, error):
     seen = []
 
     def limited(t, *_):
         seen.append(t.name)
-        raise UsageLimitError("claude hit a usage/rate limit")
+        raise error
 
     monkeypatch.setattr(cli, "run_repo", limited)
     digest = cli._run_all([Target("octrow/a"), Target("octrow/b")],

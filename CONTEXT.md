@@ -93,7 +93,7 @@ The state in which runs exit immediately; set by the owner or by auto-pause.
 _Avoid_: stop, disable, kill switch
 
 **Cool-down**:
-Up to seven days during which greenkeep leaves one tended repo alone, set when a run stopped working that repo because its findings kept getting parked; it ends early once the repo or greenkeep itself changes. The digest mentions it once, when it starts.
+Up to seven days during which greenkeep leaves one tended repo alone except for security fixes and Dependabot merges, set when a run stopped working that repo because its findings kept getting parked; it ends early once the repo or greenkeep itself changes. The digest mentions it once, when it starts.
 _Avoid_: shelved, snooze, backoff
 
 **Auto-pause**:

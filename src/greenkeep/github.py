@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 
 from .workspace import Workspace, sh
 
@@ -11,6 +12,8 @@ PARKED_LABEL = "needs-human"
 LABELS = {LABEL: "0e8a16", PARKED_LABEL: "d93f0b"}
 NUMBER = re.compile(r"/(\d+)\s*$")
 CHECKS_TIMEOUT = 1800
+MERGE_STATE_POLLS = 10  # GitHub works mergeability out within seconds of `pr create`
+MERGE_STATE_WAIT = 3
 
 
 def web_url(origin: str) -> str:
@@ -76,6 +79,20 @@ def merge(ws: Workspace, pr: int, head: str = "") -> None:
            *(["--match-head-commit", head] if head else [])]
     if sh(cmd, ws.root, check=False).returncode == 0:
         return
-    sh(["gh", "pr", "checks", str(pr), "--watch", "--required", "--fail-fast"], ws.root,
-       timeout=CHECKS_TIMEOUT)  # red or hung CI raises: the attempt fails
+    # BLOCKED: required checks still running (or a review); without required checks
+    # `checks --required` itself fails, so any other state just tries the merge again
+    if _merge_state(ws, pr) == "BLOCKED":
+        sh(["gh", "pr", "checks", str(pr), "--watch", "--required", "--fail-fast"], ws.root,
+           timeout=CHECKS_TIMEOUT)  # red or hung CI raises: the attempt fails
     sh(cmd, ws.root)
+
+
+def _merge_state(ws: Workspace, pr: int) -> str:
+    """mergeStateStatus once GitHub has computed it (UNKNOWN right after the PR opens)."""
+    for _ in range(MERGE_STATE_POLLS):
+        state = _gh(ws, "pr", "view", str(pr), "--json", "mergeStateStatus",
+                    "--jq", ".mergeStateStatus")
+        if state != "UNKNOWN":
+            break
+        time.sleep(MERGE_STATE_WAIT)
+    return state

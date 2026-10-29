@@ -4,10 +4,14 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
-from greenkeep import github, llm, run, workspace
+import pytest
+from claude_cli import NotLoggedInError
+
+from greenkeep import dependabot, deps, github, llm, run, workspace
 from greenkeep.config import Target
 from greenkeep.core import DEFAULT_REVIEW_MODEL
 from greenkeep.digest import Digest
+from greenkeep.findings import Finding
 
 PYPROJECT = '[project]\nname = "demo"\nversion = "0"\ndescription = "Demo"\nrequires-python = ">=3.12"\n'
 CODE = "import os\n\n\ndef add(a, b):\n    return a + b\n"
@@ -199,6 +203,18 @@ def test_timed_out_attempt_counts_and_the_finding_waits_for_the_next_run(tmp_pat
     assert state.status("demo", "untested:demo.py") == "open"
 
 
+def test_a_logged_out_claude_stops_the_repo_without_counting_an_attempt(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
+
+    def logged_out(*_):
+        raise NotLoggedInError("claude reports 'Not logged in'")
+    monkeypatch.setattr(llm, "ask", logged_out)
+    state = run.State(Path(":memory:"))
+    with pytest.raises(NotLoggedInError):
+        run.run_repo(Target(str(src)), run.Options(False, 3, "x", True), state, Digest())
+    assert state.attempts("demo", "untested:demo.py") == 0
+
+
 def test_parked_findings_in_a_row_put_the_repo_in_cool_down(tmp_path, monkeypatch):
     src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG, "other.py": BIG})
     fake_llm(monkeypatch, ["no"])
@@ -208,12 +224,19 @@ def test_parked_findings_in_a_row_put_the_repo_in_cool_down(tmp_path, monkeypatc
     assert "cool-down until" in digest.problems[0]
 
 
-def test_repo_in_cool_down_is_not_even_cloned(tmp_path, monkeypatch):
+def test_repo_in_cool_down_still_gets_security_fixes_and_dependabot(tmp_path, monkeypatch):
     src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
     state, digest = run.State(Path(":memory:")), Digest()
     state.cool_down("demo", git(src, "rev-parse", "HEAD").strip(), workspace.tool_head())
+    vuln = Finding("vuln", "pillow==12.0", "uv.lock", 0, "pillow 11: GHSA-1", "vuln:pillow:GHSA-1",
+                   title="Fix GHSA-1: bump pillow to 12.0")
+    monkeypatch.setattr(deps, "collect", lambda ws: [vuln])
+    worked, dependabot_runs = [], []
+    monkeypatch.setattr(run, "work", lambda job, f: worked.append(f.fingerprint) or False)
+    monkeypatch.setattr(dependabot, "merge_safe", lambda *a: dependabot_runs.append(1))
     run.run_repo(Target(str(src)), run.Options(False, 3, "x", True), state, digest)
-    assert digest.cooling == 1 and not workspace.CACHE.exists()
+    assert worked == ["vuln:pillow:GHSA-1"] and dependabot_runs == [1]  # untested:demo.py waits
+    assert digest.cooling == 1 and digest.clean == 0
 
 
 def test_a_new_commit_in_the_repo_lifts_its_cool_down(tmp_path, monkeypatch):

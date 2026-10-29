@@ -23,7 +23,7 @@ systemd timer (hourly) / CLI / dashboard button
   ├─ 5  Options ............ which models write, review and plan?
   ├─ 6  Repo order ......... Focus first, then the least recently merged
   │   per repo:
-  ├─ 7  Cool-down .......... is the repo resting after two parked findings?
+  ├─ 7  Cool-down .......... resting after two parked findings? → security and Dependabot only
   ├─ 8  Clone .............. fresh clone; boost adds extra ruff rules
   ├─ 9  Revert check ....... did the owner revert a greenkeep merge? → auto-pause
   ├─ 10 Baseline tests ..... is the suite green in a clean clone, and what does it cover?
@@ -43,7 +43,7 @@ systemd timer (hourly) / CLI / dashboard button
   │   after the repo's own work:
   ├─ 23 Dependabot ......... merge its same-major PRs on a green local suite
   │
-  ├─ 24 Run-level stops .... auto-pause, Claude usage limit, a broken repo
+  ├─ 24 Run-level stops .... auto-pause, Claude unavailable, a broken repo
   └─ 25 Digest ............. Telegram text; mark the day done
   │
 merged PRs on GitHub, issues, state.db, the digest
@@ -151,17 +151,17 @@ Module: `cli`, `core`
 Decides: which repos get the budget first.
 Order: Focus repos first, then by `last_merge` ascending (never merged first).
 A spent budget still visits every repo: security findings and Dependabot merges do not need it.
-A cooling repo is skipped whole, security and Dependabot included (#10).
+A cooling repo still gets security fixes and Dependabot merges (step 7).
 Module: `cli`, `state`
 
 ### 7. Cool-down
 
-Decides: whether to skip the repo this run.
+Decides: whether the repo gets its full run or only what cannot wait.
 Branches:
 - no cool-down mark → work it;
-- `today < until` and origin HEAD unchanged (or unreachable) and greenkeep's own HEAD unchanged → skip, count "in cool-down";
+- `today < until` and origin HEAD unchanged (or unreachable) and greenkeep's own HEAD unchanged → count "in cool-down", clone it anyway: only budget-exempt findings (`vuln`) are worked, no hunt, then Dependabot (step 23);
 - otherwise → lift the mark, work it.
-Cost: one `git ls-remote` per cooling repo.
+Cost: one `git ls-remote` per cooling repo, plus the clone, sync and baseline suite.
 Module: `run`, `state`, `workspace`
 
 ### 8. Clone
@@ -243,7 +243,7 @@ Branches:
 - candidates exist, or `hunt` off, or budget spent → no hunt;
 - else pick the biggest module ≥ 50% covered, ≥ 5 statements, not hunted empty twice as it is now (mark `hunt:<repo>:<path>` = sha + count).
 Hunter (`--model`, 5 min) claims ≤ 3 bugs as JSON; Skeptic (`--review-model`) keeps what it cannot refute; each kept claim on a real line is a `bug` finding, its line's coverage unchecked (#14).
-Fails: timeout, CLI error or unreadable JSON → warning, no findings, module not marked; usage limit → raised (step 24).
+Fails: timeout, CLI error or unreadable JSON → warning, no findings, module not marked; Claude unavailable (`llm.unavailable`) → raised (step 24).
 Module: `hunt`, `llm`, `run`
 
 ### 16. Budget
@@ -299,18 +299,18 @@ Module: `run`, `llm`
 Decides: how the change reaches the base branch.
 Commit on `greenkeep/<sha1(fingerprint)[:10]>`: `<type>: <title>` ≤ 72 chars, body with finding, model, reviewer, gate note, `Closes #N`. PR title: the finding's title.
 Branches:
-- push → force-push, reuse an open PR on that branch or create one, `gh pr merge --squash --delete-branch`; refused → `gh pr checks --watch --required --fail-fast` (30 min), then merge again;
+- push → force-push, reuse an open PR on that branch or create one, `gh pr merge --squash --delete-branch`; refused → poll `mergeStateStatus` while UNKNOWN (10 × 3 s); BLOCKED → `gh pr checks --watch --required --fail-fast` (30 min); then merge once more;
 - dry run → local commit only, diff to the log.
 State: `merged`, PR, merge sha. One merge per repo per run: the baseline is stale after it.
-Fails: a gh/git error → an attempt, the change is made again next attempt (#5); a `ValueError` from gh output → run-level (step 24), nothing counted.
+Fails: a merge still refused (conflict, behind, a required review, red CI) or a gh/git error → an attempt, the change is made again next attempt; a `ValueError` from gh output → run-level (step 24), nothing counted.
 Module: `run`, `github`, `state`
 
 ### 22. Failure
 
 Decides: what a failed attempt costs.
 Branches:
-- `UsageLimitError` → not counted, raised (step 24); the HTTP 429/503 check only matters through a gateway;
-- any other Claude error (not logged in, overload, network) → counted like a bad change (#9);
+- Claude unavailable (`llm.unavailable`: `UsageLimitError`, `NotLoggedInError`, or a Claude error with an API 5xx, overload or connection failure) → not counted, raised (step 24);
+- any other Claude error (timeout, API 4xx such as "prompt is too long", unreadable reply) → counted like a bad change;
 - counted: attempts + 1, next attempt at once; dependency kinds park at once (`retries = False`); others park at 3;
 - parked → digest "Needs you", issue comment with the one-line reason, label `needs-human`;
 - timeout → counted, then stop this finding for the run, try the next candidate;
@@ -335,7 +335,7 @@ Module: `dependabot`, `deps`, `github`
 Decides: what one repo's exception does to the rest of the run.
 Branches:
 - `AutoPause` → write PAUSE (push), digest line, stop the run; the day is still marked done;
-- usage limit (`UsageLimitError`) → digest line, `limited`, stop; the digest is sent, the day is not marked, the next hourly run tries again;
+- Claude unavailable (step 22) → digest line "Claude unavailable at <repo>, run stopped: <reason>", `limited`, stop; the digest is sent, the day is not marked, the next hourly run tries again (and sends its digest too);
 - anything else → log the traceback, first line to "Problems", next repo.
 The clone is deleted after each repo unless `--keep`.
 Module: `cli`, `run`, `reverts`
@@ -370,9 +370,6 @@ Module: `ui`, `port`
 ## Known gaps
 
 Details and fixes are in the plan (number in brackets).
-- Any Claude error other than the usage limit counts as an attempt, with no delay: a logout or an API outage parks findings and cools repos down (#9).
-- A cooling repo gets no security fixes and no Dependabot merges for up to 7 days (#10).
-- A merge refused once fails the attempt and remakes the change; dependency kinds park on it (#5).
 - A ruff finding is judged attemptable by its first line only; multi-line findings and complexity rules burn attempts on uncovered lines (#1); hunted bugs are not checked at all (#14).
 - During a boost, new test files must also pass the boost rules the repo never selected (#2).
 - Plan issues of findings that stop being reported are never closed; vuln and outdated fingerprints change with each advisory or release (#3).

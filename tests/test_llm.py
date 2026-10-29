@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+from claude_cli import ClaudeCliError, NotLoggedInError
+
 from greenkeep import llm
 from greenkeep.findings import Finding
 
@@ -41,3 +43,12 @@ def test_the_planner_reads_the_repo_at_high_effort_and_returns_its_plan(monkeypa
     assert llm.plan("TASK", "opus", tmp_path) == "1. mirror tests/test_a.py"
     assert seen["model"] == "opus" and seen["effort"] == "high"
     assert seen["tools"] == llm.READ_TOOLS and "TASK" in seen["prompt"]
+
+
+def test_only_claude_not_answering_counts_as_unavailable():
+    assert llm.unavailable(NotLoggedInError("claude reports 'Not logged in'"))
+    assert llm.unavailable(ClaudeCliError("claude exited 1: API Error: 529 overloaded_error"))
+    assert llm.unavailable(ClaudeCliError("claude exited 1: API Error: Connection error."))
+    assert not llm.unavailable(ClaudeCliError("claude exited 1: API Error: 400 prompt is too long"))
+    assert not llm.unavailable(ClaudeCliError("claude timed out after 600s"))
+    assert not llm.unavailable(OSError("API Error: 500"))  # only Claude's own errors

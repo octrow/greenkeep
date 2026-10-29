@@ -194,8 +194,9 @@ dashboard already runs there it asks whether to restart it (default No) and prin
 
 Once a day: the timer fires hourly and greenkeep exits at once if today's digest already went
 out, so a run cut short by a shutdown starts over after the next boot. During a boost
-every hourly firing is a run. A run that hits Claude's usage limit stops there and leaves
-the day open, so the next hourly firing tries again.
+every hourly firing is a run. A run where Claude does not answer (usage limit, logged out,
+API down) stops there without counting an attempt and leaves the day open, so the next
+hourly firing tries again.
 
 ```bash
 cp contrib/systemd/greenkeep.* ~/.config/systemd/user/

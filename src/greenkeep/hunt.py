@@ -10,7 +10,7 @@ import hashlib
 import logging
 from textwrap import shorten
 
-from claude_cli import ClaudeCliError, UsageLimitError
+from claude_cli import ClaudeCliError
 
 from . import llm
 from .core import Job
@@ -92,9 +92,9 @@ def _surviving_claims(job: Job, path: str) -> list[llm.Claim] | None:
     try:
         claims = llm.hunt(path, job.opts.model, job.ws.root)
         kept = llm.doubt(path, claims, job.opts.review_model, job.ws.root) if claims else claims
-    except UsageLimitError:
-        raise
     except (ClaudeCliError, TimeoutError) as exc:
+        if llm.unavailable(exc):
+            raise
         log.warning("%s: bug hunt failed: %s", job.ws.name, exc)
         return None
     if claims is None or kept is None:

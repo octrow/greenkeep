@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 from datetime import date
 from textwrap import shorten
 
-from claude_cli import ClaudeCliError, UsageLimitError
+from claude_cli import ClaudeCliError
 
 from . import dependabot, deps, github, hunt, llm, ready, reverts
 from .config import Target
@@ -44,8 +44,7 @@ SUBJECT_MAX = 72
 TRAILER = "Co-Authored-By: greenkeep <greenkeep@users.noreply.github.com>"
 
 # anything that sinks one attempt; it is counted, so a poison finding parks instead of
-# failing every run. ponytail: a gateway outage also burns attempts (one finding per
-# repo per run); add a health ping before the run if that starts parking good findings
+# failing every run. Claude not answering at all is not counted (`llm.unavailable`)
 ATTEMPT_FAILURES = (GateFailure, EditError, WorkspaceError, ClaudeCliError, OSError,
                     UnicodeError, tomllib.TOMLDecodeError)
 
@@ -211,7 +210,7 @@ def work(job: Job, f: Finding) -> bool:
             _land(job, Fix(f, change, paths, issue))
             return True
         except ATTEMPT_FAILURES as exc:
-            if not_the_change(exc):
+            if llm.unavailable(exc):
                 raise
             feedback = clip(redact(str(exc), job.ws.secrets()))
             _record_failure(job, f, feedback)
@@ -222,11 +221,6 @@ def work(job: Job, f: Finding) -> bool:
 
 def _timed_out(exc: Exception) -> bool:
     return isinstance(exc, TimeoutError) or "timed out after" in str(exc)
-
-
-def not_the_change(exc: Exception) -> bool:
-    """Quota and rate limits say nothing about the change: they stop the repo, not count."""
-    return isinstance(exc, UsageLimitError) or str(exc).startswith(("HTTP 429", "HTTP 503"))
 
 
 def clip(text: str) -> str:
@@ -261,7 +255,7 @@ def _hunted(job: Job, enabled: bool) -> list[Finding]:
     try:
         return hunt.hunt(job)
     except ATTEMPT_FAILURES as exc:
-        if not_the_change(exc):
+        if llm.unavailable(exc):
             raise
         log.warning("%s: bug hunt failed: %s", job.ws.name, exc)
         return []
@@ -319,9 +313,9 @@ def _tell_owner(ws: Workspace, state: State, digest: Digest) -> None:
 
 
 def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> None:
-    if _cooling(target, state):
+    cooling = _cooling(target, state)
+    if cooling:
         digest.cooling += 1
-        return
     ws = clone(target)
     try:
         reverts.check(ws, state, backfill=opts.push)  # raises AutoPause before any work
@@ -338,7 +332,11 @@ def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> Non
             _tell_owner(ws, state, digest)
         else:
             digest.owner += [f"{ws.name}: {note}" for note in ready.owner_notes(ws.root)]
-        _work_repo(Job(ws, base, opts, state, digest), target.hunt)
+        if cooling:  # security fixes and Dependabot do not wait out a cool-down
+            base = replace(base, findings=[f for f in base.findings
+                                           if kind_of(f).exempt_from_budget])
+        if base.findings or not cooling:
+            _work_repo(Job(ws, base, opts, state, digest), target.hunt and not cooling)
         dependabot.merge_safe(ws, opts, state, digest)  # greenkeep's own fixes go first
     finally:
         if not opts.keep:

@@ -16,8 +16,9 @@ from pathlib import Path
 from .config import DEFAULT_BUDGET, PAUSE_FILE, ConfigError, Target, load, pause, paused
 from .core import DEFAULT_MODEL, DEFAULT_REVIEW_MODEL, Options
 from .digest import Digest, send
+from .llm import unavailable
 from .reverts import AutoPause
-from .run import not_the_change, run_repo
+from .run import run_repo
 from .state import State
 from .workspace import sweep
 
@@ -97,14 +98,14 @@ def _run_all(targets: list[Target], opts: Options, state: State) -> Digest:
             digest.problems.append(f"AUTO-PAUSED: {stop}. Check it, then delete {PAUSE_FILE}")
             break
         except Exception as exc:  # one broken repo must not cost the others their run
-            if not_the_change(exc):  # every later repo would hit the same limit
+            first = (str(exc).splitlines() or [type(exc).__name__])[0][:PROBLEM_CHARS]
+            if unavailable(exc):  # every later repo would hit the same wall
                 log.warning("%s: %s; run stopped, the next hourly run tries again", t.name, exc)
-                digest.problems.append(f"Claude usage limit at {t.name}: run stopped")
+                digest.problems.append(f"Claude unavailable at {t.name}, run stopped: {first}")
                 digest.limited = True
                 break
             log.exception("%s: run failed", t.name)
-            first = (str(exc).splitlines() or [type(exc).__name__])[0]
-            digest.problems.append(f"{t.name}: {first[:PROBLEM_CHARS]}")
+            digest.problems.append(f"{t.name}: {first}")
     return digest
 
 

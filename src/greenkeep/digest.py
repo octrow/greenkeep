@@ -24,7 +24,7 @@ class Digest:
     clean: int = 0
     waiting: list[str] = field(default_factory=list)
     cooling: int = 0
-    limited: bool = False  # Claude's usage limit stopped the run: the day is not done
+    limited: bool = False  # Claude did not answer (limit, login, outage): the day is not done
 
     def text(self, budget_left: int) -> str:
         lines = [(f"greenkeep: {len(self.merged)} merged, {len(self.parked)} parked, "

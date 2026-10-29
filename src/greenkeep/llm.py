@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from claude_cli import run_claude
+from claude_cli import ClaudeCliError, NotLoggedInError, UsageLimitError, run_claude
 from claude_cli.parsing import extract_json_or_none
 
 from .findings import Finding
@@ -29,7 +30,19 @@ READ_TOOLS = "Read,Grep,Glob"  # neither role may write: greenkeep applies the r
 # role's prompt depend on the machine it runs on (and cost a third more time and tokens)
 SETTING_SOURCES = ""
 
+# Claude Code's own words when the API, not the prompt, failed: 5xx, overload, no network.
+# Not a 4xx ("prompt is too long"): that one finding would stop every run, so it counts
+NO_ANSWER = re.compile(r"API Error: (?:5\d\d|Connection|Request timed out)|overloaded_error"
+                       r"|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN", re.IGNORECASE)
+
 log = logging.getLogger("greenkeep")
+
+
+def unavailable(exc: Exception) -> bool:
+    """Claude did not answer (limit, logged out, API down): that says nothing about the
+    change, and every later call would fail the same way, so it stops the run uncounted."""
+    return (isinstance(exc, (UsageLimitError, NotLoggedInError))
+            or isinstance(exc, ClaudeCliError) and bool(NO_ANSWER.search(str(exc))))
 
 
 def _claude(prompt: str, model: str, effort: str, root: Path, timeout: int):
