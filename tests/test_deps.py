@@ -1,4 +1,11 @@
-from greenkeep.deps import lowest_fix, outdated_findings, parse_outdated, pick_target, vuln_findings
+from greenkeep.deps import (
+    dependabot_updates_deps,
+    lowest_fix,
+    outdated_findings,
+    parse_outdated,
+    pick_target,
+    vuln_findings,
+)
 
 TREE = """buysmarter v0.1.2
 ├── alembic v1.18.5 (latest: v1.20.0)
@@ -47,3 +54,16 @@ def test_vuln_findings():
     [f] = vuln_findings(audit)
     assert f.rule == "jinja2==3.1.4" and f.kind == "vuln"
     assert f.title == "Fix CVE-2, GHSA-1: bump jinja2 to 3.1.4"
+
+
+def test_dependabot_owns_version_updates_only_for_python_ecosystems(tmp_path):
+    assert not dependabot_updates_deps(tmp_path)
+    cfg = tmp_path / ".github/dependabot.yml"
+    cfg.parent.mkdir()
+    cfg.write_text('updates:\n  - package-ecosystem: "github-actions"\n')
+    assert not dependabot_updates_deps(tmp_path)
+    cfg.write_text("updates:\n  - package-ecosystem: github-actions\n"
+                   "  - package-ecosystem: uv\n    directory: /\n")
+    assert dependabot_updates_deps(tmp_path)
+    cfg.write_text("updates:\n  - package-ecosystem: 'pip'\n")
+    assert dependabot_updates_deps(tmp_path)

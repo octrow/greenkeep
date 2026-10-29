@@ -167,7 +167,7 @@ Config `~/.config/greenkeep/config.toml`:
 budget = 3            # merged PRs per weekday
 weekend_budget = 1
 boost_until = 2026-10-30T03:00:00+05:00  # optional: until then, a run every hour
-boost_budget = 15                        # and this budget instead
+boost_budget = 15                        # and this budget, and every repo bug-hunts
 repos = [
   "~/dev/my-repo",
   "owner/name-without-local-checkout",

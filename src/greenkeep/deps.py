@@ -1,6 +1,7 @@
 """Dependency findings: known vulnerabilities (pip-audit) and outdated direct dependencies.
 
 Both are fixed the same way, deterministically: `uv lock --upgrade-package name==version`.
+Outdated ones are left to Dependabot where it already updates the repo's Python deps.
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ import json
 import re
 import urllib.request
 from collections.abc import Callable
+from pathlib import Path
 
 from packaging.version import InvalidVersion, Version
 
@@ -20,6 +22,9 @@ PYPI = "https://pypi.org/pypi/{}/json"
 PYPI_TIMEOUT = 20
 AUDIT_TIMEOUT = 600
 # `├── fastapi v0.142.2 (latest: v0.143.2)`; extras like `name[a, b]` are dropped
+DEPENDABOT = Path(".github/dependabot.yml")
+# Dependabot ecosystems that bump the deps in pyproject.toml / uv.lock
+PYTHON_ECOSYSTEM = re.compile(r"package-ecosystem:\s*[\"']?(?:uv|pip)[\"']?\s*$", re.MULTILINE)
 OUTDATED = re.compile(r"^[├└]── ([\w.-]+)(?:\[[^\]]*\])? v(\S+) \(latest: v(\S+)\)", re.MULTILINE)
 
 
@@ -113,8 +118,17 @@ def collect(ws: Workspace) -> list[Finding]:
                 "--format", "json", "--progress-spinner", "off"], ws.root, check=False,
                timeout=AUDIT_TIMEOUT)
     vulns = vuln_findings(json.loads(audit.stdout or "{}"))
+    if dependabot_updates_deps(ws.root):  # it opens the same bumps, and edits `==` pins too
+        return vulns
     tree = sh(["uv", "tree", "--outdated", "--depth", "1"], ws.root).stdout
     return vulns + outdated_findings(parse_outdated(tree), pypi_releases)
+
+
+def dependabot_updates_deps(root: Path) -> bool:
+    try:
+        return bool(PYTHON_ECOSYSTEM.search((root / DEPENDABOT).read_text()))
+    except OSError:
+        return False
 
 
 def upgrade(ws: Workspace, spec: str) -> None:

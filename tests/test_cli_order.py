@@ -69,3 +69,11 @@ def test_a_boost_runs_again_on_a_day_already_done(monkeypatch, tmp_path):
         monkeypatch.setattr(cli, "load", lambda cfg=cfg: cfg)
         cli.main(["--push"])
     assert runs == [1]
+
+
+def test_a_boost_hunts_in_every_repo(monkeypatch, tmp_path):
+    cfg = SimpleNamespace(repos=[Target("octrow/a"), Target("octrow/b", hunt=True)],
+                          boosting=lambda _now: True, budget_at=lambda _now: 15)
+    monkeypatch.setattr(cli, "load", lambda: cfg)
+    targets, budget = cli._targets(cli._parse_args([]))
+    assert [t.hunt for t in targets] == [True, True] and budget == 15

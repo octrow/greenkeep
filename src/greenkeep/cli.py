@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from dataclasses import replace
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -58,7 +59,10 @@ def _targets(a: argparse.Namespace) -> tuple[list[Target], int]:
         named = [Target(r) for r in a.repos]
         return [known.get(t.path or t.spec, t) for t in named], a.budget or DEFAULT_BUDGET
     cfg = load()
-    return cfg.repos, a.budget or cfg.budget_at(datetime.now().astimezone())
+    now = datetime.now().astimezone()
+    # a boost spends the subscription: every repo bug-hunts once nothing else is left
+    repos = [replace(t, hunt=True) for t in cfg.repos] if cfg.boosting(now) else cfg.repos
+    return repos, a.budget or cfg.budget_at(now)
 
 
 def _boosting() -> bool:

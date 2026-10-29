@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Outdated dependencies are left to Dependabot in a repo whose `.github/dependabot.yml` updates `uv` or `pip`: both opened the same bumps (4 Dependabot PRs closed as duplicates), and only Dependabot edits an `==` pin, which `uv lock --upgrade-package` cannot move past (all 5 bumps in jobs were parked). Vulnerabilities stay with greenkeep: it merges them the same day.
+- During a boost every tended repo bug-hunts once nothing else is left, not only those with `hunt = true`.
 - Boost: `boost_until` (a time with its offset) and `boost_budget` (default 15) in the config. Until then every hourly firing is a run and the budget is `boost_budget`, for nights when the owner wants to spend more of the subscription.
 - Claude's usage limit stops the run at the repo that hit it (before, each later repo cloned, synced and ran its suite only to hit it too: 8 repos on 2026-10-26) and leaves the day open, so the next hourly firing tries again.
 - A characterization test retry corrects the previous attempt's file (shown to the patcher with the failure) instead of writing a new one: re-rolls failed a different way each time (a wrong assert, then over the line budget, then new lint).
