@@ -61,3 +61,13 @@ async def test_the_page_resumes_a_pause_and_says_when_the_run_queue_is_full(tmp_
         assert not pause.exists()
         user.find("Dry run now").click()
         await user.should_see("queue is full")
+
+
+def test_a_second_start_opens_the_running_dashboard(monkeypatch):
+    from greenkeep import port, ui
+    opened = []
+    monkeypatch.setattr(ui.port, "choose", lambda p, ask: port.Choice(p, serve=False))
+    monkeypatch.setattr(ui.webbrowser, "open", opened.append)
+    assert ui.main([]) == 0
+    assert opened == ["http://127.0.0.1:8095/"]
+    assert ui.main(["--no-show"]) == 0 and len(opened) == 1

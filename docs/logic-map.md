@@ -361,7 +361,7 @@ Module: `state`, `digest`, `cli`
 
 ### Dashboard
 
-`greenkeep-ui` serves on 127.0.0.1:8095 (next free port; restarts or reuses a running dashboard).
+`greenkeep-ui` serves on 127.0.0.1:8095 (next free port; restarts a running dashboard or opens it in the browser).
 Opens state.db read-write (runs the schema and migrations); reads it and the log tail every 30 s; "Resume" deletes PAUSE; "Dry run now" starts `greenkeep` with a live log. A full run queue (20 runs) → a notice instead; stopping the dashboard kills a run still going.
 It shows the budget of the moment (a boost's included) and says the timer fires hourly with one run a day.
 Feeds: step 1 (resume), the dry-run entry point.

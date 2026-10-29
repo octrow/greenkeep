@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import webbrowser
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -194,6 +195,8 @@ def main(argv: list[str] | None = None) -> int:
     choice = port.choose(a.port, ask=port.ask_tty)
     if not choice.serve:
         print(f"greenkeep dashboard: {choice.url}")
+        if not a.no_show:  # a second click on the menu entry brings the running one up
+            webbrowser.open(choice.url)
         return 0
     if choice.port != a.port:
         print(f"port {a.port} is taken by another app, using {choice.port}", file=sys.stderr)
