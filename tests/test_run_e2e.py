@@ -1,12 +1,12 @@
 """Whole dry runs on throwaway repos: real git, uv, ruff and pytest; only the LLM is faked."""
 
 import subprocess
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 from greenkeep import github, llm, run, workspace
-from greenkeep.core import DEFAULT_REVIEW_MODEL
 from greenkeep.config import Target
+from greenkeep.core import DEFAULT_REVIEW_MODEL
 from greenkeep.digest import Digest
 
 PYPROJECT = '[project]\nname = "demo"\nversion = "0"\ndescription = "Demo"\nrequires-python = ">=3.12"\n'

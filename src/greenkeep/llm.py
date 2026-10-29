@@ -150,8 +150,8 @@ def characterization_prompt(f: Finding, source: str, context: dict[str, str], bu
         parts += ["", f"Existing {path}:", "```", text, "```"]
     if previous:
         parts += ["", "Your previous test file:", "```python", previous, "```",
-                  "Correct it: keep the tests that passed, fix or drop the ones the failure "
-                  "names, and stay within the line budget."]
+                  ("Correct it: keep the tests that passed, fix or drop the ones the failure "
+                   "names, and stay within the line budget.")]
     return _with_feedback(parts, feedback)
 
 

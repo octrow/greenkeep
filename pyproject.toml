@@ -28,7 +28,10 @@ greenkeep = "greenkeep.cli:main"
 greenkeep-ui = "greenkeep.ui:main"
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = [
+    "pytest>=8",
+    "ruff==0.17.3",
+]
 
 [tool.uv.sources]
 claude-subprocess = { git = "https://github.com/octrow/claude-cli", branch = "main" }

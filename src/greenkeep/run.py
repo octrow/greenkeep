@@ -21,8 +21,17 @@ from .findings import Finding, is_vendored, untested_findings
 from .gate import suppressions
 from .kinds import kind_of
 from .state import MAX_ATTEMPTS, State
-from .workspace import (TestRun, Workspace, WorkspaceError, clone, discard, remote_head,
-                        run_tests, sync, tool_head)
+from .workspace import (
+    TestRun,
+    Workspace,
+    WorkspaceError,
+    clone,
+    discard,
+    remote_head,
+    run_tests,
+    sync,
+    tool_head,
+)
 
 log = logging.getLogger("greenkeep")
 
