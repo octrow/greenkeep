@@ -28,6 +28,7 @@ from .state import State
 DEFAULT_PORT = 8095
 REFRESH_SECONDS = 30
 LOG_TAIL_LINES = 200
+UPDATED_CHARS = len("2026-10-29 20:33")  # to the minute: seconds widened the table
 LOG_MAX_HEIGHT = "24rem"
 LOG_RECORD = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
 PROJECT = Path(__file__).resolve().parents[2]  # the greenkeep checkout uv runs from
@@ -36,10 +37,11 @@ STATUSES = {"All": None, "Merged": "merged", "Needs you": "parked", "In progress
 COLUMNS = [
     {"name": "repo", "label": "Repo", "field": "repo", "sortable": True, "align": "left"},
     {"name": "title", "label": "Finding", "field": "title", "align": "left"},
-    {"name": "status", "label": "Status", "field": "status", "sortable": True, "align": "left"},
+    {"name": "status", "label": "Status", "field": "status", "sortable": True, "align": "left",
+     "classes": "ic-nowrap"},
     {"name": "attempts", "label": "Attempts", "field": "attempts", "align": "right"},
     {"name": "updated", "label": "Updated", "field": "updated", "sortable": True,
-     "align": "left"},
+     "align": "left", "classes": "ic-nowrap"},
     {"name": "link", "label": "", "field": "link", "align": "left"},
 ]
 LINK_SLOT = ('<q-td :props="props"><a v-if="props.value" :href="props.value" target="_blank" '
@@ -61,6 +63,7 @@ def _decorate(row: dict) -> dict:
     number, kind = (row["pr"], "pull") if row["pr"] else (row["issue"], "issues")
     link = f"{row['url']}/{kind}/{number}" if row["url"] and number else ""
     return {**row, "title": row["title"] or row["fp"], "key": f"{row['repo']}:{row['fp']}",
+            "updated": (row["updated"] or "")[:UPDATED_CHARS],
             "link": link, "link_text": f"#{number}" if link else ""}
 
 
@@ -170,7 +173,7 @@ def _options_dialog() -> ui.dialog:
         layout.heading("Run with options", level=2)
         repos = ui.select(_config_repos(), multiple=True, new_value_mode="add-unique",
                           label="Repos (empty: from config)").props(
-            "outlined dense stack-label use-chips").classes("w-full")
+            "outlined dense stack-label bottom-slots use-chips")  # bottom-slots: as kit fields.classes("w-full")
         push = ui.switch("Push: open issues and PRs and merge (off: local dry run)")
         budget = layout.field("Budget (empty: from config)", kind="number")
         model = layout.field("Model", value=DEFAULT_MODEL)

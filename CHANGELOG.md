@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Dashboard table: status and the update time (now to the minute) no longer wrap, so a row is one line high and the PR links column stays on screen; the options dialog keeps an even rhythm between fields.
+
 - A test suite that crashed (`Fatal Python error`, as a Qt test segfaulting now and then in buy-smarter) runs once more before the repo counts as red, and the log keeps the crash header and the repo's own frames: the last 3000 characters held only library frames and the extension module list.
 - Dashboard: "Run with options…" starts a run with every CLI option (repos, push with a confirmation, budget, models, keep clones), so nothing the command line does is missing from the GUI.
 - `greenkeep owner/name` takes the budget and the boost (rules, hunt, Opus planner) from the config when it loads, instead of always the default 3; `--budget` still wins and a dry run needs no config.
