@@ -235,8 +235,8 @@ wheels = [
 
 [[package]]
 name = "claude-subprocess"
-version = "0.1.1"
-source = { git = "https://github.com/octrow/claude-cli?branch=main#a06385bba25cc0c32dd5cfb00c638b2312d74d0c" }
+version = "0.1.3"
+source = { git = "https://github.com/octrow/claude-cli?branch=main#5d61f5e8e34cf80d607a727618639e2634bce7ca" }
 
 [[package]]
 name = "click"
