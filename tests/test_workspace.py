@@ -1,5 +1,6 @@
 import os
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -40,3 +41,15 @@ def test_sweep_removes_clones_a_killed_run_left_but_not_a_running_one(tmp_path, 
     sweep()
     assert not old.exists()
     assert fresh.exists()
+
+
+def test_a_boosted_workspace_lints_with_the_extra_rules(monkeypatch, tmp_path):
+    seen = []
+    monkeypatch.setattr(workspace, "sh",
+                        lambda args, *_a, **_k: seen.append(args) or SimpleNamespace(stdout="[]"))
+    plain = workspace.Workspace("r", tmp_path, tmp_path)
+    boosted = workspace.Workspace("r", tmp_path, tmp_path, extra_rules=("C901", "SIM"))
+    workspace.ruff_json(plain)
+    workspace.ruff_json(boosted)
+    assert "--extend-select" not in seen[0]
+    assert seen[1][seen[1].index("--extend-select") + 1] == "C901,SIM"

@@ -33,6 +33,7 @@ class Target:
     focus: bool = False  # a Focus repo: run before the others every run
     tests: str = ""  # its test root: the folder its suite runs from, relative to the repo
     hunt: bool = False  # bug hunt: an LLM looks for bugs once nothing else is left to do
+    boost: bool = False  # a boost is on: lint with greenkeep's extra rules too
 
     @property
     def path(self) -> Path | None:

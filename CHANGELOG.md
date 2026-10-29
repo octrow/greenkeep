@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- During a boost ruff also lints for improvements beyond the repo's own config: complexity (C901, PLR0912, PLR0915), SIM, PERF, UP and RUF (without the ambiguous-unicode rules, which flag Cyrillic text, and RUF100). Complexity goes first. The gate is unchanged, so a refactor lands only where tests covered every line it touches.
+- A ruff rule ranks by its whole letter prefix: `SIM` findings ranked as `S` (security) before, so they went first and got `fix:` subjects.
 - Claude Code is called directly (`claude -p`), not through OmniRoute: the account the local Claude Code is logged in to pays. Through OmniRoute every call went to the one Claude account OmniRoute held (the owner's Pro), not the Team seat the owner chose. Models are plain ids again (`claude-sonnet-5-5`, `claude-opus-5-5`).
 - Outdated dependencies are left to Dependabot in a repo whose `.github/dependabot.yml` updates `uv` or `pip`: both opened the same bumps (4 Dependabot PRs closed as duplicates), and only Dependabot edits an `==` pin, which `uv lock --upgrade-package` cannot move past (all 5 bumps in jobs were parked). Vulnerabilities stay with greenkeep: it merges them the same day.
 - During a boost every tended repo bug-hunts once nothing else is left, not only those with `hunt = true`.

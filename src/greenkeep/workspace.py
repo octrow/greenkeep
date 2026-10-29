@@ -26,6 +26,12 @@ TEST_TIMEOUT = 1800
 STALE_CLONE_SECONDS = 24 * 3600  # a run takes about an hour; older clones lost their run
 PYTEST_NO_TESTS = 5
 UNSAFE_OK = "F841,RUF059"  # unused variable, unused unpacked variable
+# a boost also lints for real improvements: complexity, too many branches or statements,
+# simpler and faster idioms, newer syntax. The gate still needs every changed line covered.
+BOOST_RULES = ("C901", "PLR0912", "PLR0915", "SIM", "PERF", "UP", "RUF")
+# ambiguous-unicode rules flag every Cyrillic letter in the owner's Russian docstrings;
+# RUF100 calls a `noqa` for a rule the repo never selects "unused" once RUF is on
+BOOST_IGNORE = "RUF001,RUF002,RUF003,RUF100"
 # addopts that would break coverage: pytest-cov is disabled (its tracer hijacks ours), and
 # xdist workers run outside `coverage run`. Each name also covers its `--opt=value` form.
 DROPPED_OPTS = ("--cov", "--no-cov", "--dist", "--numprocesses", "-n")
@@ -63,6 +69,7 @@ class Workspace:
     base_branch: str = ""
     origin: str = ""  # clone URL; its https form links issues and PRs
     tests: str = ""  # test root: where the suite runs from, relative to `root`
+    extra_rules: tuple[str, ...] = ()  # ruff rules beyond the repo's own config (a boost)
 
     def git(self, *args: str, check: bool = True) -> str:
         return sh(["git", *args], self.root, check=check).stdout
@@ -137,7 +144,8 @@ def clone(target: Target) -> Workspace:
     sh(["git", "clone", "-q", *reference, origin, str(root)], run_dir)
     if src and (src / ".env").is_file():
         shutil.copy2(src / ".env", root / ".env")
-    ws = Workspace(name, root, scratch, origin=origin, tests=target.tests)
+    ws = Workspace(name, root, scratch, origin=origin, tests=target.tests,
+                   extra_rules=BOOST_RULES if target.boost else ())
     ws.base_branch = ws.git("rev-parse", "--abbrev-ref", "HEAD").strip()
     return ws
 
@@ -269,7 +277,9 @@ def run_tests(ws: Workspace) -> TestRun:
 
 
 def ruff_json(ws: Workspace, *paths: str) -> list[dict]:
-    proc = sh(["uvx", "ruff", "check", "--output-format", "json", "--exit-zero",
+    extra = (["--extend-select", ",".join(ws.extra_rules), "--extend-ignore", BOOST_IGNORE]
+             if ws.extra_rules else [])
+    proc = sh(["uvx", "ruff", "check", "--output-format", "json", "--exit-zero", *extra,
                *(paths or ["."])], ws.root)
     return json.loads(proc.stdout or "[]")
 

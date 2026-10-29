@@ -20,12 +20,14 @@ VENDOR_DIRS = frozenset({"vendor", "_vendor", "vendored", "third_party"})
 UNTESTED_PERCENT = 50.0
 UNTESTED_MIN_STATEMENTS = 5
 # lower rank = worked on first; pyflakes (F) are real bugs, style comes last
-RULE_RANK = {"S": 0, "F": 1, "B": 2, "E": 5, "W": 6}
+# complexity (C90, PLR) before simplify/perf/pyupgrade: a boost finds dozens of those
+RULE_RANK = {"S": 0, "F": 1, "B": 2, "C": 3, "PLR": 3, "E": 5, "W": 6}
 DEFAULT_RANK = 4
 
 
 def rank(rule: str) -> int:
-    return RULE_RANK.get(rule[:1], DEFAULT_RANK)
+    # the whole letter prefix: SIM102 is simplify, not S (security)
+    return RULE_RANK.get(re.match(r"[A-Z]*", rule).group(), DEFAULT_RANK)
 
 
 @dataclass(frozen=True)

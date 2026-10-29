@@ -60,8 +60,10 @@ def _targets(a: argparse.Namespace) -> tuple[list[Target], int]:
         return [known.get(t.path or t.spec, t) for t in named], a.budget or DEFAULT_BUDGET
     cfg = load()
     now = datetime.now().astimezone()
-    # a boost spends the subscription: every repo bug-hunts once nothing else is left
-    repos = [replace(t, hunt=True) for t in cfg.repos] if cfg.boosting(now) else cfg.repos
+    # a boost spends the subscription: every repo lints with extra rules (complexity,
+    # simplify…) and bug-hunts once nothing else is left
+    repos = ([replace(t, hunt=True, boost=True) for t in cfg.repos] if cfg.boosting(now)
+             else cfg.repos)
     return repos, a.budget or cfg.budget_at(now)
 
 

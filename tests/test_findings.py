@@ -1,6 +1,6 @@
 import pytest
 
-from greenkeep.findings import is_vendored, ruff_findings, untested_findings
+from greenkeep.findings import is_vendored, rank, ruff_findings, untested_findings
 
 RUFF = [
     {"code": "F401", "message": "`os` imported but unused", "filename": "/w/pkg/a.py",
@@ -69,3 +69,8 @@ def test_vendored_code_is_left_to_its_upstream(tmp_path):
     assert is_vendored(tmp_path, "app/gui/kit/run_pool.py")
     assert is_vendored(tmp_path, "src/pkg/_vendor/six.py")
     assert not is_vendored(tmp_path, "app/gui/page.py")
+
+
+def test_a_rule_family_ranks_by_its_whole_prefix_so_sim_is_not_security():
+    assert rank("S110") < rank("F401") < rank("C901") == rank("PLR0912") < rank("SIM102")
+    assert rank("SIM102") == rank("PERF401") < rank("E501")
