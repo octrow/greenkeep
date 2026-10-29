@@ -89,3 +89,13 @@ def test_a_last_attempt_parks_the_finding_at_once(tmp_path):
     st = State(tmp_path / "s.db")
     st.add_attempt("r", "fp", last=True)
     assert st.status("r", "fp") == "parked" and st.attempts("r", "fp") == 1
+
+
+def test_open_issues_are_those_of_open_and_parked_findings(tmp_path):
+    s = State(tmp_path / "s.db")
+    s.set("demo", "ruff:a", issue=1)
+    s.set("demo", "ruff:b", issue=2, status="parked")
+    s.set("demo", "ruff:c", issue=3, status="merged")
+    s.set("demo", "ruff:d", status="open")
+    s.set("other", "ruff:e", issue=5)
+    assert sorted(s.open_issues("demo")) == [("ruff:a", 1), ("ruff:b", 2)]

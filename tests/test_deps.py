@@ -1,4 +1,7 @@
+from packaging.specifiers import SpecifierSet
+
 from greenkeep.deps import (
+    constraints,
     dependabot_updates_deps,
     lowest_fix,
     outdated_findings,
@@ -67,3 +70,35 @@ def test_dependabot_owns_version_updates_only_for_python_ecosystems(tmp_path):
     assert dependabot_updates_deps(tmp_path)
     cfg.write_text("updates:\n  - package-ecosystem: 'pip'\n")
     assert dependabot_updates_deps(tmp_path)
+
+
+def test_an_advisory_without_a_fix_does_not_hide_the_fixable_ones():
+    audit = {"dependencies": [
+        {"name": "pillow", "version": "11.0", "vulns": [
+            {"id": "GHSA-1", "fix_versions": ["11.1"]}, {"id": "GHSA-2", "fix_versions": []}]},
+    ]}
+    [f] = vuln_findings(audit)
+    assert f.rule == "pillow==11.1" and f.fingerprint == "vuln:pillow:GHSA-1"
+    assert "no fix yet: GHSA-2" in f.message
+
+
+def test_outdated_targets_stay_inside_the_repo_constraints():
+    # jobs: `typer==0.27.1` in a workspace member; `uv lock` found no solution for 0.27.3
+    rows = [("typer", "0.27.1"), ("alembic", "1.18.5")]
+    releases = {"typer": ["0.27.3"], "alembic": ["1.18.9", "1.20.0"]}
+    found = outdated_findings(rows, releases.__getitem__,
+                              {"typer": SpecifierSet("==0.27.1"), "alembic": SpecifierSet("<1.19")})
+    assert [f.rule for f in found] == ["alembic==1.18.9"]
+
+
+def test_constraints_come_from_the_root_and_every_workspace_member(tmp_path):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "jobs"\ndependencies = ["Alembic>=1"]\n'
+        '[dependency-groups]\ndev = ["pytest>=8"]\n'
+        '[tool.uv.workspace]\nmembers = ["pipeline"]\n')
+    (tmp_path / "pipeline").mkdir()
+    (tmp_path / "pipeline/pyproject.toml").write_text(
+        '[project]\nname = "pipeline"\ndependencies = ["typer==0.27.1", "alembic<2"]\n')
+    specs = constraints(tmp_path)
+    assert specs["typer"] == SpecifierSet("==0.27.1")
+    assert specs["alembic"] == SpecifierSet(">=1,<2") and "pytest" in specs

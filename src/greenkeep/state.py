@@ -84,6 +84,11 @@ class State:
         park = last or n >= MAX_ATTEMPTS
         self.set(repo, fp, attempts=n, **({"status": "parked"} if park else {}))
 
+    def open_issues(self, repo: str) -> list[tuple[str, int]]:
+        """(fingerprint, issue) of every finding still waiting with an issue open for it."""
+        return self.db.execute("SELECT fp, issue FROM finding WHERE repo=? AND issue IS NOT "
+                               "NULL AND status IN ('open', 'parked')", (repo,)).fetchall()
+
     def merges(self, repo: str) -> list[tuple[str, int | None, str | None]]:
         """(fingerprint, PR, merge commit) of every live greenkeep merge in the repo."""
         return self.db.execute("SELECT fp, pr, sha FROM finding WHERE repo=? AND "

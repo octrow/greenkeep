@@ -50,6 +50,12 @@ def park_issue(ws: Workspace, issue: int, reason: str) -> None:
     _gh(ws, "issue", "edit", str(issue), "--add-label", PARKED_LABEL)
 
 
+def close_issue(ws: Workspace, issue: int, reason: str) -> bool:
+    """False when gh could not close it (already closed by hand, or offline)."""
+    return sh(["gh", "issue", "close", str(issue), "--comment", reason], ws.root,
+              check=False).returncode == 0
+
+
 def publish(ws: Workspace, branch: str, title: str, body: str) -> int:
     """Push the branch, open the PR (or reuse one a failed run left) and squash-merge it.
 

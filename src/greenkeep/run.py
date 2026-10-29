@@ -22,6 +22,7 @@ from .gate import suppressions
 from .kinds import kind_of
 from .state import MAX_ATTEMPTS, State
 from .workspace import (
+    BOOST_RULES,
     TestRun,
     Workspace,
     WorkspaceError,
@@ -63,6 +64,31 @@ def baseline(ws: Workspace, tests: TestRun) -> Baseline:
              *deps.collect(ws), *ready.collect(ws.root, github.web_url(ws.origin))]
     ordered = sorted(found, key=lambda f: kind_of(f).priority(f))  # stable within a kind
     return Baseline(tests, frozenset(f.fingerprint for f in ruff), ordered)
+
+
+def close_vanished(job: Job) -> None:
+    """Close the issues of findings the baseline no longer reports: the owner fixed the
+    code, the line changed, or a newer advisory or release replaced the finding."""
+    current = {f.fingerprint for f in job.base.findings}
+    # outside a boost its rules are not linted: their findings are still there
+    current |= {a.fingerprint for a in lint(replace(job.ws, extra_rules=BOOST_RULES))}
+    packages = {fp.rsplit(":", 1)[0] for fp in current}
+    for fp, issue in job.state.open_issues(job.ws.name):
+        if fp in current or not _vanished(job, fp, packages):
+            continue
+        if github.close_issue(job.ws, issue, "greenkeep no longer finds this, closing."):
+            log.info("  closed issue #%d: %s no longer found", issue, fp)
+            job.state.set(job.ws.name, fp, issue=None)
+
+
+def _vanished(job: Job, fp: str, packages: set[str]) -> bool:
+    """Whether a finding missing from the baseline is really gone, by its kind."""
+    kind = fp.split(":", 1)[0]
+    if kind in ("vuln", "outdated"):  # a failed pip-audit or PyPI call reports nothing
+        return fp.rsplit(":", 1)[0] in packages
+    if kind == "untested":
+        return _measured(job.base.tests)
+    return kind != "bug"  # bugs come from a hunt, never from a baseline
 
 
 def _check_no_new_lint(job: Job, paths: list[str]) -> None:
@@ -335,6 +361,8 @@ def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> Non
         if opts.push:
             github.ensure_labels(ws)
         base = baseline(ws, tests)
+        if opts.push:
+            close_vanished(Job(ws, base, opts, state, digest))
         if opts.push:  # a dry run tells, but does not remember it told
             _tell_owner(ws, state, digest)
         else:

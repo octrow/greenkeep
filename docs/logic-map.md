@@ -205,8 +205,8 @@ Push mode first: `gh label create greenkeep / needs-human --force` (fails on a n
 Sources:
 - ruff JSON with the repo's own config (+ boost rules); fingerprint `ruff:<code>:<path>:<digest of the line text>`, no line number; identical lines in a file get `#1`, `#2`… in line order, the first keeps the plain one; the last line of ruff's range is kept (`end_line`);
 - `untested`: modules < 50% covered with ≥ 5 statements, if coverage measured anything or there are no tests;
-- `vuln`: `uv export` → `pip-audit`, only with a tracked `uv.lock`; target = lowest version fixing every advisory, same line preferred; one advisory with no fix → no finding for the package (#13); fingerprint holds the advisory ids;
-- `outdated`: `uv tree --outdated --depth 1` + PyPI, newest stable on the same major (minor for 0.x), the repo's own constraints not checked (#12); skipped when `.github/dependabot.yml` (not `.yaml`) has a `uv`/`pip` ecosystem;
+- `vuln`: `uv export` → `pip-audit`, only with a tracked `uv.lock`; target = lowest version fixing every advisory that has a fixed release, same line preferred; advisories with none go to the message ("no fix yet"); fingerprint holds the fixable advisory ids;
+- `outdated`: `uv tree --outdated --depth 1` + PyPI, newest stable on the same major (minor for 0.x) that the specifiers in `pyproject.toml` and its uv workspace members allow (an `==` pin → no finding); skipped when `.github/dependabot.yml` (not `.yaml`) has a `uv`/`pip` ecosystem;
 - `ready`: pyproject `description`/`readme`/`urls`, README install/usage heading, CI badge.
 Fails: PyPI errors → no target, no finding; `uv export`/`uv tree` failure or non-JSON pip-audit output → the repo is a problem line (no fixes, no Dependabot).
 Module: `run`, `core`, `findings`, `deps`, `ready`, `workspace`
@@ -256,7 +256,7 @@ Module: `run`, `kinds`, `state`
 
 Decides: the public record for the finding.
 Branches: push and no issue in state → `gh issue create` with label `greenkeep`; else reuse; dry run → none.
-Nothing ever closes an issue except the merged PR's "Closes #N" (#3).
+Closing (push, right after the baseline, before the cool-down filter): an open or parked finding with an issue that the baseline no longer reports, nor a lint with the boost rules → `gh issue close` with a comment, the issue is cleared in state. Kept: `bug:` (never in a baseline); `untested:` when coverage was not measured; `vuln:`/`outdated:` unless the same package has a newer finding (a failed pip-audit or PyPI call reports nothing). Otherwise the merged PR's "Closes #N" closes it.
 Module: `run`, `github`, `state`
 
 ### 18. Produce
@@ -370,10 +370,7 @@ Module: `ui`, `port`
 ## Known gaps
 
 Details and fixes are in the plan (number in brackets).
-- Plan issues of findings that stop being reported are never closed; vuln and outdated fingerprints change with each advisory or release (#3).
 - A network outage at the start of the scheduled run marks the day done (#4).
-- Outdated targets ignore the repo's own constraints: `uv lock` finds no solution and the finding parks (#12).
-- A package with one unfixable advisory gets no vuln finding for its fixable ones (#13).
 - A broken config crashes every hourly run with no digest (#15).
 - A merge GitHub made but `gh` reported as failed is not recorded (#16, not confirmed).
 - The dependency gate may run the suite on the old venv for packages in extras or other members (#19, not confirmed).

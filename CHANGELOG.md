@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The issue of a finding greenkeep no longer reports is closed with a comment: the owner fixed the code or the line changed. Bug issues are never closed this way; findings of boost-only rules stay open outside a boost; a vulnerability or outdated issue closes only once a newer finding for the same package replaces it (a failed pip-audit or PyPI call must not close anything).
+- An outdated dependency is bumped only within the specifiers in `pyproject.toml` and its uv workspace members: an `==` pin gets no finding (all 5 bumps in jobs parked on "no solution").
+- One advisory without a fixed release no longer hides the fixable ones of the same package: the finding fixes those and names the rest as "no fix yet".
 - A lint finding is attempted only when every line it spans was covered, not just its first: SIM103 in tiktok-lazy-follower spans two lines, and all three attempts failed on the second. A complexity finding (C901, PLR0912, PLR0915) needs its whole function covered: ruff reports it on the name, and a refactor rewrites the body.
 - A bug the hunt finds on a line no test ran is dropped: the gate would reject every fix there.
 - During a boost a new test file is held to the repo's own ruff rules only; the boost rules are for existing code.

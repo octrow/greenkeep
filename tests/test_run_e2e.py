@@ -452,3 +452,28 @@ def test_a_bug_test_may_be_appended_where_the_repo_keeps_its_tests(tmp_path, mon
               "def test_clamp_above_hi():\n    assert clamp(11, 0, 10) == 10\n>>>>>>> REPLACE\n")
     state, _ = hunt_run(tmp_path, monkeypatch, FIX + append)
     assert state.merged_today() == 1
+
+
+def test_issues_of_findings_no_longer_reported_are_closed(monkeypatch):
+    state = run.State(Path(":memory:"))
+    issues = {"ruff:F401:a.py:1": 1,       # the owner fixed it: closed
+              "ruff:C901:a.py:2": 2,       # a boost rule, still there outside the boost: kept
+              "bug:a.py:3:x": 3,           # bugs never show up in a baseline: kept
+              "untested:b.py": 4,          # covered now: closed
+              "vuln:pillow:GHSA-1": 5,     # superseded by a newer advisory: closed
+              "vuln:requests:GHSA-9": 6,   # pip-audit may just have failed: kept
+              "outdated:typer:0.27.3": 7}  # still reported: kept
+    for fp, issue in issues.items():
+        state.set("demo", fp, issue=issue)
+    current = [Finding("vuln", "r", "uv.lock", 0, "m", "vuln:pillow:GHSA-1+GHSA-2"),
+               Finding("outdated", "r", "uv.lock", 0, "m", "outdated:typer:0.27.3")]
+    boost_lint = [Finding("ruff", "C901", "a.py", 2, "m", "ruff:C901:a.py:2")]
+    monkeypatch.setattr(run, "lint", lambda ws, *p: boost_lint if ws.extra_rules else [])
+    closed = []
+    monkeypatch.setattr(github, "close_issue", lambda ws, n, why: closed.append(n) or True)
+    ws = workspace.Workspace("demo", Path("."), Path("."))
+    tests = workspace.TestRun(True, {"totals": {"percent_covered": 50.0}}, "")
+    job = SimpleNamespace(ws=ws, state=state, base=run.Baseline(tests, frozenset(), current))
+    run.close_vanished(job)
+    assert sorted(closed) == [1, 4, 5]
+    assert state.open_issues("demo") and state.issue("demo", "ruff:F401:a.py:1") is None
