@@ -89,6 +89,7 @@ All entry points call `cli.main`. They differ in defaults.
 | CLI `greenkeep` | config | no (dry run) | config | from config | see "Dry run" below |
 | CLI `greenkeep owner/name …` | named; config entry kept if listed | flag | `--budget` or **3**, never the config's | **planner only**, no extra rules, no forced hunt | no once-a-day guard; push mode counts today's merges of every repo against the 3 (#7) |
 | dashboard "Dry run now" | config | no | config | from config | `uv run --project <checkout> greenkeep`; does nothing while PAUSE exists |
+| dashboard "Run with options…" | dialog (empty: config) | dialog switch (a push asks for confirmation first) | dialog (empty: config) | dialog (cli defaults prefilled) | the same command with the CLI flags; `--keep` is a checkbox |
 
 Dry run: an in-memory state, so it starts with no merges, attempts, cool-downs, hunt marks or reverts, and may "merge" a full budget whatever the real day did.
 It still spends the subscription (patcher, planner, review, hunt), sweeps old clones, clones and syncs, calls PyPI, pip-audit and `gh pr list`, and writes the shared log.
@@ -363,7 +364,7 @@ Module: `state`, `digest`, `cli`
 ### Dashboard
 
 `greenkeep-ui` serves on 127.0.0.1:8095 (next free port; restarts a running dashboard or opens it in the browser).
-Opens state.db read-write (runs the schema and migrations); reads it and the log tail every 30 s; "Resume" deletes PAUSE; "Dry run now" starts `greenkeep` with a live log. A full run queue (20 runs) → a notice instead; stopping the dashboard kills a run still going.
+Opens state.db read-write (runs the schema and migrations); reads it and the log tail every 30 s; "Resume" deletes PAUSE; "Dry run now" starts `greenkeep` with a live log; "Run with options…" opens a form with every CLI option (repos, push, budget, models, keep) and starts the same command, asking to confirm first when push is on. A full run queue (20 runs) → a notice instead; stopping the dashboard kills a run still going.
 It shows the budget of the moment (a boost's included) and says the timer fires hourly with one run a day.
 Feeds: step 1 (resume), the dry-run entry point.
 Module: `ui`, `port`

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - A test suite that crashed (`Fatal Python error`, as a Qt test segfaulting now and then in buy-smarter) runs once more before the repo counts as red, and the log keeps the crash header and the repo's own frames: the last 3000 characters held only library frames and the extension module list.
+- Dashboard: "Run with options…" starts a run with every CLI option (repos, push with a confirmation, budget, models, keep clones), so nothing the command line does is missing from the GUI.
 - `greenkeep-ui` started while a dashboard already runs opens that one in the browser instead of only printing its URL, so a menu launcher works on the second click too.
 
 - Dashboard: stopping it kills a dry run still going instead of leaving it orphaned, and "Dry run now" says so when the run queue is full instead of doing nothing.

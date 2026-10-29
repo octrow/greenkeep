@@ -71,3 +71,44 @@ def test_a_second_start_opens_the_running_dashboard(monkeypatch):
     assert ui.main([]) == 0
     assert opened == ["http://127.0.0.1:8095/"]
     assert ui.main(["--no-show"]) == 0 and len(opened) == 1
+
+
+def test_run_argv_is_the_bare_command_for_defaults_and_carries_every_option():
+    from greenkeep import ui
+    from greenkeep.core import DEFAULT_MODEL, DEFAULT_REVIEW_MODEL
+    base = ["uv", "run", "--project", str(ui.PROJECT), "greenkeep"]
+    assert ui.run_argv([], False, None, DEFAULT_MODEL, DEFAULT_REVIEW_MODEL, False) == base
+    assert ui.run_argv(["a/b", "/x/y"], True, 5, "m1", "m2", True) == base + [
+        "--push", "--budget", "5", "--model", "m1", "--review-model", "m2", "--keep",
+        "a/b", "/x/y"]
+
+
+async def test_the_options_dialog_starts_a_push_run_only_after_confirmation(tmp_path, monkeypatch):
+    from nicegui import ui as nicegui_ui
+    from nicegui.testing.user_simulation import user_simulation
+
+    from greenkeep import ui
+    from greenkeep.config import ConfigError
+    from greenkeep.state import State
+
+    def no_config():
+        raise ConfigError("none")
+
+    submitted = []
+    monkeypatch.setattr(ui, "PAUSE_FILE", tmp_path / "PAUSE")
+    monkeypatch.setattr(ui, "LOG_FILE", tmp_path / "greenkeep.log")
+    monkeypatch.setattr(ui, "State", lambda: State(tmp_path / "state.db"))
+    monkeypatch.setattr(ui, "load", no_config)
+    monkeypatch.setattr(ui.run_pool, "submit",
+                        lambda argv, **k: submitted.append((argv, k)) or object())
+    async with user_simulation(root=ui.index) as user:
+        await user.open("/")
+        user.find("Run with options…").click()
+        await user.should_see("Start")
+        user.find(kind=nicegui_ui.switch).click()
+        user.find("Start").click()
+        await user.should_see("opens real issues")
+        assert not submitted  # nothing runs before the confirmation
+        user.find("Open PRs and merge").click()
+    argv, kwargs = submitted[0]
+    assert "--push" in argv and kwargs["label"] == "greenkeep run (push)"

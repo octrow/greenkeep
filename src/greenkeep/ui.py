@@ -3,7 +3,7 @@
     greenkeep-ui [--port 8095] [--no-show]
 
 Read-only over the state database and log, plus three actions: resume after a pause,
-start a dry run (live log), refresh.
+start a run (live log; a dry run by default, with every CLI option in a dialog), refresh.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from nicegui_kit import layout, run_monitor, run_pool, table, texts, theme
 from . import port
 from .cli import LOG_FILE
 from .config import PAUSE_FILE, ConfigError, load
+from .core import DEFAULT_MODEL, DEFAULT_REVIEW_MODEL
 from .state import State
 
 DEFAULT_PORT = 8095
@@ -116,14 +117,81 @@ def _filters() -> tuple[ui.select, ui.input]:
         status = ui.select(list(STATUSES), value="All").props("outlined dense")
         search = layout.search_field("Repo or finding")
         layout.button("Dry run now", kind="normal", on_click=_dry_run)
+        layout.button("Run with options…", kind="normal", on_click=_options_dialog().open)
     return status, search
 
 
-def _dry_run() -> None:
-    run = run_pool.submit(["uv", "run", "--project", str(PROJECT), "greenkeep"],
-                          label="greenkeep dry run", cwd=PROJECT)
-    if run is None:
+def run_argv(repos: list[str], push: bool, budget: int | None, model: str,
+             review_model: str, keep: bool) -> list[str]:
+    """The `greenkeep` command line for the dashboard's options; defaults and empties are omitted."""
+    argv = ["uv", "run", "--project", str(PROJECT), "greenkeep"]
+    argv += ["--push"] * push
+    argv += ["--budget", str(budget)] if budget is not None else []
+    argv += ["--model", model] if model and model != DEFAULT_MODEL else []
+    argv += ["--review-model", review_model] if review_model and review_model != DEFAULT_REVIEW_MODEL else []
+    return argv + ["--keep"] * keep + list(repos)
+
+
+def _start(argv: list[str], push: bool) -> None:
+    label = "greenkeep run (push)" if push else "greenkeep dry run"
+    if run_pool.submit(argv, label=label, cwd=PROJECT) is None:
         ui.notify("The run queue is full: wait for a run to finish", type="warning")
+
+
+def _dry_run() -> None:
+    _start(run_argv([], False, None, DEFAULT_MODEL, DEFAULT_REVIEW_MODEL, False), False)
+
+
+def _config_repos() -> list[str]:
+    try:
+        return [t.spec for t in load().repos]
+    except ConfigError:
+        return []
+
+
+def _confirm_push(go) -> None:
+    with ui.dialog() as dialog, layout.section_card():
+        layout.heading("Open pull requests and merge?", level=2)
+        ui.label("This run opens real issues and pull requests and merges them on GitHub.")
+
+        def confirmed() -> None:
+            dialog.close()
+            go()
+
+        with layout.actions_row():
+            layout.button("Cancel", kind="quiet", on_click=dialog.close)
+            layout.button("Open PRs and merge", kind="danger", on_click=confirmed)
+    dialog.open()
+
+
+def _options_dialog() -> ui.dialog:
+    """Every CLI option of a run; empty repos and budget mean the config's."""
+    with ui.dialog() as dialog, layout.section_card():
+        layout.heading("Run with options", level=2)
+        repos = ui.select(_config_repos(), multiple=True, new_value_mode="add-unique",
+                          label="Repos (empty: from config)").props(
+            "outlined dense stack-label use-chips").classes("w-full")
+        push = ui.switch("Push: open issues and PRs and merge (off: local dry run)")
+        budget = layout.field("Budget (empty: from config)", kind="number")
+        model = layout.field("Model", value=DEFAULT_MODEL)
+        review = layout.field("Review model", value=DEFAULT_REVIEW_MODEL)
+        keep = ui.checkbox("Keep the throwaway clones")
+
+        def start() -> None:
+            raw = (budget.value or "").strip()
+            if raw and not raw.isdigit():
+                budget.error = "A whole number"
+                return
+            argv = run_argv(list(repos.value or []), push.value, int(raw) if raw else None,
+                            model.value.strip(), review.value.strip(), keep.value)
+            dialog.close()
+            _start(argv, push.value)
+
+        with layout.actions_row():
+            layout.button("Cancel", kind="quiet", on_click=dialog.close)
+            layout.button("Start", kind="primary",
+                          on_click=lambda: _confirm_push(start) if push.value else start())
+    return dialog
 
 
 def _log_card() -> ui.code:
