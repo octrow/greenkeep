@@ -53,3 +53,28 @@ def test_a_boosted_workspace_lints_with_the_extra_rules(monkeypatch, tmp_path):
     workspace.ruff_json(boosted)
     assert "--extend-select" not in seen[0]
     assert seen[1][seen[1].index("--extend-select") + 1] == "C901,SIM"
+
+
+def test_a_crash_keeps_its_header_and_the_repos_own_frames():
+    venv = "/c/run-x/x/.venv/lib/python3.12/site-packages"
+    text = ("....." * 100 + "\nFatal Python error: Segmentation fault\n\n"
+            "Current thread 0x1 (most recent call first):\n"
+            + f'  File "{venv}/PySide6/x.py", line 1 in show\n' * 200
+            + '  File "/c/run-x/x/tests/gui/test_card.py", line 12 in test_card\n'
+            + f'  File "{venv}/_pytest/main.py", line 1 in _main\n' * 200
+            + "\nExtension modules: " + "PySide6.QtCore, " * 300 + "(total: 300)\n")
+    out = workspace.suite_tail(text)
+    assert out.startswith("Fatal Python error: Segmentation fault")
+    assert "tests/gui/test_card.py" in out and "site-packages" not in out
+    assert "Extension modules" not in out
+    assert workspace.suite_tail("x" * 5000) == "x" * workspace.OUTPUT_TAIL
+
+
+def test_a_suite_that_crashed_runs_once_more(monkeypatch):
+    runs = iter([workspace.TestRun(False, {}, "Fatal Python error: Aborted"),
+                 workspace.TestRun(True, {}, "1 passed")])
+    monkeypatch.setattr(workspace, "_run_suite", lambda ws: next(runs))
+    assert workspace.run_tests(None).ok
+    red = workspace.TestRun(False, {}, "1 failed")
+    monkeypatch.setattr(workspace, "_run_suite", lambda ws: red)
+    assert workspace.run_tests(None) is red  # a plain red suite is not re-run

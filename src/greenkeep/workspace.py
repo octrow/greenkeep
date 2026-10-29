@@ -25,6 +25,8 @@ CACHE = Path.home() / ".cache/greenkeep"
 TEST_TIMEOUT = 1800
 STALE_CLONE_SECONDS = 24 * 3600  # a run takes about an hour; older clones lost their run
 PYTEST_NO_TESTS = 5
+CRASH = "Fatal Python error"  # faulthandler's header, which pytest turns on
+OUTPUT_TAIL = 3000
 UNSAFE_OK = "F841,RUF059"  # unused variable, unused unpacked variable
 # a boost also lints for real improvements: complexity, too many branches or statements,
 # simpler and faster idioms, newer syntax. The gate still needs every changed line covered.
@@ -248,8 +250,27 @@ def test_file_exit(ws: Workspace, path: str) -> int:
                *_addopts(ws), rel], ws.root / ws.tests, check=False).returncode
 
 
+def suite_tail(text: str) -> str:
+    """The tail of a suite's output that the log keeps. A crash keeps faulthandler's header
+    and the repo's own frames: library frames and the extension module list pushed both
+    out of the tail."""
+    if CRASH in text:
+        text = "\n".join(ln for ln in text[text.index(CRASH):].splitlines()
+                         if "/site-packages/" not in ln and not ln.startswith("Extension modules:"))
+    return text[-OUTPUT_TAIL:]
+
+
 def run_tests(ws: Workspace) -> TestRun:
-    """Full suite under coverage. No tests at all counts as green with empty coverage."""
+    """Full suite under coverage; a crash (a flaky segfault in Qt tests) runs it once more."""
+    run = _run_suite(ws)
+    if not run.ok and CRASH in run.output:
+        log.info("  the suite crashed, running it once more:\n%s", run.output)
+        run = _run_suite(ws)
+    return run
+
+
+def _run_suite(ws: Workspace) -> TestRun:
+    """No tests at all counts as green with empty coverage."""
     data = ws.scratch / ".coverage"
     data.unlink(missing_ok=True)
     cwd = ws.root / ws.tests
@@ -262,7 +283,7 @@ def run_tests(ws: Workspace) -> TestRun:
                    "-p", "no:pytest_cov", *_addopts(ws)], cwd, check=False)
     except WorkspaceError as exc:  # a hanging test is a red suite, not a crashed run
         return TestRun(False, {}, str(exc))
-    tail = (proc.stdout + proc.stderr)[-3000:]
+    tail = suite_tail(proc.stdout + proc.stderr)
     if proc.returncode not in (0, PYTEST_NO_TESTS):
         return TestRun(False, {}, tail)
     # --source makes never-imported modules show up at 0%: that is what bootstraps a repo

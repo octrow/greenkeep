@@ -186,6 +186,7 @@ Module: `reverts`, `state`, `github`
 Ветки:
 - нет `pyproject.toml` → `WorkspaceError` (revival не сделан);
 - `uv sync --all-extras --all-packages`; корень тестов со своим pyproject синхронизируется отдельно;
+- набор упал (`Fatal Python error`, плавающий segfault в Qt-тестах) → ещё один прогон; в логе заголовок падения и кадры самого репо, без кадров библиотек;
 - набор красный или висит 30 мин → «baseline tests are red», репо дальше не идёт (и Dependabot тоже);
 - exit 5 (нет тестов) → зелёный; покрытие всё равно показывает неимпортированные модули с 0% (`--source=.`), отсюда находки `untested`.
 Покрытие: `coverage run --source=. --omit=tests/*,.venv/*`, опции pytest-cov и xdist убраны из addopts репо.

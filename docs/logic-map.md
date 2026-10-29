@@ -192,6 +192,7 @@ In: clone. Out: `TestRun` (ok, coverage JSON, output, no_tests).
 Branches:
 - no `pyproject.toml` → `WorkspaceError` (revival is not built);
 - `uv sync --all-extras --all-packages`; a test root with its own pyproject syncs there too;
+- suite crashed (`Fatal Python error`, a flaky segfault in Qt tests) → run once more; the log keeps the crash header and the repo's own frames, not library frames;
 - suite red or hangs 30 min → problem line "baseline tests are red", the repo stops here (no Dependabot either);
 - exit 5 (no tests) → green; coverage still reports never-imported modules at 0% (`--source=.`), which yields `untested` findings.
 Coverage: `coverage run --source=. --omit=tests/*,.venv/*`, pytest-cov and xdist options dropped from the repo's addopts.
