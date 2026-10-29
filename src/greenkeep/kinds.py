@@ -12,6 +12,7 @@ import logging
 import re
 import tomllib
 from abc import ABC, abstractmethod
+from dataclasses import replace
 from pathlib import Path
 
 from . import deps, llm, ready
@@ -50,6 +51,26 @@ SERVICE_CLIENTS = frozenset({
 
 def _percent(cov: dict, path: str) -> float:
     return cov.get("files", {}).get(path, {}).get("summary", {}).get("percent_covered", 0.0)
+
+
+# where the patcher fails most: new tests for untested code, bug fixes, complexity refactors
+HARD_KINDS = frozenset({"untested", "bug"})
+HARD_RULES = frozenset({"C901", "PLR0912", "PLR0915"})
+
+
+def is_hard(f: Finding) -> bool:
+    return f.kind in HARD_KINDS or f.rule in HARD_RULES
+
+
+def patch(job: Job, system: str, prompt: str, hard: bool) -> llm.Reply:
+    """The patcher's reply; during a boost a hard change gets the planner's plan first."""
+    if not (hard and job.opts.planner):
+        return llm.ask(system, prompt, job.opts.model, job.ws.root)
+    steps = llm.plan(prompt, job.opts.planner, job.ws.root)
+    log.debug("  plan by %s:\n%s", job.opts.planner, steps)
+    reply = llm.ask(system, f"{prompt}\n\nFollow this plan from a senior engineer who read "
+                    f"the repository:\n{steps}", job.opts.model, job.ws.root)
+    return replace(reply, model=f"{reply.model} + plan by {job.opts.planner}")
 
 
 class Kind(ABC):
@@ -104,8 +125,7 @@ class Lint(Kind):
                 ruff_fix(job.ws, f.path, rule)
             return Change([f.path], "ruff --fix", deterministic=True)
         source = (job.ws.root / f.path).read_text()
-        reply = llm.ask(llm.FIX_SYSTEM, llm.fix_prompt(f, source, feedback), job.opts.model,
-                         job.ws.root)
+        reply = patch(job, llm.FIX_SYSTEM, llm.fix_prompt(f, source, feedback), is_hard(f))
         edited = apply_edits(job.ws.root, parse_edits(reply.text), job.ws.tracked())
         return Change(edited, reply.model, reply.prompt_sha)
 
@@ -223,7 +243,7 @@ class Untested(Kind):
         asked = int(line_budget(source) * PROMPT_BUDGET_SHARE)
         prompt = llm.characterization_prompt(f, source, context, asked, feedback,
                                              job.ws.tests, previous)
-        reply = llm.ask(llm.TEST_SYSTEM, prompt, job.opts.model, job.ws.root)
+        reply = patch(job, llm.TEST_SYSTEM, prompt, hard=True)
         target.parent.mkdir(parents=True, exist_ok=True)
         try:
             code = python_block(reply.text)
@@ -299,7 +319,7 @@ class Bug(Kind):
     def produce(self, job: Job, f: Finding, feedback: str) -> Change:
         source = (job.ws.root / f.path).read_text()
         prompt = llm.bug_prompt(f, source, related_context(job.ws, f), feedback, job.ws.tests)
-        reply = llm.ask(llm.BUG_SYSTEM, prompt, job.opts.model, job.ws.root)
+        reply = patch(job, llm.BUG_SYSTEM, prompt, hard=True)
         tracked = job.ws.tracked()
         edited = apply_edits(job.ws.root, parse_edits(reply.text), tracked, new_tests=True)
         for path in set(edited) - tracked:  # the new test file

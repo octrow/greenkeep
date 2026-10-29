@@ -104,6 +104,26 @@ def ask(system: str, prompt: str, model: str, root: Path) -> Reply:
     return Reply(res.text, model, sha)
 
 
+PLAN_SYSTEM = """You plan one change in a Python repository; another model will write it
+from your plan. Do not write the change itself.
+Read the repository with the read-only tools first: the code involved, the tests next to it,
+conftest.py files, pytest and ruff settings, and how the repo's own tests look.
+Reply with a short plan (at most 25 lines):
+- the conventions the change must follow (test location and naming, imports, fixtures,
+  docstring language and style, assert style), with the file you took each from;
+- exactly what to change or which behaviours to test, and the order;
+- what to avoid: duplicating existing tests, imports only an optional extra installs,
+  asserting output that looks like a bug, touching lines no test covers.
+If the task below includes a failure from a previous attempt, plan around that failure.
+"""
+
+
+def plan(task: str, model: str, root: Path) -> str:
+    """The planner, before the patcher on a hard change: it reads the repo, not the change."""
+    return _claude(f"{PLAN_SYSTEM}\nThe task the writer will get:\n{task}", model, "high",
+                   root, LLM_TIMEOUT).text
+
+
 def _excerpt(source: str, line: int) -> str:
     lines = source.splitlines()
     if len(lines) <= WHOLE_FILE_LINES:

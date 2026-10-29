@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- During a boost the reviewer's model (Opus) first plans each hard change: tests for untested code, bug fixes and complexity refactors (C901, PLR0912, PLR0915). It reads the repo and names the conventions to follow, what to change or test, and what to avoid; Sonnet writes the change from that plan, and Opus still reviews it. The PR names both (`claude-sonnet-5-5 + plan by claude-opus-5-5`), so the merge rate with and without a plan can be compared. Lint and other changes are not planned.
 - During a boost ruff also lints for improvements beyond the repo's own config: complexity (C901, PLR0912, PLR0915), SIM, PERF, UP and RUF (without the ambiguous-unicode rules, which flag Cyrillic text, and RUF100). Complexity goes first. The gate is unchanged, so a refactor lands only where tests covered every line it touches.
 - A ruff rule ranks by its whole letter prefix: `SIM` findings ranked as `S` (security) before, so they went first and got `fix:` subjects.
 - Claude Code is called directly (`claude -p`), not through OmniRoute: the account the local Claude Code is logged in to pays. Through OmniRoute every call went to the one Claude account OmniRoute held (the owner's Pro), not the Team seat the owner chose. Models are plain ids again (`claude-sonnet-5-5`, `claude-opus-5-5`).

@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from greenkeep import kinds
 from greenkeep.core import GateFailure
 from greenkeep.findings import Finding
 from greenkeep.kinds import (
@@ -92,3 +93,27 @@ def test_a_lint_fix_may_change_only_the_file_of_its_finding():
     f = Finding("ruff", "S110", "tests/test_app.py", 88, "m", "ruff:S110:x")
     with pytest.raises(GateFailure, match="only"):
         kind_of(f).check_scope(None, f, ["tests/test_app.py", "src/app/core.py"])
+
+
+@pytest.mark.parametrize(("rule", "planned"), [("C901", True), ("PLR0915", True),
+                                               ("SIM117", False), ("F401", False)])
+def test_a_boost_plans_only_the_hard_changes_first(monkeypatch, tmp_path, rule, planned):
+    asked = []
+    monkeypatch.setattr(kinds.llm, "plan", lambda prompt, model, root: "THE PLAN")
+    monkeypatch.setattr(kinds.llm, "ask",
+                        lambda system, prompt, model, root: asked.append(prompt)
+                        or kinds.llm.Reply("r", model, "sha"))
+    job = SimpleNamespace(opts=SimpleNamespace(model="sonnet", planner="opus"),
+                          ws=SimpleNamespace(root=tmp_path))
+    reply = kinds.patch(job, "SYS", "TASK", hard=kinds.is_hard(finding("ruff", rule)))
+    assert ("THE PLAN" in asked[0]) == planned
+    assert (reply.model == "sonnet + plan by opus") == planned
+
+
+def test_without_a_planner_nothing_is_planned(monkeypatch, tmp_path):
+    monkeypatch.setattr(kinds.llm, "plan", lambda *a: pytest.fail("planned"))
+    monkeypatch.setattr(kinds.llm, "ask", lambda s, p, m, r: kinds.llm.Reply("r", m, "sha"))
+    job = SimpleNamespace(opts=SimpleNamespace(model="sonnet", planner=""),
+                          ws=SimpleNamespace(root=tmp_path))
+    assert kinds.patch(job, "SYS", "TASK", hard=True).model == "sonnet"
+    assert kinds.is_hard(finding("untested", "coverage")) and kinds.is_hard(finding("bug", "x"))

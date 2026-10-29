@@ -169,6 +169,7 @@ weekend_budget = 1
 boost_until = 2026-10-30T03:00:00+05:00  # optional: until then, a run every hour
 boost_budget = 15                        # and this budget; every repo bug-hunts and lints
                                          # for complexity, SIM, PERF, UP and RUF too
+                                         # and Opus plans each hard change before Sonnet writes it
 repos = [
   "~/dev/my-repo",
   "owner/name-without-local-checkout",

@@ -30,6 +30,7 @@ class Options:
     model: str
     keep: bool
     review_model: str = DEFAULT_REVIEW_MODEL
+    planner: str = ""  # a boost: this model plans each hard change before the patcher writes it
 
 
 @dataclass(frozen=True)

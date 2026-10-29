@@ -123,7 +123,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     sweep()
     targets, budget = _targets(a)
-    opts = Options(a.push, budget, a.model, a.keep, a.review_model)
+    # a boost: the reviewer's model also plans each hard change before the patcher writes it
+    planner = a.review_model if _boosting() else ""
+    opts = Options(a.push, budget, a.model, a.keep, a.review_model, planner)
     digest = _run_all(targets, opts, state)
     text = digest.text(max(opts.budget - state.merged_today(), 0))
     if a.push:
