@@ -33,7 +33,8 @@ def test_spent_budget_still_visits_every_repo_for_security(monkeypatch):
 def test_a_named_repo_keeps_its_config_entry_test_root_and_hunt(monkeypatch, tmp_path):
     (tmp_path / "jobs").mkdir()
     entry = Target(str(tmp_path / "jobs"), tests="pipeline", hunt=True)
-    monkeypatch.setattr(cli, "load", lambda: SimpleNamespace(repos=[entry]))
+    monkeypatch.setattr(cli, "load", lambda: SimpleNamespace(
+        repos=[entry], boosting=lambda _now: False, budget_at=lambda _now: 3))
     a = cli._parse_args([str(tmp_path / "jobs"), "octrow/other"])
     targets, _ = cli._targets(a)
     assert targets[0].tests == "pipeline" and targets[0].hunt
@@ -85,6 +86,22 @@ def test_a_boost_hunts_and_lints_more_in_every_repo(monkeypatch, tmp_path):
     assert [t.hunt for t in targets] == [True, True] and budget == 15
     assert all(t.boost for t in targets)
 
+
+def test_named_repos_take_the_budget_and_the_boost_from_the_config(monkeypatch):
+    cfg = SimpleNamespace(repos=[Target("octrow/a")], boosting=lambda _now: True,
+                          budget_at=lambda _now: 15)
+    monkeypatch.setattr(cli, "load", lambda: cfg)
+    targets, budget = cli._targets(cli._parse_args(["octrow/other"]))
+    assert budget == 15 and targets[0].hunt and targets[0].boost
+    assert cli._targets(cli._parse_args(["octrow/other", "--budget", "2"]))[1] == 2
+
+
+def test_named_repos_without_a_config_get_the_default_budget(monkeypatch):
+    def broken():
+        raise cli.ConfigError("no config")
+    monkeypatch.setattr(cli, "load", broken)
+    targets, budget = cli._targets(cli._parse_args(["octrow/other"]))
+    assert budget == cli.DEFAULT_BUDGET and targets == [Target("octrow/other")]
 
 
 def scheduled_main(monkeypatch, tmp_path, sent: list[str], run_all=None,

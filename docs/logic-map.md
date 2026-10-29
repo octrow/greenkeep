@@ -87,7 +87,7 @@ All entry points call `cli.main`. They differ in defaults.
 | systemd `greenkeep.service`, hourly timer | config | yes | config (defaults 3, weekend 1, boost 15) | from config | runs `greenkeep --push`: a scheduled run |
 | CLI `greenkeep --push` | config | yes | config | from config | also a scheduled run: once-a-day guard, `record_run` |
 | CLI `greenkeep` | config | no (dry run) | config | from config | see "Dry run" below |
-| CLI `greenkeep owner/name …` | named; config entry kept if listed | flag | `--budget` or **3**, never the config's | **planner only**, no extra rules, no forced hunt | no once-a-day guard; push mode counts today's merges of every repo against the 3 (#7) |
+| CLI `greenkeep owner/name …` | named; config entry kept if listed | flag | `--budget` or the config's; **3** if the config does not load | from config, if it loads | no once-a-day guard; push mode counts today's merges of every repo against the budget |
 | dashboard "Dry run now" | config | no | config | from config | `uv run --project <checkout> greenkeep`; does nothing while PAUSE exists |
 | dashboard "Run with options…" | dialog (empty: config) | dialog switch (a push asks for confirmation first) | dialog (empty: config) | dialog (cli defaults prefilled) | the same command with the CLI flags; `--keep` is a checkbox |
 
@@ -133,11 +133,11 @@ Module: `workspace`
 Decides: the repo list and the day's merge budget.
 In: argv, `config.toml`. Out: `list[Target]`, budget.
 Branches:
-- repos named → those, with their config entry (test root, hunt) if listed; budget `--budget` or 3;
+- repos named → those, with their config entry (test root, hunt) if listed; budget `--budget`, else the config's `budget_at(now)`, else 3 if the config does not load;
 - none named → config `repos`; budget `--budget` or `budget_at(now)`;
-- boost (`now < boost_until`) → every target gets `hunt=True, boost=True`; budget `boost_budget` (15);
+- boost (`now < boost_until`, named repos too when the config loads) → every target gets `hunt=True, boost=True`; budget `boost_budget` (15);
 - weekday ≥ Saturday → `weekend_budget` (1); else `budget` (3).
-Fails: missing or bad config with no repos named → `ConfigError`, exit 1; push → a one-line digest once a day (mark `config-error`); `boost_until` without an offset is a config error.
+Fails: missing or bad config with no repos named (with repos named it is ignored) → `ConfigError`, exit 1; push → a one-line digest once a day (mark `config-error`); `boost_until` without an offset is a config error.
 Module: `cli`, `config`
 
 ### 5. Options

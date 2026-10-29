@@ -13,7 +13,7 @@ from datetime import date, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from .config import DEFAULT_BUDGET, PAUSE_FILE, ConfigError, Target, load, pause, paused
+from .config import DEFAULT_BUDGET, PAUSE_FILE, Config, ConfigError, Target, load, pause, paused
 from .core import DEFAULT_MODEL, DEFAULT_REVIEW_MODEL, Options
 from .digest import Digest, send
 from .llm import unavailable
@@ -54,18 +54,19 @@ def _setup_logging() -> None:
 
 
 def _targets(a: argparse.Namespace) -> tuple[list[Target], int]:
+    cfg = _config() if a.repos else load()
+    now = datetime.now().astimezone()
     if a.repos:
         # a repo in the config keeps its entry (test root, hunt), so a dry run matches
-        known = {t.path or t.spec: t for t in _configured()}
-        named = [Target(r) for r in a.repos]
-        return [known.get(t.path or t.spec, t) for t in named], a.budget or DEFAULT_BUDGET
-    cfg = load()
-    now = datetime.now().astimezone()
+        known = {t.path or t.spec: t for t in (cfg.repos if cfg else [])}
+        repos = [known.get(t.path or t.spec, t) for t in map(Target, a.repos)]
+    else:
+        repos = cfg.repos
     # a boost spends the subscription: every repo lints with extra rules (complexity,
     # simplify…) and bug-hunts once nothing else is left
-    repos = ([replace(t, hunt=True, boost=True) for t in cfg.repos] if cfg.boosting(now)
-             else cfg.repos)
-    return repos, a.budget or cfg.budget_at(now)
+    if cfg and cfg.boosting(now):
+        repos = [replace(t, hunt=True, boost=True) for t in repos]
+    return repos, a.budget or (cfg.budget_at(now) if cfg else DEFAULT_BUDGET)
 
 
 def _boosting() -> bool:
@@ -75,11 +76,11 @@ def _boosting() -> bool:
         return False
 
 
-def _configured() -> list[Target]:
+def _config() -> Config | None:
     try:
-        return load().repos
+        return load()
     except ConfigError:  # no config: a dry run on named repos needs none
-        return []
+        return None
 
 
 def _run_all(targets: list[Target], opts: Options, state: State) -> Digest:
