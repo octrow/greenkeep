@@ -6,6 +6,7 @@
 - During a boost every tended repo bug-hunts once nothing else is left, not only those with `hunt = true`.
 - Boost: `boost_until` (a time with its offset) and `boost_budget` (default 15) in the config. Until then every hourly firing is a run and the budget is `boost_budget`, for nights when the owner wants to spend more of the subscription.
 - Claude's usage limit stops the run at the repo that hit it (before, each later repo cloned, synced and ran its suite only to hit it too: 8 repos on 2026-10-26) and leaves the day open, so the next hourly firing tries again.
+- Dependabot: after its own fixes, greenkeep merges the repo's open Dependabot PRs whose every `from X to Y` is a same-major update (same minor for 0.x), once its local suite passes on the PR's head (up to 3 per repo per run; a red head is not retried until Dependabot pushes again). Actions-only PRs merge only on green checks. CI in the private repos no longer starts (no Actions minutes), and 34 such PRs had piled up. Majors stay with the owner; these merges spend no budget.
 - A characterization test retry corrects the previous attempt's file (shown to the patcher with the failure) instead of writing a new one: re-rolls failed a different way each time (a wrong assert, then over the line budget, then new lint).
 - `greenkeep <repo>` on a repo from the config keeps its entry, so a dry run uses the repo's test root and bug hunt setting.
 - From a review of the first 32 merged PRs (4 judged bad):

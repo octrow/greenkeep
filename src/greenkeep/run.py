@@ -12,7 +12,7 @@ from textwrap import shorten
 
 from claude_cli import ClaudeCliError, UsageLimitError
 
-from . import deps, github, hunt, llm, ready, reverts
+from . import dependabot, deps, github, hunt, llm, ready, reverts
 from .config import Target
 from .core import Baseline, Change, GateFailure, Job, Options, lint
 from .digest import Digest
@@ -330,6 +330,7 @@ def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> Non
         else:
             digest.owner += [f"{ws.name}: {note}" for note in ready.owner_notes(ws.root)]
         _work_repo(Job(ws, base, opts, state, digest), target.hunt)
+        dependabot.merge_safe(ws, opts, state, digest)  # greenkeep's own fixes go first
     finally:
         if not opts.keep:
             discard(ws)

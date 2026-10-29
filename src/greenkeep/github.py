@@ -59,7 +59,7 @@ def publish(ws: Workspace, branch: str, title: str, body: str) -> int:
     pr = int(open_pr) if open_pr else _number(_gh(
         ws, "pr", "create", "--head", branch, "--base", ws.base_branch,
         "--title", title, "--body", body, "--label", LABEL))
-    _merge(ws, pr)
+    merge(ws, pr)
     return pr
 
 
@@ -69,11 +69,13 @@ def merge_sha(ws: Workspace, pr: int) -> str:
                ".mergeCommit.oid // empty")
 
 
-def _merge(ws: Workspace, pr: int) -> None:
-    """Merge now, or once the repo's required checks (CI) have passed."""
-    merge = ["gh", "pr", "merge", str(pr), "--squash", "--delete-branch"]
-    if sh(merge, ws.root, check=False).returncode == 0:
+def merge(ws: Workspace, pr: int, head: str = "") -> None:
+    """Merge now, or once the repo's required checks (CI) have passed. With `head`, only
+    while the PR still points at that commit (the one greenkeep tested)."""
+    cmd = ["gh", "pr", "merge", str(pr), "--squash", "--delete-branch",
+           *(["--match-head-commit", head] if head else [])]
+    if sh(cmd, ws.root, check=False).returncode == 0:
         return
     sh(["gh", "pr", "checks", str(pr), "--watch", "--required", "--fail-fast"], ws.root,
        timeout=CHECKS_TIMEOUT)  # red or hung CI raises: the attempt fails
-    sh(merge, ws.root)
+    sh(cmd, ws.root)
