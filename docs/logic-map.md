@@ -74,7 +74,7 @@ Examples:
 - `SIM103` during a boost → Claude patch, gate, Opus review; a changed line the tests never ran fails the gate.
 - `vuln:certifi:PYSEC-…` with the budget spent → still worked, merged, not counted.
 
-Budget exemption is decided twice: `Kind.exempt_from_budget` and the `vuln:` prefix in `State.merged_today` (#8).
+Budget exemption is read twice: `Kind.exempt_from_budget` and `state.BUDGET_FREE` (`vuln:`) in `State.merged_today`; `state` cannot import `kinds`, so a test keeps them equal.
 
 Module: `kinds`, `findings`, `state`
 
@@ -363,7 +363,7 @@ Module: `state`, `digest`, `cli`
 
 `greenkeep-ui` serves on 127.0.0.1:8095 (next free port; restarts or reuses a running dashboard).
 Opens state.db read-write (runs the schema and migrations); reads it and the log tail every 30 s; "Resume" deletes PAUSE; "Dry run now" starts `greenkeep` with a live log.
-Its texts lag the code: "runs daily at 10:00", today's budget without the boost (#17).
+It shows the budget of the moment (a boost's included) and says the timer fires hourly with one run a day.
 Feeds: step 1 (resume), the dry-run entry point.
 Module: `ui`, `port`
 

@@ -17,7 +17,9 @@ SCHEMA = """CREATE TABLE IF NOT EXISTS finding (
 # per-repo and per-run marks: a repo's cool-down end, the day the last run finished
 MARKS = "CREATE TABLE IF NOT EXISTS mark (key TEXT PRIMARY KEY, value TEXT)"
 COOL_DOWN = timedelta(days=7)
-BUDGET_FREE = "vuln:"  # security fingerprints: they neither need nor spend the budget
+# fingerprint prefixes of the kinds with `exempt_from_budget` (security): they neither need
+# nor spend the budget. State cannot import kinds; a test keeps the two in step
+BUDGET_FREE = ("vuln:",)
 # columns added after the first release, for databases created before them
 MIGRATIONS = {column: f"ALTER TABLE finding ADD COLUMN {column} TEXT"
               for column in ("sha", "title", "url", "merged_at")}
@@ -111,7 +113,8 @@ class State:
         # merged_at is stored in UTC; the budget is per local day
         return self.db.execute("SELECT count(*) FROM finding WHERE status='merged' AND "
                                "date(merged_at, 'localtime') = date('now', 'localtime') "
-                               "AND fp NOT LIKE ?", (BUDGET_FREE + "%",)).fetchone()[0]
+                               + "".join(" AND fp NOT LIKE ?" for _ in BUDGET_FREE),
+                               [p + "%" for p in BUDGET_FREE]).fetchone()[0]
 
     def mark(self, key: str) -> str:
         row = self.db.execute("SELECT value FROM mark WHERE key=?", (key,)).fetchone()

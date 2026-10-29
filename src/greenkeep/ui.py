@@ -12,7 +12,7 @@ import argparse
 import re
 import sys
 from dataclasses import dataclass
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 
 from nicegui import app, ui
@@ -64,7 +64,7 @@ def _decorate(row: dict) -> dict:
 
 def budget_today() -> int | None:
     try:
-        return load().budget_on(date.today())
+        return load().budget_at(datetime.now().astimezone())  # a boost's budget too
     except ConfigError:
         return None
 
@@ -91,12 +91,12 @@ def _pause_card(refresh) -> None:
 
             def resume() -> None:
                 PAUSE_FILE.unlink(missing_ok=True)
-                ui.notify("Resumed: the next scheduled run will work")
+                ui.notify("Resumed: the next hourly firing runs, unless today's run already finished")
                 refresh()
 
             layout.button("Resume", kind="primary", on_click=resume)
         else:
-            ui.label("Active: runs daily at 10:00 (systemd timer)")
+            ui.label("Active: the systemd timer fires hourly; one run a day (every hour in a boost)")
 
 
 def _summary(state: State) -> None:

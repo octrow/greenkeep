@@ -26,3 +26,12 @@ def test_log_tail_keeps_event_lines_only():
     assert log_tail(text).splitlines() == ["2026-10-16 00:30:00,000 INFO   merged x",
                                            "2026-10-16 00:29:21,596 INFO a: start"]
     assert log_tail("") == "(no events yet)"
+
+
+def test_the_budget_shown_is_the_boost_budget_during_a_boost(monkeypatch):
+    from types import SimpleNamespace
+
+    from greenkeep import ui
+    cfg = SimpleNamespace(budget_at=lambda now: 15 if now.tzinfo else 0)
+    monkeypatch.setattr(ui, "load", lambda: cfg)
+    assert ui.budget_today() == 15

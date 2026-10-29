@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Dashboard: the budget shown is the one in force now (a boost's included), the status line says the timer fires hourly with one run a day, and Resume no longer promises a run when today's is already done.
 - A scheduled run that cloned no repo (no network after boot or sleep) leaves the day open, so the next hourly firing tries again; before, it marked the day done and the next try was tomorrow. The day mark is the date the run started, so a run past midnight no longer takes the next day's run.
 - A broken config sends a one-line digest once a day instead of failing every hourly run with only a journal entry.
 - A dependency upgrade syncs the venv after `uv lock`: `uv run` alone kept a package that only an extra needs at its old version, so the gate tested the old one.

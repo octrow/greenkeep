@@ -166,3 +166,10 @@ def test_a_dependency_upgrade_syncs_the_venv_before_the_suite(monkeypatch):
     f = Finding("vuln", "six==1.17.0", "uv.lock", 0, "m", "vuln:six:X")
     kind_of(f).produce(SimpleNamespace(ws=None), f, "")
     assert calls == ["lock", "sync"]
+
+
+def test_the_state_budget_count_skips_exactly_the_budget_exempt_kinds():
+    # state cannot import kinds (kinds -> core -> state): its prefix list must follow them
+    from greenkeep.state import BUDGET_FREE
+    exempt = {f"{name}:" for name, k in kinds.KINDS.items() if k.exempt_from_budget}
+    assert set(BUDGET_FREE) == exempt
