@@ -50,5 +50,6 @@ def test_a_merge_github_still_refuses_fails_the_attempt(monkeypatch):
 
 
 def test_a_merge_github_made_although_gh_failed_counts_as_merged(monkeypatch):
-    fake_gh(monkeypatch, merges=[1, 1], states=["CLEAN", "MERGED"])
-    github.merge(WS, 7)
+    calls = fake_gh(monkeypatch, merges=[1, 1], states=["CLEAN", "MERGED"])
+    github.merge(WS, 7)  # no WorkspaceError: the attempt is not counted
+    assert [c[2] for c in calls] == ["merge", "view", "merge", "view"]
