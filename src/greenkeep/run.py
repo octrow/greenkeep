@@ -26,6 +26,7 @@ from .workspace import (
     TestRun,
     Workspace,
     WorkspaceError,
+    baseline_tests,
     clone,
     discard,
     remote_head,
@@ -354,7 +355,7 @@ def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> Non
     try:
         reverts.check(ws, state, backfill=opts.push)  # raises AutoPause before any work
         sync(ws)
-        tests = run_tests(ws)
+        tests = baseline_tests(ws)
         if not tests.ok:
             log.warning("%s: baseline tests are red, skipping\n%s", ws.name, tests.output)
             digest.problems.append(f"{ws.name}: baseline tests are red in a clean clone")

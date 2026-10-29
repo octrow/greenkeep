@@ -79,7 +79,7 @@ def test_run_argv_is_the_bare_command_for_defaults_and_carries_every_option():
     base = ["uv", "run", "--project", str(ui.PROJECT), "greenkeep"]
     assert ui.run_argv([], False, None, DEFAULT_MODEL, DEFAULT_REVIEW_MODEL, False) == base
     assert ui.run_argv(["a/b", "/x/y"], True, 5, "m1", "m2", True) == base + [
-        "--push", "--budget", "5", "--model", "m1", "--review-model", "m2", "--keep",
+        "--push", "--budget", "5", "--model", "m1", "--review-model", "m2", "--keep", "--",
         "a/b", "/x/y"]
 
 
@@ -112,3 +112,9 @@ async def test_the_options_dialog_starts_a_push_run_only_after_confirmation(tmp_
         user.find("Open PRs and merge").click()
     argv, kwargs = submitted[0]
     assert "--push" in argv and kwargs["label"] == "greenkeep run (push)"
+
+
+def test_repos_never_turn_into_flags():
+    from greenkeep.ui import run_argv
+    argv = run_argv(["o/r"], False, 0, "", "", False)
+    assert argv[-4:] == ["--budget", "0", "--", "o/r"]

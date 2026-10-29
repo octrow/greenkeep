@@ -185,6 +185,7 @@ class TestRun:
     cov: dict
     output: str
     no_tests: bool = False  # pytest collected nothing (exit 5)
+    crashed: bool = False  # the interpreter died (faulthandler's header in the output)
 
 
 def kept_addopts(addopts: str | list[str]) -> list[str]:
@@ -254,23 +255,26 @@ def suite_tail(text: str) -> str:
     """The tail of a suite's output that the log keeps. A crash keeps faulthandler's header
     and the repo's own frames: library frames and the extension module list pushed both
     out of the tail."""
-    if CRASH in text:
-        text = "\n".join(ln for ln in text[text.index(CRASH):].splitlines()
-                         if "/site-packages/" not in ln and not ln.startswith("Extension modules:"))
-    return text[-OUTPUT_TAIL:]
+    if CRASH not in text:
+        return text[-OUTPUT_TAIL:]
+    header, *frames = [ln for ln in text[text.index(CRASH):].splitlines()
+                       if "/site-packages/" not in ln and not ln.startswith("Extension modules:")]
+    # the header first even when the frames overflow: it is what says "crash"
+    return header + "\n" + "\n".join(frames)[-(OUTPUT_TAIL - len(header) - 1):]
 
 
-def run_tests(ws: Workspace) -> TestRun:
-    """Full suite under coverage; a crash (a flaky segfault in Qt tests) runs it once more."""
-    run = _run_suite(ws)
-    if not run.ok and CRASH in run.output:
+def baseline_tests(ws: Workspace) -> TestRun:
+    """The baseline suite; a crash (a flaky segfault in Qt tests) runs it once more. Only
+    here: after a patch, a crash that comes and goes may be the patch's own."""
+    run = run_tests(ws)
+    if run.crashed:
         log.info("  the suite crashed, running it once more:\n%s", run.output)
-        run = _run_suite(ws)
+        run = run_tests(ws)
     return run
 
 
-def _run_suite(ws: Workspace) -> TestRun:
-    """No tests at all counts as green with empty coverage."""
+def run_tests(ws: Workspace) -> TestRun:
+    """Full suite under coverage. No tests at all counts as green with empty coverage."""
     data = ws.scratch / ".coverage"
     data.unlink(missing_ok=True)
     cwd = ws.root / ws.tests
@@ -285,7 +289,7 @@ def _run_suite(ws: Workspace) -> TestRun:
         return TestRun(False, {}, str(exc))
     tail = suite_tail(proc.stdout + proc.stderr)
     if proc.returncode not in (0, PYTEST_NO_TESTS):
-        return TestRun(False, {}, tail)
+        return TestRun(False, {}, tail, crashed=CRASH in proc.stdout + proc.stderr)
     # --source makes never-imported modules show up at 0%: that is what bootstraps a repo
     # without tests. With nothing measured at all, coverage refuses to report.
     out = ws.scratch / "cov.json"

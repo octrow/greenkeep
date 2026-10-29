@@ -66,7 +66,9 @@ def _targets(a: argparse.Namespace) -> tuple[list[Target], int]:
     # simplify…) and bug-hunts once nothing else is left
     if cfg and cfg.boosting(now):
         repos = [replace(t, hunt=True, boost=True) for t in repos]
-    return repos, a.budget or (cfg.budget_at(now) if cfg else DEFAULT_BUDGET)
+    if a.budget is not None:  # 0 is a budget too: nothing merged today
+        return repos, a.budget
+    return repos, cfg.budget_at(now) if cfg else DEFAULT_BUDGET
 
 
 def _boosting() -> bool:

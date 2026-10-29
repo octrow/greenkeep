@@ -70,11 +70,17 @@ def test_a_crash_keeps_its_header_and_the_repos_own_frames():
     assert workspace.suite_tail("x" * 5000) == "x" * workspace.OUTPUT_TAIL
 
 
-def test_a_suite_that_crashed_runs_once_more(monkeypatch):
-    runs = iter([workspace.TestRun(False, {}, "Fatal Python error: Aborted"),
+def test_a_long_crash_dump_keeps_its_header_first():
+    text = "Fatal Python error: Aborted\n" + '  File "/usr/lib/python3.12/threading.py"\n' * 500
+    out = workspace.suite_tail(text)
+    assert out.startswith("Fatal Python error: Aborted") and len(out) <= workspace.OUTPUT_TAIL
+
+
+def test_only_the_baseline_runs_a_crashed_suite_once_more(monkeypatch):
+    runs = iter([workspace.TestRun(False, {}, "x", crashed=True),
                  workspace.TestRun(True, {}, "1 passed")])
-    monkeypatch.setattr(workspace, "_run_suite", lambda ws: next(runs))
-    assert workspace.run_tests(None).ok
+    monkeypatch.setattr(workspace, "run_tests", lambda ws: next(runs))
+    assert workspace.baseline_tests(None).ok
     red = workspace.TestRun(False, {}, "1 failed")
-    monkeypatch.setattr(workspace, "_run_suite", lambda ws: red)
-    assert workspace.run_tests(None) is red  # a plain red suite is not re-run
+    monkeypatch.setattr(workspace, "run_tests", lambda ws: red)
+    assert workspace.baseline_tests(None) is red  # a plain red suite is not re-run

@@ -132,7 +132,8 @@ def run_argv(repos: list[str], push: bool, budget: int | None, model: str,
     argv += ["--budget", str(budget)] if budget is not None else []
     argv += ["--model", model] if model and model != DEFAULT_MODEL else []
     argv += ["--review-model", review_model] if review_model and review_model != DEFAULT_REVIEW_MODEL else []
-    return argv + ["--keep"] * keep + list(repos)
+    # `--`: a repo typed as "--push" stays a repo, never a flag that skips the confirmation
+    return argv + ["--keep"] * keep + (["--", *repos] if repos else [])
 
 
 def _start(argv: list[str], push: bool) -> None:
@@ -153,7 +154,7 @@ def _config_repos() -> list[str]:
 
 
 def _confirm_push(go) -> None:
-    with ui.dialog() as dialog, layout.section_card():
+    with ui.dialog().on("hide", lambda: dialog.delete()) as dialog, layout.section_card():
         layout.heading("Open pull requests and merge?", level=2)
         ui.label("This run opens real issues and pull requests and merges them on GitHub.")
 
@@ -182,7 +183,7 @@ def _options_dialog() -> ui.dialog:
 
         def start() -> None:
             raw = (budget.value or "").strip()
-            if raw and not raw.isdigit():
+            if raw and not (raw.isascii() and raw.isdigit()):  # '²' passes isdigit
                 budget.error = "A whole number"
                 return
             argv = run_argv(list(repos.value or []), push.value, int(raw) if raw else None,

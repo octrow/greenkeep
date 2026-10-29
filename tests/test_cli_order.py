@@ -94,6 +94,7 @@ def test_named_repos_take_the_budget_and_the_boost_from_the_config(monkeypatch):
     targets, budget = cli._targets(cli._parse_args(["octrow/other"]))
     assert budget == 15 and targets[0].hunt and targets[0].boost
     assert cli._targets(cli._parse_args(["octrow/other", "--budget", "2"]))[1] == 2
+    assert cli._targets(cli._parse_args(["octrow/other", "--budget", "0"]))[1] == 0
 
 
 def test_named_repos_without_a_config_get_the_default_budget(monkeypatch):
