@@ -1,4 +1,5 @@
-"""The owner's config: which repos are tended, which come first, and the daily merge budget.
+"""The owner's config: which repos are tended, which come first, the daily merge budget and
+a boost (a bigger budget and a run every hour, until a given time).
 
 Lives outside any repo (`~/.config/greenkeep/config.toml`): it names private repos.
 """
@@ -8,7 +9,7 @@ from __future__ import annotations
 import re
 import tomllib
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 CONFIG_DIR = Path.home() / ".config/greenkeep"
@@ -16,6 +17,7 @@ CONFIG_FILE = CONFIG_DIR / "config.toml"
 PAUSE_FILE = CONFIG_DIR / "PAUSE"
 DEFAULT_BUDGET = 3
 DEFAULT_WEEKEND_BUDGET = 1
+DEFAULT_BOOST_BUDGET = 15
 SATURDAY = 5
 SLUG = re.compile(r"^[\w.-]+/[\w.-]+$")
 
@@ -56,9 +58,17 @@ class Config:
     repos: list[Target]
     budget: int = DEFAULT_BUDGET
     weekend_budget: int = DEFAULT_WEEKEND_BUDGET
+    boost_until: datetime | None = None  # the owner spends more of the subscription until then
+    boost_budget: int = DEFAULT_BOOST_BUDGET
 
     def budget_on(self, day: date) -> int:
         return self.weekend_budget if day.weekday() >= SATURDAY else self.budget
+
+    def boosting(self, now: datetime) -> bool:
+        return self.boost_until is not None and now < self.boost_until
+
+    def budget_at(self, now: datetime) -> int:
+        return self.boost_budget if self.boosting(now) else self.budget_on(now.date())
 
 
 def load(path: Path = CONFIG_FILE) -> Config:
@@ -82,9 +92,16 @@ def load(path: Path = CONFIG_FILE) -> Config:
                       tables.get(r, {}).get("hunt", False)) for r in repos]
     for t in targets:
         _ = t.path  # a typo in the config fails at load, not halfway through a run
+    boost_until = data.get("boost_until")
+    if boost_until is not None and (not isinstance(boost_until, datetime)
+                                    or boost_until.tzinfo is None):
+        raise ConfigError(f"{path}: `boost_until` must be a time with its offset, "
+                          "like 2026-10-30T03:00:00+05:00")
     return Config(targets,
                   int(data.get("budget", DEFAULT_BUDGET)),
-                  int(data.get("weekend_budget", DEFAULT_WEEKEND_BUDGET)))
+                  int(data.get("weekend_budget", DEFAULT_WEEKEND_BUDGET)),
+                  boost_until,
+                  int(data.get("boost_budget", DEFAULT_BOOST_BUDGET)))
 
 
 def _entry_ok(entry: object) -> bool:

@@ -166,6 +166,8 @@ Config `~/.config/greenkeep/config.toml`:
 ```toml
 budget = 3            # merged PRs per weekday
 weekend_budget = 1
+boost_until = 2026-10-30T03:00:00+05:00  # optional: until then, a run every hour
+boost_budget = 15                        # and this budget instead
 repos = [
   "~/dev/my-repo",
   "owner/name-without-local-checkout",
@@ -189,7 +191,9 @@ If the port belongs to another app it moves to the next free one; if a greenkeep
 dashboard already runs there it asks whether to restart it (default No) and prints its link.
 
 Once a day: the timer fires hourly and greenkeep exits at once if today's digest already went
-out, so a run cut short by a shutdown starts over after the next boot.
+out, so a run cut short by a shutdown starts over after the next boot. During a boost
+every hourly firing is a run. A run that hits Claude's usage limit stops there and leaves
+the day open, so the next hourly firing tries again.
 
 ```bash
 cp contrib/systemd/greenkeep.* ~/.config/systemd/user/

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -69,4 +69,23 @@ def test_bug_hunt_is_off_unless_a_repo_entry_turns_it_on(tmp_path):
     assert [t.hunt for t in load(cfg).repos] == [True, False]
     cfg.write_text(f'repos = [{{ path = "{tmp_path}/a", hunt = "yes" }}]\n')
     with pytest.raises(ConfigError):
+        load(cfg)
+
+
+def test_boost_raises_the_budget_until_its_end(tmp_path):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('repos = ["octrow/a"]\nbudget = 3\n'
+                   "boost_until = 2026-10-30T03:00:00+05:00\nboost_budget = 15\n")
+    c = load(cfg)
+    tz = timezone(timedelta(hours=5))
+    assert c.boosting(datetime(2026, 10, 30, 2, 59, tzinfo=tz))
+    assert c.budget_at(datetime(2026, 10, 29, 21, 0, tzinfo=tz)) == 15
+    assert not c.boosting(datetime(2026, 10, 30, 3, 0, tzinfo=tz))
+    assert c.budget_at(datetime(2026, 10, 30, 3, 0, tzinfo=tz)) == 3
+
+
+def test_boost_until_without_an_offset_is_rejected(tmp_path):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('repos = ["octrow/a"]\nboost_until = 2026-10-30T03:00:00\n')
+    with pytest.raises(ConfigError, match="boost_until"):
         load(cfg)

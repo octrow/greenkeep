@@ -202,7 +202,7 @@ def work(job: Job, f: Finding) -> bool:
             _land(job, Fix(f, change, paths, issue))
             return True
         except ATTEMPT_FAILURES as exc:
-            if _not_the_change(exc):
+            if not_the_change(exc):
                 raise
             feedback = clip(redact(str(exc), job.ws.secrets()))
             _record_failure(job, f, feedback)
@@ -215,7 +215,7 @@ def _timed_out(exc: Exception) -> bool:
     return isinstance(exc, TimeoutError) or "timed out after" in str(exc)
 
 
-def _not_the_change(exc: Exception) -> bool:
+def not_the_change(exc: Exception) -> bool:
     """Quota and rate limits say nothing about the change: they stop the repo, not count."""
     return isinstance(exc, UsageLimitError) or str(exc).startswith(("HTTP 429", "HTTP 503"))
 
@@ -252,7 +252,7 @@ def _hunted(job: Job, enabled: bool) -> list[Finding]:
     try:
         return hunt.hunt(job)
     except ATTEMPT_FAILURES as exc:
-        if _not_the_change(exc):
+        if not_the_change(exc):
             raise
         log.warning("%s: bug hunt failed: %s", job.ws.name, exc)
         return []

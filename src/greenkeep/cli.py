@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 import logging
-from datetime import date
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -16,7 +16,7 @@ from .config import DEFAULT_BUDGET, PAUSE_FILE, ConfigError, Target, load, pause
 from .core import DEFAULT_MODEL, DEFAULT_REVIEW_MODEL, Options
 from .digest import Digest, send
 from .reverts import AutoPause
-from .run import run_repo
+from .run import not_the_change, run_repo
 from .state import State
 from .workspace import sweep
 
@@ -58,7 +58,14 @@ def _targets(a: argparse.Namespace) -> tuple[list[Target], int]:
         named = [Target(r) for r in a.repos]
         return [known.get(t.path or t.spec, t) for t in named], a.budget or DEFAULT_BUDGET
     cfg = load()
-    return cfg.repos, a.budget or cfg.budget_on(date.today())
+    return cfg.repos, a.budget or cfg.budget_at(datetime.now().astimezone())
+
+
+def _boosting() -> bool:
+    try:
+        return load().boosting(datetime.now().astimezone())
+    except ConfigError:
+        return False
 
 
 def _configured() -> list[Target]:
@@ -80,10 +87,15 @@ def _run_all(targets: list[Target], opts: Options, state: State) -> Digest:
         except AutoPause as stop:
             log.warning("auto-pause: %s", stop)
             if opts.push:
-                pause(f"auto-paused {date.today()}: {stop}")
+                pause(f"auto-paused {datetime.now():%Y-%m-%d}: {stop}")
             digest.problems.append(f"AUTO-PAUSED: {stop}. Check it, then delete {PAUSE_FILE}")
             break
         except Exception as exc:  # one broken repo must not cost the others their run
+            if not_the_change(exc):  # every later repo would hit the same limit
+                log.warning("%s: %s; run stopped, the next hourly run tries again", t.name, exc)
+                digest.problems.append(f"Claude usage limit at {t.name}: run stopped")
+                digest.limited = True
+                break
             log.exception("%s: run failed", t.name)
             first = (str(exc).splitlines() or [type(exc).__name__])[0]
             digest.problems.append(f"{t.name}: {first[:PROBLEM_CHARS]}")
@@ -100,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     scheduled = a.push and not a.repos
     # a dry run never touches the persistent state: attempts and budget stay unspent
     state = State() if a.push else State(Path(":memory:"))
-    if scheduled and state.ran_today():
+    if scheduled and state.ran_today() and not _boosting():
         log.debug("already ran today")
         return 0
     sweep()
@@ -110,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     text = digest.text(max(opts.budget - state.merged_today(), 0))
     if a.push:
         send(text)
-        if scheduled:
+        if scheduled and not digest.limited:
             state.record_run()
     else:
         log.info("%s", text)
