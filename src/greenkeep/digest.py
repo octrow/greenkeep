@@ -24,6 +24,7 @@ class Digest:
     clean: int = 0
     waiting: list[str] = field(default_factory=list)
     cooling: int = 0
+    reached: int = 0  # repos cloned: none means no network, so the day is not done
     limited: bool = False  # Claude did not answer (limit, login, outage): the day is not done
 
     def text(self, budget_left: int) -> str:

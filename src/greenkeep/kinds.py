@@ -28,6 +28,7 @@ from .workspace import (
     WorkspaceError,
     ruff_fix,
     ruff_fix_new_test,
+    sync,
     test_file_exit,
 )
 
@@ -297,6 +298,7 @@ class Dependency(Kind):
 
     def produce(self, job: Job, f: Finding, feedback: str) -> Change:
         deps.upgrade(job.ws, f.rule)
+        sync(job.ws)  # `uv run` would leave a package only an extra needs at its old version
         return Change([deps.LOCK], "uv lock", deterministic=True)
 
     def check_scope(self, job: Job, f: Finding, paths: list[str]) -> None:

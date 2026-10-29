@@ -99,3 +99,11 @@ def test_open_issues_are_those_of_open_and_parked_findings(tmp_path):
     s.set("demo", "ruff:d", status="open")
     s.set("other", "ruff:e", issue=5)
     assert sorted(s.open_issues("demo")) == [("ruff:a", 1), ("ruff:b", 2)]
+
+
+def test_the_run_mark_holds_the_day_the_run_started(tmp_path):
+    from datetime import date, timedelta
+
+    s = State(tmp_path / "s.db")
+    s.record_run(date.today() - timedelta(days=1))  # began before midnight
+    assert not s.ran_today()

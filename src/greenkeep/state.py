@@ -138,9 +138,9 @@ class State:
         self.db.execute("DELETE FROM mark WHERE key=?", (f"cool-down:{repo}",))
         self.db.commit()
 
-    def record_run(self) -> None:
-        """The scheduled run is done for today: the digest went out."""
-        self.set_mark("run", date.today().isoformat())
+    def record_run(self, day: date | None = None) -> None:
+        """The scheduled run that began on `day` (today) is done: the digest went out."""
+        self.set_mark("run", (day or date.today()).isoformat())
 
     def ran_today(self) -> bool:
         return self.mark("run") == date.today().isoformat()

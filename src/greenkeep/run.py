@@ -350,6 +350,7 @@ def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> Non
     if cooling:
         digest.cooling += 1
     ws = clone(target)
+    digest.reached += 1
     try:
         reverts.check(ws, state, backfill=opts.push)  # raises AutoPause before any work
         sync(ws)

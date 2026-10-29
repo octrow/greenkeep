@@ -17,7 +17,7 @@ def fake_gh(monkeypatch, merges: list[int], states: list[str]) -> list[list[str]
             code = merges.pop(0)
             if check and code:
                 raise WorkspaceError("gh pr merge… exit 1: not mergeable")
-            return SimpleNamespace(returncode=code, stdout="")
+            return SimpleNamespace(returncode=code, stdout="", stderr="not mergeable")
         if args[:3] == ["gh", "pr", "view"]:
             return SimpleNamespace(returncode=0, stdout=states.pop(0) + "\n")
         return SimpleNamespace(returncode=0, stdout="")
@@ -44,6 +44,11 @@ def test_a_merge_blocked_by_required_checks_waits_for_them(monkeypatch):
 
 
 def test_a_merge_github_still_refuses_fails_the_attempt(monkeypatch):
-    fake_gh(monkeypatch, merges=[1, 1], states=["DIRTY"])
+    fake_gh(monkeypatch, merges=[1, 1], states=["DIRTY", "OPEN"])
     with pytest.raises(WorkspaceError):
         github.merge(WS, 7)
+
+
+def test_a_merge_github_made_although_gh_failed_counts_as_merged(monkeypatch):
+    fake_gh(monkeypatch, merges=[1, 1], states=["CLEAN", "MERGED"])
+    github.merge(WS, 7)

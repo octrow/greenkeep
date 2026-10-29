@@ -84,3 +84,39 @@ def test_a_boost_hunts_and_lints_more_in_every_repo(monkeypatch, tmp_path):
     targets, budget = cli._targets(cli._parse_args([]))
     assert [t.hunt for t in targets] == [True, True] and budget == 15
     assert all(t.boost for t in targets)
+
+
+
+def scheduled_main(monkeypatch, tmp_path, sent: list[str], run_all=None,
+                   load=None) -> tuple[State, int]:
+    """One scheduled `greenkeep --push` on a state.db in tmp_path (it persists between calls)."""
+    state = State(tmp_path / "state.db")
+    monkeypatch.setattr(cli, "State", lambda *_: state)
+    monkeypatch.setattr(cli, "paused", lambda: False)
+    monkeypatch.setattr(cli, "sweep", lambda: None)
+    monkeypatch.setattr(cli, "send", sent.append)
+    monkeypatch.setattr(cli, "_setup_logging", lambda: None)
+    cfg = SimpleNamespace(repos=[Target("octrow/a")], boosting=lambda _now: False,
+                          budget_at=lambda _now: 3)
+    monkeypatch.setattr(cli, "load", load or (lambda: cfg))
+    if run_all:
+        monkeypatch.setattr(cli, "_run_all", run_all)
+    return state, cli.main(["--push"])
+
+
+def test_a_run_that_cloned_no_repo_leaves_the_day_open(monkeypatch, tmp_path):
+    # no network after boot or sleep: every clone failed, the next hourly run tries again
+    state, _ = scheduled_main(monkeypatch, tmp_path, [], run_all=lambda *_: Digest())
+    assert not state.ran_today()
+    state, _ = scheduled_main(monkeypatch, tmp_path, [], run_all=lambda *_: Digest(reached=1))
+    assert state.ran_today()
+
+
+def test_a_broken_config_is_told_once_a_day(monkeypatch, tmp_path):
+    def broken():
+        raise cli.ConfigError("repos: expected a list")
+
+    sent = []
+    codes = [scheduled_main(monkeypatch, tmp_path, sent, load=broken)[1] for _ in range(2)]
+    assert codes == [1, 1]
+    assert len(sent) == 1 and "repos: expected a list" in sent[0]

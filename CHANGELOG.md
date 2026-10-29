@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A scheduled run that cloned no repo (no network after boot or sleep) leaves the day open, so the next hourly firing tries again; before, it marked the day done and the next try was tomorrow. The day mark is the date the run started, so a run past midnight no longer takes the next day's run.
+- A broken config sends a one-line digest once a day instead of failing every hourly run with only a journal entry.
+- A dependency upgrade syncs the venv after `uv lock`: `uv run` alone kept a package that only an extra needs at its old version, so the gate tested the old one.
+- A merge `gh` reports as failed but GitHub made (`gh pr view` says MERGED) counts as merged.
 - The issue of a finding greenkeep no longer reports is closed with a comment: the owner fixed the code or the line changed. Bug issues are never closed this way; findings of boost-only rules stay open outside a boost; a vulnerability or outdated issue closes only once a newer finding for the same package replaces it (a failed pip-audit or PyPI call must not close anything).
 - An outdated dependency is bumped only within the specifiers in `pyproject.toml` and its uv workspace members: an `==` pin gets no finding (all 5 bumps in jobs parked on "no solution").
 - One advisory without a fixed release no longer hides the fixable ones of the same package: the finding fixes those and names the rest as "no fix yet".

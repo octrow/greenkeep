@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import time
 
-from .workspace import Workspace, sh
+from .workspace import Workspace, WorkspaceError, sh
 
 LABEL = "greenkeep"
 PARKED_LABEL = "needs-human"
@@ -90,7 +90,12 @@ def merge(ws: Workspace, pr: int, head: str = "") -> None:
     if _merge_state(ws, pr) == "BLOCKED":
         sh(["gh", "pr", "checks", str(pr), "--watch", "--required", "--fail-fast"], ws.root,
            timeout=CHECKS_TIMEOUT)  # red or hung CI raises: the attempt fails
-    sh(cmd, ws.root)
+    proc = sh(cmd, ws.root, check=False)
+    # gh can fail after GitHub merged (a dropped connection): the merge still stands
+    if proc.returncode and _gh(ws, "pr", "view", str(pr), "--json", "state",
+                               "--jq", ".state") != "MERGED":
+        raise WorkspaceError(f"gh pr merge {pr} exit {proc.returncode}: "
+                             f"{(proc.stderr or proc.stdout)[-800:]}")
 
 
 def _merge_state(ws: Workspace, pr: int) -> str:

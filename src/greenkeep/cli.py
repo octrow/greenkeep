@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import logging
 from dataclasses import replace
-from datetime import datetime
+from datetime import date, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -122,8 +122,16 @@ def main(argv: list[str] | None = None) -> int:
     if scheduled and state.ran_today() and not _boosting():
         log.debug("already ran today")
         return 0
+    started = date.today()  # a run past midnight still counts for the day it began
     sweep()
-    targets, budget = _targets(a)
+    try:
+        targets, budget = _targets(a)
+    except ConfigError as exc:  # every hourly run would fail the same way: say it once a day
+        log.error("config: %s", exc)
+        if a.push and state.mark("config-error") != started.isoformat():
+            send(f"greenkeep: no run, the config is broken: {exc}")
+            state.set_mark("config-error", started.isoformat())
+        return 1
     # a boost: the reviewer's model also plans each hard change before the patcher writes it
     planner = a.review_model if _boosting() else ""
     opts = Options(a.push, budget, a.model, a.keep, a.review_model, planner)
@@ -131,8 +139,8 @@ def main(argv: list[str] | None = None) -> int:
     text = digest.text(max(opts.budget - state.merged_today(), 0))
     if a.push:
         send(text)
-        if scheduled and not digest.limited:
-            state.record_run()
+        if scheduled and not digest.limited and (digest.reached or not targets):
+            state.record_run(started)
     else:
         log.info("%s", text)
     return 0

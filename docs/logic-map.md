@@ -116,7 +116,7 @@ Branches:
 - scheduled (`--push`, no repos named) and mark `run` = today and no boost → exit 0;
 - a boost is on → run every hour regardless;
 - named repos or a dry run → never skipped.
-The mark holds the date the run ended, checked against the date a run starts (#18).
+The mark holds the date the run started, the same date the guard checks.
 Fails: a broken config during the boost check → treated as no boost.
 Module: `cli`, `state`
 
@@ -136,7 +136,7 @@ Branches:
 - none named → config `repos`; budget `--budget` or `budget_at(now)`;
 - boost (`now < boost_until`) → every target gets `hunt=True, boost=True`; budget `boost_budget` (15);
 - weekday ≥ Saturday → `weekend_budget` (1); else `budget` (3).
-Fails: missing or bad config with no repos named → uncaught `ConfigError`, exit 1, no digest, every hourly run the same (#15); `boost_until` without an offset is a config error.
+Fails: missing or bad config with no repos named → `ConfigError`, exit 1; push → a one-line digest once a day (mark `config-error`); `boost_until` without an offset is a config error.
 Module: `cli`, `config`
 
 ### 5. Options
@@ -282,7 +282,7 @@ Checks in order:
 2. kind scope: lint → only its file, changed lines covered before, ruff reports fewer copies of its line than the baseline did; untested → only test files, within the line budget; bug → its file + added test lines only, source lines covered, each new test fails on the unfixed code (exit 1); dependency → only `uv.lock`; ready → only its file and `[project]` field, the check passes;
 3. no added `noqa`, `type: ignore`, `pragma: no cover`, `ruff:`, `pylint: disable`;
 4. no ruff finding whose fingerprint was not in the baseline (boost rules included; a file the change adds gets the repo's own rules only);
-5. full suite green (`uv run`, no explicit sync after `uv lock`, #19), not "no tests" where the baseline had tests;
+5. full suite green (`uv run`; a dependency kind runs `uv sync --all-extras --all-packages` after `uv lock`, or `uv run` would keep a package only an extra needs at its old version), not "no tests" where the baseline had tests;
 6. untested → module coverage grew.
 Fails: `GateFailure` with the reason (an attempt).
 Module: `run`, `gate`, `kinds`, `workspace`
@@ -299,7 +299,7 @@ Module: `run`, `llm`
 Decides: how the change reaches the base branch.
 Commit on `greenkeep/<sha1(fingerprint)[:10]>`: `<type>: <title>` ≤ 72 chars, body with finding, model, reviewer, gate note, `Closes #N`. PR title: the finding's title.
 Branches:
-- push → force-push, reuse an open PR on that branch or create one, `gh pr merge --squash --delete-branch`; refused → poll `mergeStateStatus` while UNKNOWN (10 × 3 s); BLOCKED → `gh pr checks --watch --required --fail-fast` (30 min); then merge once more;
+- push → force-push, reuse an open PR on that branch or create one, `gh pr merge --squash --delete-branch`; refused → poll `mergeStateStatus` while UNKNOWN (10 × 3 s); BLOCKED → `gh pr checks --watch --required --fail-fast` (30 min); then merge once more; still refused but `gh pr view` says MERGED → merged;
 - dry run → local commit only, diff to the log.
 State: `merged`, PR, merge sha. One merge per repo per run: the baseline is stale after it.
 Fails: a merge still refused (conflict, behind, a required review, red CI) or a gh/git error → an attempt, the change is made again next attempt; a `ValueError` from gh output → run-level (step 24), nothing counted.
@@ -345,9 +345,9 @@ Module: `cli`, `run`, `reverts`
 Decides: what the owner hears and whether the day counts as done.
 Text: counts, Merged (own and Dependabot), Needs you (parked + owner notes), Problems, Quiet (clean, waiting, cooling), budget left.
 Branches:
-- push → Telegram if `GREENKEEP_TG_BOT_TOKEN`/`CHAT_ID` are set, else a desktop notification with the first line only; scheduled and not `limited` → mark `run` = today (the end date);
+- push → Telegram if `GREENKEEP_TG_BOT_TOKEN`/`CHAT_ID` are set, else a desktop notification with the first line only; scheduled, not `limited`, and at least one repo cloned (or no repos) → mark `run` = the day the run started;
 - dry run → the log only.
-A run where every repo failed (network down) still marks the day done (#4).
+A run that cloned no repo (network down after boot or sleep) leaves the day open: the next hourly run tries again.
 Module: `digest`, `cli`, `state`
 
 ### Output
@@ -370,7 +370,4 @@ Module: `ui`, `port`
 ## Known gaps
 
 Details and fixes are in the plan (number in brackets).
-- A network outage at the start of the scheduled run marks the day done (#4).
-- A broken config crashes every hourly run with no digest (#15).
-- A merge GitHub made but `gh` reported as failed is not recorded (#16, not confirmed).
-- The dependency gate may run the suite on the old venv for packages in extras or other members (#19, not confirmed).
+- No open HIGH or MEDIUM findings; the LOW ones and the owner's questions are in the plan.

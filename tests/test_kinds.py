@@ -156,3 +156,13 @@ def test_fixing_one_of_several_identical_lines_passes_the_scope_check(monkeypatc
     monkeypatch.setattr(kinds, "lint", lambda ws, *p: [f, replace(f, fingerprint=fp + "#1")])
     with pytest.raises(GateFailure, match="still reports"):
         kind_of(f).check_scope(job, f, ["a.py"])
+
+
+def test_a_dependency_upgrade_syncs_the_venv_before_the_suite(monkeypatch):
+    # `uv run` leaves a package that only an extra needs at its old version
+    calls = []
+    monkeypatch.setattr(kinds.deps, "upgrade", lambda ws, spec: calls.append("lock"))
+    monkeypatch.setattr(kinds, "sync", lambda ws: calls.append("sync"))
+    f = Finding("vuln", "six==1.17.0", "uv.lock", 0, "m", "vuln:six:X")
+    kind_of(f).produce(SimpleNamespace(ws=None), f, "")
+    assert calls == ["lock", "sync"]
