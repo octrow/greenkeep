@@ -32,6 +32,9 @@ SECTIONS = {
     "readme-usage": ("a usage", re.compile(
         r"usage|example|how to|getting started|quick ?start|использ|пример", re.IGNORECASE)),
 }
+# a code line that installs or fetches the package, not one that uses it
+INSTALL_LINE = re.compile(r"\b(pip3?|pipx|uv(\s+tool)?|poetry|conda)\s+(install|add)\b|"
+                          r"\bgit\s+clone\b|^\W*cd\b")
 CI_HINTS = ("ci", "test", "check")  # a workflow named like this is the one the badge shows
 # the rule a deterministic or LLM fix of pyproject.toml answers -> the one field it may change
 FIELDS = {"description": "description", "readme-field": "readme", "urls": "urls"}
@@ -91,14 +94,33 @@ def _readme(root: Path, url: str) -> list[Finding]:
     except (OSError, UnicodeError):
         return []
     headings = ["".join(groups) for groups in HEADING.findall(FENCE.sub("", text))]
+    shown = {"readme-usage": _calls_package(text, _names(root))}
     found = [_finding(rule, README, f"{README} has no {section} section: add one",
                       f"Add {section} section to {README}")
              for rule, (section, pattern) in SECTIONS.items()
-             if not any(map(pattern.search, headings))]
+             if not shown.get(rule) and not any(map(pattern.search, headings))]
     if url and _workflow(root) and not BADGE.search(text):
         found.append(_finding("ci-badge", README, f"{README} has no CI badge",
                               f"Add a CI badge to {README}"))
     return found
+
+
+def _names(root: Path) -> set[str]:
+    """What a README calls the package by: its name, its import name, its scripts."""
+    project = _project(root) or {}
+    name = project.get("name", "")
+    scripts = project.get("scripts", {})
+    return {n for n in (name, name.replace("-", "_"), *scripts) if n}
+
+
+def _calls_package(text: str, names: set[str]) -> bool:
+    """A code block with a line that runs or imports the package shows its usage, whatever
+    the heading above it says ("What it looks like")."""
+    if not names:
+        return False
+    called = re.compile(rf"(?<![\w.-])({'|'.join(map(re.escape, names))})(?![\w-])")
+    return any(called.search(line) and not INSTALL_LINE.search(line)
+               for block in FENCE.finditer(text) for line in block.group(0).splitlines()[1:-1])
 
 
 def _workflow(root: Path) -> str:

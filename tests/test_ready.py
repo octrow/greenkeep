@@ -97,3 +97,19 @@ def test_dual_and_reuse_license_layouts_count(tmp_path):
     (tmp_path / "LICENSES").rmdir()
     (tmp_path / "LICENSE-APACHE").write_text("")
     assert ready.owner_notes(tmp_path) == []
+
+
+def test_a_code_block_that_calls_the_package_is_usage_without_a_heading(tmp_path):
+    pyproject = ('[project]\nname = "tiny-commons"\ndescription = "x"\nreadme = "README.md"\n'
+                 'urls = {}\n[project.scripts]\ntc = "tiny_commons:main"\n')
+    install = "## Install\n\n```bash\npip install tiny-commons\ncd tiny-commons\n```\n\n"
+    for block in ("```python\nfrom tiny_commons import slugify\n```",  # import name
+                  "```console\n$ tc add item\n```",                     # a script
+                  "```bash\nuvx tiny-commons run\n```"):                # the project name
+        root = repo(tmp_path, pyproject, readme=f"# x\n\n{install}## What it looks like\n\n"
+                                                f"{block}\n")
+        assert rules(root) == [], block
+    # install lines, a heading or prose naming it do not show how to use it
+    root = repo(tmp_path, pyproject, readme=f"# tiny-commons\n\n{install}Use tiny_commons.\n"
+                                            "```text\nunrelated\n```\n")
+    assert rules(root) == ["readme-usage"]

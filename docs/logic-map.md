@@ -209,7 +209,7 @@ Sources:
 - `untested`: modules < 50% covered with ≥ 5 statements, if coverage measured anything or there are no tests;
 - `vuln`: `uv export` → `pip-audit`, only with a tracked `uv.lock`; target = lowest version fixing every advisory that has a fixed release, same line preferred; advisories with none go to the message ("no fix yet"); fingerprint holds the fixable advisory ids;
 - `outdated`: `uv tree --outdated --depth 1` + PyPI, newest stable on the same major (minor for 0.x) that the specifiers in `pyproject.toml` and its uv workspace members allow (an `==` pin → no finding); skipped when `.github/dependabot.yml` (not `.yaml`) has a `uv`/`pip` ecosystem;
-- `ready`: pyproject `description`/`readme`/`urls`, README install/usage heading, CI badge.
+- `ready`: pyproject `description`/`readme`/`urls`, README install/usage heading (a code block that imports or runs the package, install lines aside, counts as usage), CI badge.
 Fails: PyPI errors → no target, no finding; `uv export`/`uv tree` failure or non-JSON pip-audit output → the repo is a problem line (no fixes, no Dependabot).
 Module: `run`, `core`, `findings`, `deps`, `ready`, `workspace`
 

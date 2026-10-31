@@ -203,7 +203,7 @@ Module: `run`, `workspace`
 - `untested`: модули < 50% покрытия с ≥ 5 операторов, если покрытие что-то измерило или тестов нет;
 - `vuln`: `uv export` → `pip-audit`, только при отслеживаемом `uv.lock`; цель — минимальная версия, закрывающая все advisory с исправленным релизом, в своей линии по возможности; advisory без него — в сообщение («no fix yet»); в отпечатке id исправимых advisory;
 - `outdated`: `uv tree --outdated --depth 1` + PyPI, новейший стабильный в том же мажоре (минор для 0.x), который разрешают спецификаторы `pyproject.toml` и членов его uv workspace (`==`-пин → находки нет); пропуск, если в `.github/dependabot.yml` (не `.yaml`) есть экосистема `uv`/`pip`;
-- `ready`: в pyproject `description`/`readme`/`urls`, в README разделы установки и использования, бейдж CI.
+- `ready`: в pyproject `description`/`readme`/`urls`, в README разделы установки и использования (блок кода, который импортирует или запускает пакет, кроме строк установки, считается использованием), бейдж CI.
 Сбой: ошибка PyPI → нет цели, нет находки; провал `uv export`/`uv tree` или не-JSON от pip-audit → репо в Problems (ни фиксов, ни Dependabot).
 Module: `run`, `core`, `findings`, `deps`, `ready`, `workspace`
 
