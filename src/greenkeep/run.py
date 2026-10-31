@@ -39,6 +39,7 @@ log = logging.getLogger("greenkeep")
 
 MAX_FINDINGS_PER_REPO = 10
 MAX_PARKED_IN_A_ROW = 2
+PARKED_TEST_DAYS = 14  # a parked test finding's issue is closed after this
 FEEDBACK_CHARS = 1500
 PYTEST_TOTALS = re.compile(r"^=*\s*(\d+ (?:failed|passed|errors?)\b[^\n]*? in [\d.]+s)",
                            re.MULTILINE)
@@ -79,6 +80,16 @@ def close_vanished(job: Job) -> None:
             continue
         if github.close_issue(job.ws, issue, "greenkeep no longer finds this, closing."):
             log.info("  closed issue #%d: %s no longer found", issue, fp)
+            job.state.set(job.ws.name, fp, issue=None)
+
+
+def close_stale_tests(job: Job) -> None:
+    """Close the issues of test findings parked over PARKED_TEST_DAYS ago: they pile up in
+    `needs-human` and few owners write those tests by hand. The finding stays parked."""
+    for fp, issue in job.state.stale_parked(job.ws.name, "untested:", PARKED_TEST_DAYS):
+        if github.close_issue(job.ws, issue, f"greenkeep could not write this test and it "
+                              f"has waited {PARKED_TEST_DAYS} days, closing."):
+            log.info("  closed parked issue #%d: %s", issue, fp)
             job.state.set(job.ws.name, fp, issue=None)
 
 
@@ -364,7 +375,8 @@ def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> Non
             github.ensure_labels(ws)
         base = baseline(ws, tests)
         if opts.push:
-            close_vanished(Job(ws, base, opts, state, digest))
+            close_vanished(job := Job(ws, base, opts, state, digest))
+            close_stale_tests(job)
         if opts.push:  # a dry run tells, but does not remember it told
             _tell_owner(ws, state, digest)
         else:

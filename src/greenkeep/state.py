@@ -91,6 +91,14 @@ class State:
         return self.db.execute("SELECT fp, issue FROM finding WHERE repo=? AND issue IS NOT "
                                "NULL AND status IN ('open', 'parked')", (repo,)).fetchall()
 
+    def stale_parked(self, repo: str, prefix: str, days: int) -> list[tuple[str, int]]:
+        """(fingerprint, issue) of findings with this prefix parked over `days` ago whose
+        issue is still open."""
+        return self.db.execute("SELECT fp, issue FROM finding WHERE repo=? AND fp LIKE ? AND "
+                               "status='parked' AND issue IS NOT NULL AND "
+                               "updated < datetime('now', ?)",
+                               (repo, prefix + "%", f"-{days} days")).fetchall()
+
     def merges(self, repo: str) -> list[tuple[str, int | None, str | None]]:
         """(fingerprint, PR, merge commit) of every live greenkeep merge in the repo."""
         return self.db.execute("SELECT fp, pr, sha FROM finding WHERE repo=? AND "

@@ -477,3 +477,20 @@ def test_issues_of_findings_no_longer_reported_are_closed(monkeypatch):
     run.close_vanished(job)
     assert sorted(closed) == [1, 4, 5]
     assert state.open_issues("demo") and state.issue("demo", "ruff:F401:a.py:1") is None
+
+
+def test_parked_test_issues_close_after_a_while(monkeypatch):
+    state = run.State(Path(":memory:"))
+    for fp, issue, status in (("untested:old.py", 1, "parked"),   # parked long ago: closed
+                              ("untested:new.py", 2, "parked"),   # parked yesterday: kept
+                              ("ruff:F401:a.py:1", 3, "parked"),  # not a test: kept
+                              ("untested:open.py", 4, "open")):   # still being worked: kept
+        state.set("demo", fp, issue=issue, status=status)
+    state.db.execute("UPDATE finding SET updated=datetime('now', '-30 days') WHERE issue!=2")
+    closed = []
+    monkeypatch.setattr(github, "close_issue", lambda ws, n, why: closed.append(n) or True)
+    job = SimpleNamespace(ws=workspace.Workspace("demo", Path("."), Path(".")), state=state)
+    run.close_stale_tests(job)
+    assert closed == [1]
+    assert state.issue("demo", "untested:old.py") is None
+    assert state.status("demo", "untested:old.py") == "parked"  # never tried again

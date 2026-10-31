@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The issue of a parked test finding closes itself after 14 days with a comment; the finding stays parked and is not tried again. Parked tests were two-thirds of the 31 open `needs-human` issues, and the digest names a parked finding only once.
 - Dashboard options: a repo typed as `--push` stays a repo (argv puts `--` before the repos), so nothing skips the push confirmation; a budget like `²` is refused instead of failing the click; `--budget 0` means 0, not the config's budget.
 - Dashboard table: status and the update time (now to the minute) no longer wrap and the PR links column stays on screen; the options dialog keeps an even rhythm between fields.
 
