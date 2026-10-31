@@ -11,32 +11,28 @@ greenkeep сопровождает ваши собственные Python-реп
 
 Каждый PR закрывает одну находку, а в сообщении коммита указаны модель и хэш промпта, которые дали патч.
 
-## Как выглядит запуск
+## Как выглядит fix PR
 
-Настоящий пробный запуск (dry run) на маленьком демо-репозитории с изменяемым значением аргумента по умолчанию (ruff `B006`). Патч написала бесплатная модель через OmniRoute, весь запуск занял около 10 секунд:
-
-```console
-$ greenkeep ~/dev/tidy --keep
-tidy: B006: Do not use mutable data structures for argument defaults (src/tidy/tags.py)
-  merged B006: Do not use mutable data structures for argument defaults (src/tidy/tags.py) via gemini-3.8-flash-tiered
-```
+Настоящий: [whisper-gpu#4](https://github.com/octrow/whisper-gpu/pull/4), ruff `PLW1510`, влит 2026-10-21. Патч написал Sonnet, Opus проверил его в клоне, текст PR написал greenkeep:
 
 ```diff
-    fix: B006: Do not use mutable data structures for argument defaults (src
+    PLW1510: `subprocess.run` without explicit `check` argument (src/whisper_gpu/transcribe.py:94)
 
-    Finding: `B006` at `src/tidy/tags.py:1`: Do not use mutable data structures for argument defaults
-    Patched by: `gemini-3.8-flash-tiered` (prompt `cbd0ba095834`)
+    Finding: `PLW1510` at `src/whisper_gpu/transcribe.py:94`: `subprocess.run` without explicit `check` argument
+    Patched by: `claude-sonnet-5-5` (prompt `9f811a4332db`), reviewed by: `claude-opus-5-5`
     Gate: full test suite green; every changed line was covered before the change; no new lint findings.
 
--def add_tag(tag, tags=[]):
-+def add_tag(tag, tags=None):
-+    if tags is None:
-+        tags = []
-     tags.append(tag.strip().lower())
-     return tags
+    Closes #3
+
+     try:
+         out = subprocess.run(
+             ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+-            capture_output=True, text=True, timeout=10,
++            capture_output=True, text=True, timeout=10, check=False,
+         )
 ```
 
-В пробном запуске «merged» значит «влито в одноразовый клон». С `--push` то же изменение становится plan issue и PR на GitHub, и его вливают squash-ом, когда проходят обязательные проверки CI.
+Сначала greenkeep открыл plan issue #3, при слиянии PR закрыл его. Пробный запуск (без `--push`) делает то же изменение в одноразовом клоне и только сообщает о нём.
 
 ## Что он нашёл и исправил
 

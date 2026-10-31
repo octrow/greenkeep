@@ -36,12 +36,8 @@ _Avoid_: trivial change, cosmetic fix
 One concrete problem reported by a deterministic tool (linter, type checker, security scanner, dependency audit, coverage, failing test), or later by the bug-hunting mode.
 _Avoid_: issue (reserved for GitHub Issues), bug, suggestion
 
-**Triage**:
-The judgment (Jev or LLM) of whether a finding is real, how urgent it is, and whether it is safe to fix automatically.
-_Avoid_: classification, filtering
-
 **Plan issue**:
-A GitHub Issue opened for a triaged finding; the public record of planned work, closed by its fix PR.
+A GitHub Issue opened for a finding greenkeep is about to work on; the public record of planned work, closed by its fix PR.
 _Avoid_: ticket, task, TODO
 
 **Fix PR**:

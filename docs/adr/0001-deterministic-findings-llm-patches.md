@@ -1,5 +1,7 @@
 # Deterministic tools find, the LLM only patches
 
+> The models (free-tier flash through OmniRoute) and the Jev triage below are replaced by ADR 0003; the rest stands.
+
 Findings come from deterministic tools (linters, type checkers, security and dependency scanners, coverage, failing tests, readiness checks); Jev triages them, and the LLM is given one finding plus its code context and returns one diff. We rejected a free-roaming coding agent (Claude Code / aider / OpenHands style) because the patching models are free-tier flash models reached through OmniRoute, and the owner's hard requirement is quality, stability and predictability: the same finding must lead to the same kind of change, every run must be reproducible from logs, and a fix PR must touch one thing.
 
 ## Considered Options

@@ -11,32 +11,28 @@ greenkeep is a scheduled, gated maintainer for your own Python repositories. Det
 
 Every fix PR resolves one finding, and its commit message names the model and the prompt hash that produced the patch.
 
-## What a run looks like
+## What a fix PR looks like
 
-A real dry run on a small demo repo with a mutable default argument (ruff `B006`). The patch came from a free-tier model through OmniRoute; the whole run took about 10 seconds:
-
-```console
-$ greenkeep ~/dev/tidy --keep
-tidy: B006: Do not use mutable data structures for argument defaults (src/tidy/tags.py)
-  merged B006: Do not use mutable data structures for argument defaults (src/tidy/tags.py) via gemini-3.8-flash-tiered
-```
+A real one: [whisper-gpu#4](https://github.com/octrow/whisper-gpu/pull/4), ruff `PLW1510`, merged 2026-10-21. Sonnet wrote the patch, Opus reviewed it in the clone, and the PR body is what greenkeep wrote:
 
 ```diff
-    fix: B006: Do not use mutable data structures for argument defaults (src
+    PLW1510: `subprocess.run` without explicit `check` argument (src/whisper_gpu/transcribe.py:94)
 
-    Finding: `B006` at `src/tidy/tags.py:1`: Do not use mutable data structures for argument defaults
-    Patched by: `gemini-3.8-flash-tiered` (prompt `cbd0ba095834`)
+    Finding: `PLW1510` at `src/whisper_gpu/transcribe.py:94`: `subprocess.run` without explicit `check` argument
+    Patched by: `claude-sonnet-5-5` (prompt `9f811a4332db`), reviewed by: `claude-opus-5-5`
     Gate: full test suite green; every changed line was covered before the change; no new lint findings.
 
--def add_tag(tag, tags=[]):
-+def add_tag(tag, tags=None):
-+    if tags is None:
-+        tags = []
-     tags.append(tag.strip().lower())
-     return tags
+    Closes #3
+
+     try:
+         out = subprocess.run(
+             ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+-            capture_output=True, text=True, timeout=10,
++            capture_output=True, text=True, timeout=10, check=False,
+         )
 ```
 
-In a dry run, "merged" means merged into a throwaway clone. With `--push` the same change becomes a plan issue and a fix PR on GitHub, which is squash-merged once the required CI checks pass.
+greenkeep opened plan issue #3 first, and the PR closed it on merge. A dry run (no `--push`) makes the same change in a throwaway clone and only reports it.
 
 ## What it found and fixed
 
