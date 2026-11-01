@@ -15,6 +15,8 @@ from abc import ABC, abstractmethod
 from dataclasses import replace
 from pathlib import Path
 
+from packaging.utils import canonicalize_name
+
 from . import deps, llm, ready
 from .core import Change, GateFailure, Job, lint
 from .edits import EditError, apply_edits, parse_edits, python_block
@@ -45,6 +47,7 @@ MAX_CONTEXT_FILES = 4
 # work order: security, lint bugs, missing tests, upgrades, readiness, lint style
 SECURITY, BUGS, MISSING_TESTS, UPGRADES, READINESS, STYLE = range(6)
 # clients of services a clone does not run: tests for such a module only mock them
+MAX_PARKED_TESTS = 3  # parked test findings after which a repo gets no more
 SERVICE_CLIENTS = frozenset({
     "psycopg", "psycopg2", "asyncpg", "pymysql", "aiomysql", "redis", "pymongo", "motor",
     "pika", "aio_pika", "aiokafka", "kafka", "elasticsearch", "clickhouse_driver", "boto3"})
@@ -218,22 +221,31 @@ def _tool_settings(root: Path) -> dict[str, str]:
     return {"pyproject.toml [tool.pytest] / [tool.ruff]": repr(settings)} if settings else {}
 
 
-def needs_service(source: str) -> bool:
-    """The module imports a database or broker client, so only a live service covers it."""
+def imported(source: str) -> set[str]:
+    """The top-level packages the module imports (absolute imports only)."""
     try:
         tree = ast.parse(source)
     except SyntaxError:
-        return False
+        return set()
+    names = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            names = [a.name for a in node.names]
+            names |= {a.name for a in node.names}
         elif isinstance(node, ast.ImportFrom) and not node.level:
-            names = [node.module or ""]
-        else:
-            continue
-        if any(n.split(".")[0] in SERVICE_CLIENTS for n in names):
-            return True
-    return False
+            names.add(node.module or "")
+    return {n.split(".")[0] for n in names if n}
+
+
+def needs_service(source: str) -> bool:
+    """The module imports a database or broker client, so only a live service covers it."""
+    return bool(imported(source) & SERVICE_CLIENTS)
+
+
+def needs_extra(root: Path, path: str, source: str) -> bool:
+    """The module imports a package only an optional extra installs (telethon in `e2e`)."""
+    # ponytail: matches the import name to the distribution name, so `yaml` from an extra's
+    # pyyaml slips through; read top_level.txt from the venv if that bites
+    return bool({canonicalize_name(n) for n in imported(source)} & deps.extra_only(root, path))
 
 
 class Untested(Kind):
@@ -249,7 +261,10 @@ class Untested(Kind):
     def attemptable(self, job: Job, f: Finding) -> bool:
         if (job.ws.root / characterization_path(f, job.ws.root, job.ws.tests)).exists():
             return False
-        return not needs_service((job.ws.root / f.path).read_text())
+        if job.state.parked_count(job.ws.name, "untested:") >= MAX_PARKED_TESTS:
+            return False  # the repo's tests are what the patcher cannot match
+        source = (job.ws.root / f.path).read_text()
+        return not needs_service(source) and not needs_extra(job.ws.root, f.path, source)
 
     def produce(self, job: Job, f: Finding, feedback: str) -> Change:
         rel = characterization_path(f, job.ws.root, job.ws.tests)

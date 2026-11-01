@@ -1,4 +1,5 @@
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -14,6 +15,7 @@ from greenkeep.kinds import (
     needs_service,
     related_context,
 )
+from greenkeep.state import State
 
 
 def finding(kind: str, rule: str) -> Finding:
@@ -173,3 +175,35 @@ def test_the_state_budget_count_skips_exactly_the_budget_exempt_kinds():
     from greenkeep.state import BUDGET_FREE
     exempt = {f"{name}:" for name, k in kinds.KINDS.items() if k.exempt_from_budget}
     assert set(BUDGET_FREE) == exempt
+
+
+def untested_job(tmp_path, pyproject: str, source: str, parked: int = 0) -> SimpleNamespace:
+    (tmp_path / "pyproject.toml").write_text(pyproject)
+    (tmp_path / "bot").mkdir(exist_ok=True)
+    (tmp_path / "bot/client.py").write_text(source)
+    state = State(Path(":memory:"))
+    for i in range(parked):
+        state.set("demo", f"untested:m{i}.py", status="parked")
+    state.set("demo", "ruff:F401:x", status="parked")  # not a test: does not count
+    return SimpleNamespace(ws=SimpleNamespace(root=tmp_path, tests="", name="demo"), state=state)
+
+
+PYPROJECT = ('[project]\nname = "bot"\ndependencies = ["httpx"]\n'
+             '[project.optional-dependencies]\ne2e = ["Telethon>=1"]\ndev = ["pytest", "rich"]\n'
+             'gui = ["rich"]\n[dependency-groups]\ndev = ["respx"]\n')
+
+
+@pytest.mark.parametrize(("source", "workable"), [
+    ("import telethon\n", False),            # chat-watch: only the e2e extra installs it
+    ("from telethon.tl import types\n", False),
+    ("import httpx\nimport rich\nimport respx\n", True),  # a dependency, a dev extra, a dev group
+    ("import json\n", True)])
+def test_a_module_needing_an_optional_extra_gets_no_generated_tests(tmp_path, source, workable):
+    f = untested("bot/client.py")
+    assert kind_of(f).attemptable(untested_job(tmp_path, PYPROJECT, source), f) == workable
+
+
+def test_a_repo_with_three_parked_test_findings_gets_no_more(tmp_path):
+    f = untested("bot/client.py")
+    assert kind_of(f).attemptable(untested_job(tmp_path, PYPROJECT, "import json\n", 2), f)
+    assert not kind_of(f).attemptable(untested_job(tmp_path, PYPROJECT, "import json\n", 3), f)

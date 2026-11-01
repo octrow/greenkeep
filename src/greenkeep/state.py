@@ -99,6 +99,10 @@ class State:
                                "updated < datetime('now', ?)",
                                (repo, prefix + "%", f"-{days} days")).fetchall()
 
+    def parked_count(self, repo: str, prefix: str) -> int:
+        return self.db.execute("SELECT count(*) FROM finding WHERE repo=? AND fp LIKE ? AND "
+                               "status='parked'", (repo, prefix + "%")).fetchone()[0]
+
     def merges(self, repo: str) -> list[tuple[str, int | None, str | None]]:
         """(fingerprint, PR, merge commit) of every live greenkeep merge in the repo."""
         return self.db.execute("SELECT fp, pr, sha FROM finding WHERE repo=? AND "

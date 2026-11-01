@@ -166,6 +166,35 @@ def constraints(root: Path) -> dict[str, SpecifierSet]:
     return specs
 
 
+# extras and groups a test run installs too (uv syncs the `dev` group by default)
+TEST_EXTRAS = frozenset({"dev", "test", "tests", "testing"})
+
+
+def extra_only(root: Path, path: str) -> set[str]:
+    """Canonical names of the packages that only an optional extra of `path`'s project
+    installs: a test importing them fails wherever the extra is not installed."""
+    doc = next((d for p in [*(root / path).parents] if p.is_relative_to(root)
+                and (d := _toml(p / "pyproject.toml")).get("project")), {})
+    project = doc.get("project", {})
+    extras = project.get("optional-dependencies", {})
+    groups = doc.get("dependency-groups", {})
+    installed = [*project.get("dependencies", []),
+                 *(r for name, reqs in [*extras.items(), *groups.items()]
+                   if name in TEST_EXTRAS for r in reqs)]
+    optional = [r for name, reqs in extras.items() if name not in TEST_EXTRAS for r in reqs]
+    return _names(optional) - _names(installed)
+
+
+def _names(texts: list) -> set[str]:
+    names = set()
+    for text in texts:
+        try:
+            names.add(canonicalize_name(Requirement(text).name))
+        except (InvalidRequirement, TypeError):  # a group's {include-group = ...} table
+            continue
+    return names
+
+
 def dependabot_updates_deps(root: Path) -> bool:
     try:
         return bool(PYTHON_ECOSYSTEM.search((root / DEPENDABOT).read_text()))

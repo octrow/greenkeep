@@ -233,7 +233,7 @@ Module: `kinds`, `findings`
 Decides: what this repo may work on now.
 Kept: state `open` or unseen; not vendored (vendor dir or a `VENDORED.md` above it); `attemptable`:
 - ruff: every line from the finding's first to its last could pass the coverage rule; for C901/PLR0912/PLR0915 the last line is the function's end (`ast`); always in test files;
-- untested: no test file at the target path yet, and no database/broker client import;
+- untested: no test file at the target path yet, fewer than 3 parked `untested:` findings in the repo (`MAX_PARKED_TESTS`), no database/broker client import, and no import of a package that only a non-test optional extra of the nearest `pyproject.toml` installs (`dev`/`test` extras and the `dev` group count as installed);
 - outdated: suite exists and total coverage ≥ 60%;
 - vuln, ready: always.
 Cut: the first 10. Hunted bugs (step 15) skip this step and the cut.
