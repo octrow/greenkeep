@@ -175,7 +175,8 @@ Branches:
 - boost → `extra_rules` = C901, PLR0912, PLR0915, SIM, PERF, UP, RUF (minus RUF001-003, RUF100) for every ruff call in this repo, the no-new-lint check included, except on files the change adds (step 19).
 Fails: no origin or clone error → `WorkspaceError`, the repo is a problem line (step 24).
 The owner's checkout is never written.
-Module: `workspace`, `config`
+CI check (GitHub origin): the first failed check run on the clone's HEAD has the annotation "spending limit" → the repo joins the digest's billing line (GitHub did not start CI, greenkeep's gate is the only check); a gh error → nothing.
+Module: `workspace`, `config`, `github`
 
 ### 9. Revert check
 
@@ -346,7 +347,7 @@ Module: `cli`, `run`, `reverts`
 ### 25. Digest
 
 Decides: what the owner hears and whether the day counts as done.
-Text: counts, Merged (own and Dependabot), Needs you (parked + owner notes), Problems, Quiet (clean, waiting, cooling), budget left.
+Text: counts, Merged (own and Dependabot), Needs you (parked + owner notes), Problems (plus one line naming the repos whose CI GitHub did not start for billing), Quiet (clean, waiting, cooling), budget left.
 Branches:
 - push → Telegram if `GREENKEEP_TG_BOT_TOKEN`/`CHAT_ID` are set, else a desktop notification with the first line only; scheduled, not `limited`, and at least one repo cloned (or no repos) → mark `run` = the day the run started;
 - dry run → the log only.

@@ -14,6 +14,8 @@ NUMBER = re.compile(r"/(\d+)\s*$")
 CHECKS_TIMEOUT = 1800
 MERGE_STATE_POLLS = 10  # GitHub works mergeability out within seconds of `pr create`
 MERGE_STATE_WAIT = 3
+# the annotation on every job GitHub refused to start: Actions minutes or payment ran out
+BILLING = "spending limit"
 
 
 def web_url(origin: str) -> str:
@@ -54,6 +56,23 @@ def close_issue(ws: Workspace, issue: int, reason: str) -> bool:
     """False when gh could not close it (already closed by hand, or offline)."""
     return sh(["gh", "issue", "close", str(issue), "--comment", reason], ws.root,
               check=False).returncode == 0
+
+
+def ci_not_started(ws: Workspace, sha: str) -> bool:
+    """Whether CI on `sha` failed because GitHub would not start it (billing), judged by the
+    first failed check run: such a run failed every job the same way. False when gh fails."""
+    # named, not `{owner}/{repo}`: gh resolves those to an `upstream` remote when there is one
+    repo = web_url(ws.origin).removeprefix("https://github.com/")
+    if not repo:
+        return False
+    failed = sh(["gh", "api", f"repos/{repo}/commits/{sha}/check-runs", "--jq",
+                 '[.check_runs[] | select(.conclusion == "failure") | .id][0] // empty'],
+                ws.root, check=False).stdout.strip()
+    if not failed:
+        return False
+    return sh(["gh", "api", f"repos/{repo}/check-runs/{failed}/annotations",
+               "--jq", f'any(.[]; .message | contains("{BILLING}"))'],
+              ws.root, check=False).stdout.strip() == "true"
 
 
 def publish(ws: Workspace, branch: str, title: str, body: str) -> int:

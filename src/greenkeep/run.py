@@ -363,6 +363,8 @@ def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> Non
         digest.cooling += 1
     ws = clone(target)
     digest.reached += 1
+    if github.ci_not_started(ws, ws.git("rev-parse", "HEAD").strip()):
+        digest.billing.append(ws.name)  # greenkeep's gate is then the only check its merges get
     try:
         reverts.check(ws, state, backfill=opts.push)  # raises AutoPause before any work
         sync(ws)

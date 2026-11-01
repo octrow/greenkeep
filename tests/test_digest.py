@@ -13,3 +13,10 @@ def test_quiet_line_names_only_the_repos_waiting_for_budget():
     assert d.text(budget_left=0).endswith(
         "Quiet: 9 clean, 2 waiting for budget (jobs, chat-watch), 1 in cool-down")
     assert "Quiet" not in Digest().text(budget_left=3)
+
+
+def test_repos_whose_ci_github_did_not_start_share_one_problem_line():
+    d = Digest(billing=["jobs", "chat-watch"])
+    text = d.text(budget_left=1)
+    assert "1 problems" in text
+    assert "• CI does not start (GitHub Actions billing): jobs, chat-watch" in text

@@ -20,6 +20,7 @@ class Digest:
     parked: list[str] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)
     owner: list[str] = field(default_factory=list)  # what only the owner can settle
+    billing: list[str] = field(default_factory=list)  # repos whose CI GitHub did not start
     # repos with nothing to report: no findings, findings only past the budget, cooling down
     clean: int = 0
     waiting: list[str] = field(default_factory=list)
@@ -28,10 +29,13 @@ class Digest:
     limited: bool = False  # Claude did not answer (limit, login, outage): the day is not done
 
     def text(self, budget_left: int) -> str:
+        # one account runs out of Actions minutes for all its private repos: one line
+        billing = f"CI does not start (GitHub Actions billing): {', '.join(self.billing)}"
+        problems = [*self.problems, *([billing] if self.billing else [])]
         lines = [(f"greenkeep: {len(self.merged)} merged, {len(self.parked)} parked, "
-                 f"{len(self.problems)} problems; budget left today: {budget_left}")]
+                 f"{len(problems)} problems; budget left today: {budget_left}")]
         for title, items in (("Merged", self.merged), ("Needs you", [*self.parked, *self.owner]),
-                             ("Problems", self.problems)):
+                             ("Problems", problems)):
             if items:
                 lines += ["", f"{title}:", *(f"• {i}" for i in items)]
         if quiet := self._quiet():

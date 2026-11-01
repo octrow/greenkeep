@@ -169,7 +169,8 @@ Module: `run`, `state`, `workspace`
 - буст → `extra_rules` = C901, PLR0912, PLR0915, SIM, PERF, UP, RUF (без RUF001-003, RUF100) во всех вызовах ruff в этом репо, включая проверку нового lint, кроме файлов, которые изменение добавляет (шаг 19).
 Сбой: нет origin или ошибка клона → `WorkspaceError`, строка в Problems (шаг 24).
 Checkout владельца не пишется никогда.
-Module: `workspace`, `config`
+Проверка CI (origin на GitHub): у первого упавшего check run на HEAD клона аннотация «spending limit» → репо попадает в строку billing в дайджесте (GitHub не запустил CI, единственная проверка — гейт greenkeep); ошибка gh → ничего.
+Module: `workspace`, `config`, `github`
 
 ### 9. Откаты
 
@@ -340,7 +341,7 @@ Module: `cli`, `run`, `reverts`
 ### 25. Дайджест
 
 Решает: что услышит владелец и считается ли день сделанным.
-Текст: счётчики, Merged (свои и Dependabot), Needs you (парковки + заметки владельцу), Problems, Quiet (чистые, ждут бюджет, в cool-down), остаток бюджета.
+Текст: счётчики, Merged (свои и Dependabot), Needs you (парковки + заметки владельцу), Problems (и одна строка с репо, где GitHub не запустил CI из-за billing), Quiet (чистые, ждут бюджет, в cool-down), остаток бюджета.
 Ветки:
 - push → Telegram при `GREENKEEP_TG_BOT_TOKEN`/`CHAT_ID`, иначе уведомление на рабочем столе только с первой строкой; плановый, не `limited` и хотя бы одно репо склонировано (или репо нет) → метка `run` = день начала прогона;
 - dry run → только лог.

@@ -53,3 +53,23 @@ def test_a_merge_github_made_although_gh_failed_counts_as_merged(monkeypatch):
     calls = fake_gh(monkeypatch, merges=[1, 1], states=["CLEAN", "MERGED"])
     github.merge(WS, 7)  # no WorkspaceError: the attempt is not counted
     assert [c[2] for c in calls] == ["merge", "view", "merge", "view"]
+
+
+def fake_api(monkeypatch, failed: str, message: str) -> None:
+    def sh(args, cwd, check=True, timeout=0):
+        out = message if "annotations" in args[2] else failed
+        return SimpleNamespace(returncode=0, stdout=out + "\n")
+    monkeypatch.setattr(github, "sh", sh)
+
+
+def test_ci_that_github_did_not_start_for_billing_is_told_apart(monkeypatch):
+    # linux-coding 2026-10-29: every job failed with this annotation, no step ran
+    ws = SimpleNamespace(root=Path("."), origin="https://github.com/octrow/linux-coding.git")
+    fake_api(monkeypatch, "122420575008", "true")
+    assert github.ci_not_started(ws, "d6a7fb8")
+    fake_api(monkeypatch, "122420575008", "false")  # a real failure
+    assert not github.ci_not_started(ws, "d6a7fb8")
+    fake_api(monkeypatch, "", "")  # nothing failed, or gh failed
+    assert not github.ci_not_started(ws, "d6a7fb8")
+    fake_api(monkeypatch, "122420575008", "true")  # not on GitHub: nothing to ask
+    assert not github.ci_not_started(SimpleNamespace(root=Path("."), origin="/srv/x"), "d6")
