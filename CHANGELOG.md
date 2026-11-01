@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- No characterization tests for a module that imports a package only a non-test optional extra installs (telethon in chat-watch's `e2e`): the suite fails wherever that extra is not installed. A repo with 3 parked test findings gets no more of them (cc-bench parked 8 of 8).
 - The digest says when GitHub does not start CI for lack of Actions minutes or payment: one Problems line names the repos ("CI does not start (GitHub Actions billing): …"), judged by the annotation on the first failed check run on the base branch. From about 2026-10-20 CI in 7 private repos was red for this reason alone, and greenkeep's gate was the only check its merges got there.
 - A README code block that imports or runs the package (its name, import name or a script; install lines aside) counts as a usage section whatever its heading says. pycommons#7 asked for a usage section over an example headed "What it looks like", and the reviewer rejected the change twice as a false positive.
 - The issue of a parked test finding closes itself after 14 days with a comment; the finding stays parked and is not tried again. Parked tests were two-thirds of the 31 open `needs-human` issues, and the digest names a parked finding only once.
