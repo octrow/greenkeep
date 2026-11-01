@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.2.1 - 2026-11-01
+
+- pyasn1 0.6.5 (CVE-2026-119194, CVE-2026-119195, CVE-2026-119196, CVE-2026-119197), which greenkeep installs through tg-toolkit → telethon → rsa.
+
 ## 0.2.0 - 2026-11-01
 
 From one slice to a maintainer that runs unattended on 19 repos. In the first two weeks: 57 merged fix PRs, 0 reverts.
