@@ -60,6 +60,7 @@ def fake_api(monkeypatch, failed: str, message: str) -> None:
     def sh(args, cwd, check=True, timeout=0):
         out = message if "annotations" in args[2] else failed
         return SimpleNamespace(returncode=0, stdout=out + "\n")
+
     monkeypatch.setattr(github, "sh", sh)
 
 
@@ -83,13 +84,23 @@ def test_ci_that_github_did_not_start_for_billing_is_told_apart(monkeypatch):
 
 def test_required_checks_a_ruleset_has_not_reported_yet_are_waited_for(monkeypatch):
     # repo-scout#25 2026-10-30: BLOCKED by a ruleset's `pytest`, which gh did not list yet
-    checks = [SimpleNamespace(returncode=1, stdout="", stderr="no required checks reported "
-                              "on the 'greenkeep/20e00b2dc3' branch"),
-              SimpleNamespace(returncode=0, stdout="", stderr="")]
+    checks = [
+        SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr="no required checks reported on the 'greenkeep/20e00b2dc3' branch",
+        ),
+        SimpleNamespace(returncode=0, stdout="", stderr=""),
+    ]
     calls = fake_gh(monkeypatch, merges=[1, 0], states=["BLOCKED"])
     real = github.sh
-    monkeypatch.setattr(github, "sh", lambda args, cwd, check=True, timeout=0:
-                        checks.pop(0) if args[2] == "checks" else real(args, cwd, check, timeout))
+    monkeypatch.setattr(
+        github,
+        "sh",
+        lambda args, cwd, check=True, timeout=0: (
+            checks.pop(0) if args[2] == "checks" else real(args, cwd, check, timeout)
+        ),
+    )
     github.merge(WS, 25)  # no WorkspaceError: the attempt is not counted
     assert not checks and [c[2] for c in calls] == ["merge", "view", "merge"]
 
@@ -97,8 +108,14 @@ def test_required_checks_a_ruleset_has_not_reported_yet_are_waited_for(monkeypat
 def test_red_required_checks_fail_the_attempt(monkeypatch):
     fake_gh(monkeypatch, merges=[1], states=["BLOCKED"])
     real = github.sh
-    monkeypatch.setattr(github, "sh", lambda args, cwd, check=True, timeout=0:
-                        SimpleNamespace(returncode=1, stdout="pytest fail", stderr="")
-                        if args[2] == "checks" else real(args, cwd, check, timeout))
+    monkeypatch.setattr(
+        github,
+        "sh",
+        lambda args, cwd, check=True, timeout=0: (
+            SimpleNamespace(returncode=1, stdout="pytest fail", stderr="")
+            if args[2] == "checks"
+            else real(args, cwd, check, timeout)
+        ),
+    )
     with pytest.raises(WorkspaceError, match="pytest fail"):
         github.merge(WS, 25)

@@ -57,8 +57,9 @@ def actions_only(files: list[dict]) -> bool:
 def checks_passed(rollup: list[dict]) -> bool:
     """CI's own verdict: every check done and none failed. No checks at all (no Actions
     minutes) is no verdict."""
-    return bool(rollup) and all((c.get("conclusion") or c.get("state")) in CHECKS_OK
-                                for c in rollup)
+    return bool(rollup) and all(
+        (c.get("conclusion") or c.get("state")) in CHECKS_OK for c in rollup
+    )
 
 
 def _key(ws: Workspace, pr: dict) -> str:
@@ -88,14 +89,14 @@ def _merge_on_checks(ws: Workspace, opts: Options, digest: Digest, pr: dict) -> 
         log.info("%s: Dependabot #%d has no green checks yet", ws.name, pr["number"])
         return
     if not opts.push:
-        log.info("%s: would merge Dependabot #%d on its checks: %s", ws.name, pr["number"],
-                 pr["title"])
+        log.info(
+            "%s: would merge Dependabot #%d on its checks: %s", ws.name, pr["number"], pr["title"]
+        )
         return
     _merge(ws, digest, pr)
 
 
-def _test_and_merge(ws: Workspace, opts: Options, state: State, digest: Digest,
-                    pr: dict) -> None:
+def _test_and_merge(ws: Workspace, opts: Options, state: State, digest: Digest, pr: dict) -> None:
     n, sha = pr["number"], pr["headRefOid"]
     if not opts.push:
         log.info("%s: would test and merge Dependabot #%d: %s", ws.name, n, pr["title"])
@@ -122,8 +123,11 @@ def merge_safe(ws: Workspace, opts: Options, state: State, digest: Digest) -> No
     if not github.web_url(ws.origin):
         return  # not on GitHub: no Dependabot
     try:
-        prs = json.loads(github._gh(ws, "pr", "list", "--author", "app/dependabot",
-                                    "--state", "open", "--json", FIELDS))
+        prs = json.loads(
+            github._gh(
+                ws, "pr", "list", "--author", "app/dependabot", "--state", "open", "--json", FIELDS
+            )
+        )
     except FAILURES as exc:
         log.warning("%s: cannot list Dependabot PRs: %s", ws.name, exc)
         return

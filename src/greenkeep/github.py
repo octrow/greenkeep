@@ -45,22 +45,31 @@ def ensure_labels(ws: Workspace) -> None:
 
 
 def open_issue(ws: Workspace, title: str, body: str) -> int:
-    return _number(_gh(ws, "issue", "create", "--title", title, "--body", body,
-                       "--label", LABEL))
+    return _number(_gh(ws, "issue", "create", "--title", title, "--body", body, "--label", LABEL))
 
 
 def park_issue(ws: Workspace, issue: int, reason: str) -> None:
     """Only the one-line reason goes public: test output may echo secrets from .env."""
-    _gh(ws, "issue", "comment", str(issue), "--body",
+    _gh(
+        ws,
+        "issue",
+        "comment",
+        str(issue),
+        "--body",
         f"greenkeep gave up after its attempts. Last failure: `{reason[:200]}`\n\n"
-        "Full output is in the local greenkeep log.")
+        "Full output is in the local greenkeep log.",
+    )
     _gh(ws, "issue", "edit", str(issue), "--add-label", PARKED_LABEL)
 
 
 def close_issue(ws: Workspace, issue: int, reason: str) -> bool:
     """False when gh could not close it (already closed by hand, or offline)."""
-    return sh(["gh", "issue", "close", str(issue), "--comment", reason], ws.root,
-              check=False).returncode == 0
+    return (
+        sh(
+            ["gh", "issue", "close", str(issue), "--comment", reason], ws.root, check=False
+        ).returncode
+        == 0
+    )
 
 
 def ci_not_started(ws: Workspace, sha: str) -> bool:
@@ -71,18 +80,43 @@ def ci_not_started(ws: Workspace, sha: str) -> bool:
     repo = web_url(ws.origin).removeprefix("https://github.com/")
     if not repo:
         return False
-    failed, _, completed = sh(
-        ["gh", "api", f"repos/{repo}/commits/{sha}/check-runs", "--jq",
-         ('[.check_runs[] | select(.conclusion == "failure") | "\\(.id) \\(.completed_at)"][0]'
-          ' // empty')], ws.root, check=False).stdout.strip().partition(" ")
+    failed, _, completed = (
+        sh(
+            [
+                "gh",
+                "api",
+                f"repos/{repo}/commits/{sha}/check-runs",
+                "--jq",
+                (
+                    '[.check_runs[] | select(.conclusion == "failure") | "\\(.id) \\(.completed_at)"][0]'
+                    " // empty"
+                ),
+            ],
+            ws.root,
+            check=False,
+        )
+        .stdout.strip()
+        .partition(" ")
+    )
     try:
         if datetime.now(UTC) - datetime.fromisoformat(completed) > BILLING_FRESH:
             return False
     except ValueError:  # nothing failed, or gh failed
         return False
-    return sh(["gh", "api", f"repos/{repo}/check-runs/{failed}/annotations",
-               "--jq", f'any(.[]; .message | contains("{BILLING}"))'],
-              ws.root, check=False).stdout.strip() == "true"
+    return (
+        sh(
+            [
+                "gh",
+                "api",
+                f"repos/{repo}/check-runs/{failed}/annotations",
+                "--jq",
+                f'any(.[]; .message | contains("{BILLING}"))',
+            ],
+            ws.root,
+            check=False,
+        ).stdout.strip()
+        == "true"
+    )
 
 
 def publish(ws: Workspace, branch: str, title: str, body: str) -> int:
@@ -92,26 +126,63 @@ def publish(ws: Workspace, branch: str, title: str, body: str) -> int:
     earlier failed publish is simply overwritten.
     """
     ws.git("push", "-q", "--force", "-u", "origin", branch)
-    open_pr = _gh(ws, "pr", "list", "--head", branch, "--state", "open", "--json", "number",
-                  "--jq", ".[0].number // empty")
-    pr = int(open_pr) if open_pr else _number(_gh(
-        ws, "pr", "create", "--head", branch, "--base", ws.base_branch,
-        "--title", title, "--body", body, "--label", LABEL))
+    open_pr = _gh(
+        ws,
+        "pr",
+        "list",
+        "--head",
+        branch,
+        "--state",
+        "open",
+        "--json",
+        "number",
+        "--jq",
+        ".[0].number // empty",
+    )
+    pr = (
+        int(open_pr)
+        if open_pr
+        else _number(
+            _gh(
+                ws,
+                "pr",
+                "create",
+                "--head",
+                branch,
+                "--base",
+                ws.base_branch,
+                "--title",
+                title,
+                "--body",
+                body,
+                "--label",
+                LABEL,
+            )
+        )
+    )
     merge(ws, pr)
     return pr
 
 
 def merge_sha(ws: Workspace, pr: int) -> str:
     """The commit a merged PR put on the base branch (what a revert names)."""
-    return _gh(ws, "pr", "view", str(pr), "--json", "mergeCommit", "--jq",
-               ".mergeCommit.oid // empty")
+    return _gh(
+        ws, "pr", "view", str(pr), "--json", "mergeCommit", "--jq", ".mergeCommit.oid // empty"
+    )
 
 
 def merge(ws: Workspace, pr: int, head: str = "") -> None:
     """Merge now, or once the repo's required checks (CI) have passed. With `head`, only
     while the PR still points at that commit (the one greenkeep tested)."""
-    cmd = ["gh", "pr", "merge", str(pr), "--squash", "--delete-branch",
-           *(["--match-head-commit", head] if head else [])]
+    cmd = [
+        "gh",
+        "pr",
+        "merge",
+        str(pr),
+        "--squash",
+        "--delete-branch",
+        *(["--match-head-commit", head] if head else []),
+    ]
     if sh(cmd, ws.root, check=False).returncode == 0:
         return
     # BLOCKED: required checks still running (or a review); without required checks
@@ -120,18 +191,25 @@ def merge(ws: Workspace, pr: int, head: str = "") -> None:
         _wait_for_required_checks(ws, pr)  # red or hung CI raises: the attempt fails
     proc = sh(cmd, ws.root, check=False)
     # gh can fail after GitHub merged (a dropped connection): the merge still stands
-    if proc.returncode and _gh(ws, "pr", "view", str(pr), "--json", "state",
-                               "--jq", ".state") != "MERGED":
-        raise WorkspaceError(f"gh pr merge {pr} exit {proc.returncode}: "
-                             f"{(proc.stderr or proc.stdout)[-800:]}")
+    if (
+        proc.returncode
+        and _gh(ws, "pr", "view", str(pr), "--json", "state", "--jq", ".state") != "MERGED"
+    ):
+        raise WorkspaceError(
+            f"gh pr merge {pr} exit {proc.returncode}: {(proc.stderr or proc.stdout)[-800:]}"
+        )
 
 
 def _wait_for_required_checks(ws: Workspace, pr: int) -> None:
     """Watch the required checks until they pass. A ruleset's checks show up seconds after
     the PR opens, and until then gh says none are reported: wait for them to appear."""
     for _ in range(MERGE_STATE_POLLS):
-        proc = sh(["gh", "pr", "checks", str(pr), "--watch", "--required", "--fail-fast"],
-                  ws.root, check=False, timeout=CHECKS_TIMEOUT)
+        proc = sh(
+            ["gh", "pr", "checks", str(pr), "--watch", "--required", "--fail-fast"],
+            ws.root,
+            check=False,
+            timeout=CHECKS_TIMEOUT,
+        )
         out = proc.stderr + proc.stdout
         if proc.returncode == 0:
             return
@@ -144,8 +222,9 @@ def _wait_for_required_checks(ws: Workspace, pr: int) -> None:
 def _merge_state(ws: Workspace, pr: int) -> str:
     """mergeStateStatus once GitHub has computed it (UNKNOWN right after the PR opens)."""
     for _ in range(MERGE_STATE_POLLS):
-        state = _gh(ws, "pr", "view", str(pr), "--json", "mergeStateStatus",
-                    "--jq", ".mergeStateStatus")
+        state = _gh(
+            ws, "pr", "view", str(pr), "--json", "mergeStateStatus", "--jq", ".mergeStateStatus"
+        )
         if state != "UNKNOWN":
             break
         time.sleep(MERGE_STATE_WAIT)

@@ -46,16 +46,23 @@ def same_line(current: Version, candidate: Version) -> bool:
     return candidate.major == current.major
 
 
-def pick_target(current: str, available: list[str],
-                allowed: SpecifierSet | None = None) -> str | None:
+def pick_target(
+    current: str, available: list[str], allowed: SpecifierSet | None = None
+) -> str | None:
     """Newest stable release on the current line that the repo's own specifier allows,
     if newer than what is locked."""
     cur = _version(current)
     if cur is None:
         return None
-    ok = [v for v in map(_version, available)
-          if v and not v.is_prerelease and v > cur and same_line(cur, v)
-          and (allowed is None or v in allowed)]
+    ok = [
+        v
+        for v in map(_version, available)
+        if v
+        and not v.is_prerelease
+        and v > cur
+        and same_line(cur, v)
+        and (allowed is None or v in allowed)
+    ]
     return str(max(ok)) if ok else None
 
 
@@ -64,16 +71,27 @@ def parse_outdated(tree: str) -> list[tuple[str, str]]:
     return [(m[1], m[2]) for m in OUTDATED.finditer(tree)]
 
 
-def outdated_findings(rows: list[tuple[str, str]], releases: Callable[[str], list[str]],
-                      specs: dict[str, SpecifierSet] | None = None) -> list[Finding]:
+def outdated_findings(
+    rows: list[tuple[str, str]],
+    releases: Callable[[str], list[str]],
+    specs: dict[str, SpecifierSet] | None = None,
+) -> list[Finding]:
     found = []
     for name, current in rows:
         allowed = (specs or {}).get(canonicalize_name(name))
         target = pick_target(current, releases(name), allowed)
         if target:
-            found.append(Finding("outdated", f"{name}=={target}", LOCK, 0,
-                                 f"{name} {current} → {target}", f"outdated:{name}:{target}",
-                                 title=f"Bump {name} from {current} to {target}"))
+            found.append(
+                Finding(
+                    "outdated",
+                    f"{name}=={target}",
+                    LOCK,
+                    0,
+                    f"{name} {current} → {target}",
+                    f"outdated:{name}:{target}",
+                    title=f"Bump {name} from {current} to {target}",
+                )
+            )
     return found
 
 
@@ -87,8 +105,11 @@ def lowest_fix(current: str, vulns: list[dict]) -> str | None:
     cur = _version(current)
     if cur is None:
         return None
-    needed = [next((v for v in fixes if same_line(cur, v)), fixes[0])
-              for fixes in (_fixes(cur, vuln) for vuln in vulns) if fixes]
+    needed = [
+        next((v for v in fixes if same_line(cur, v)), fixes[0])
+        for fixes in (_fixes(cur, vuln) for vuln in vulns)
+        if fixes
+    ]
     return str(max(needed)) if needed else None
 
 
@@ -103,11 +124,18 @@ def vuln_findings(audit: dict) -> list[Finding]:
         ids = sorted({v["id"] for v in vulns if _fixes(cur, v)})
         open_ids = sorted({v["id"] for v in vulns if not _fixes(cur, v)})
         name = dep["name"]
-        found.append(Finding("vuln", f"{name}=={target}", LOCK, 0,
-                             f"{name} {dep['version']}: {', '.join(ids)}"
-                             + (f"; no fix yet: {', '.join(open_ids)}" if open_ids else ""),
-                             f"vuln:{name}:{'+'.join(ids)}",
-                             title=f"Fix {', '.join(ids)}: bump {name} to {target}"))
+        found.append(
+            Finding(
+                "vuln",
+                f"{name}=={target}",
+                LOCK,
+                0,
+                f"{name} {dep['version']}: {', '.join(ids)}"
+                + (f"; no fix yet: {', '.join(open_ids)}" if open_ids else ""),
+                f"vuln:{name}:{'+'.join(ids)}",
+                title=f"Fix {', '.join(ids)}: bump {name} to {target}",
+            )
+        )
     return found
 
 
@@ -125,11 +153,37 @@ def collect(ws: Workspace) -> list[Finding]:
     if LOCK not in ws.tracked():
         return []
     req = ws.scratch / "requirements.txt"
-    sh(["uv", "export", "--format", "requirements-txt", "--no-hashes", "--no-emit-project",
-        "-q", "-o", str(req)], ws.root)
-    audit = sh(["uvx", "pip-audit", "-r", str(req), "--disable-pip", "--no-deps",
-                "--format", "json", "--progress-spinner", "off"], ws.root, check=False,
-               timeout=AUDIT_TIMEOUT)
+    sh(
+        [
+            "uv",
+            "export",
+            "--format",
+            "requirements-txt",
+            "--no-hashes",
+            "--no-emit-project",
+            "-q",
+            "-o",
+            str(req),
+        ],
+        ws.root,
+    )
+    audit = sh(
+        [
+            "uvx",
+            "pip-audit",
+            "-r",
+            str(req),
+            "--disable-pip",
+            "--no-deps",
+            "--format",
+            "json",
+            "--progress-spinner",
+            "off",
+        ],
+        ws.root,
+        check=False,
+        timeout=AUDIT_TIMEOUT,
+    )
     vulns = vuln_findings(json.loads(audit.stdout or "{}"))
     if dependabot_updates_deps(ws.root):  # it opens the same bumps, and edits `==` pins too
         return vulns
@@ -150,11 +204,16 @@ def constraints(root: Path) -> dict[str, SpecifierSet]:
     data = _toml(root / "pyproject.toml")
     members = data.get("tool", {}).get("uv", {}).get("workspace", {}).get("members", [])
     specs: dict[str, SpecifierSet] = {}
-    for doc in [data, *(_toml(p) for m in members for p in sorted(root.glob(f"{m}/pyproject.toml")))]:
+    for doc in [
+        data,
+        *(_toml(p) for m in members for p in sorted(root.glob(f"{m}/pyproject.toml"))),
+    ]:
         project = doc.get("project", {})
-        texts = [*project.get("dependencies", []),
-                 *(r for group in project.get("optional-dependencies", {}).values() for r in group),
-                 *(r for group in doc.get("dependency-groups", {}).values() for r in group)]
+        texts = [
+            *project.get("dependencies", []),
+            *(r for group in project.get("optional-dependencies", {}).values() for r in group),
+            *(r for group in doc.get("dependency-groups", {}).values() for r in group),
+        ]
         for text in texts:
             try:
                 req = Requirement(text) if isinstance(text, str) else None
@@ -173,14 +232,26 @@ TEST_EXTRAS = frozenset({"dev", "test", "tests", "testing"})
 def extra_only(root: Path, path: str) -> set[str]:
     """Canonical names of the packages that only an optional extra of `path`'s project
     installs: a test importing them fails wherever the extra is not installed."""
-    doc = next((d for p in [*(root / path).parents] if p.is_relative_to(root)
-                and (d := _toml(p / "pyproject.toml")).get("project")), {})
+    doc = next(
+        (
+            d
+            for p in [*(root / path).parents]
+            if p.is_relative_to(root) and (d := _toml(p / "pyproject.toml")).get("project")
+        ),
+        {},
+    )
     project = doc.get("project", {})
     extras = project.get("optional-dependencies", {})
     groups = doc.get("dependency-groups", {})
-    installed = [*project.get("dependencies", []),
-                 *(r for name, reqs in [*extras.items(), *groups.items()]
-                   if name in TEST_EXTRAS for r in reqs)]
+    installed = [
+        *project.get("dependencies", []),
+        *(
+            r
+            for name, reqs in [*extras.items(), *groups.items()]
+            if name in TEST_EXTRAS
+            for r in reqs
+        ),
+    ]
     optional = [r for name, reqs in extras.items() if name not in TEST_EXTRAS for r in reqs]
     return _names(optional) - _names(installed)
 

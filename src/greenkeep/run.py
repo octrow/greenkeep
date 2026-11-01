@@ -41,15 +41,23 @@ MAX_FINDINGS_PER_REPO = 10
 MAX_PARKED_IN_A_ROW = 2
 PARKED_TEST_DAYS = 14  # a parked test finding's issue is closed after this
 FEEDBACK_CHARS = 1500
-PYTEST_TOTALS = re.compile(r"^=*\s*(\d+ (?:failed|passed|errors?)\b[^\n]*? in [\d.]+s)",
-                           re.MULTILINE)
+PYTEST_TOTALS = re.compile(
+    r"^=*\s*(\d+ (?:failed|passed|errors?)\b[^\n]*? in [\d.]+s)", re.MULTILINE
+)
 SUBJECT_MAX = 72
 TRAILER = "Co-Authored-By: greenkeep <greenkeep@users.noreply.github.com>"
 
 # anything that sinks one attempt; it is counted, so a poison finding parks instead of
 # failing every run. Claude not answering at all is not counted (`llm.unavailable`)
-ATTEMPT_FAILURES = (GateFailure, EditError, WorkspaceError, ClaudeCliError, OSError,
-                    UnicodeError, tomllib.TOMLDecodeError)
+ATTEMPT_FAILURES = (
+    GateFailure,
+    EditError,
+    WorkspaceError,
+    ClaudeCliError,
+    OSError,
+    UnicodeError,
+    tomllib.TOMLDecodeError,
+)
 
 
 def _measured(tests: TestRun) -> bool:
@@ -62,8 +70,12 @@ def _measured(tests: TestRun) -> bool:
 def baseline(ws: Workspace, tests: TestRun) -> Baseline:
     """All findings, in the work order their kinds define."""
     ruff = lint(ws)
-    found = [*ruff, *(untested_findings(tests.cov) if _measured(tests) else []),
-             *deps.collect(ws), *ready.collect(ws.root, github.web_url(ws.origin))]
+    found = [
+        *ruff,
+        *(untested_findings(tests.cov) if _measured(tests) else []),
+        *deps.collect(ws),
+        *ready.collect(ws.root, github.web_url(ws.origin)),
+    ]
     ordered = sorted(found, key=lambda f: kind_of(f).priority(f))  # stable within a kind
     return Baseline(tests, frozenset(f.fingerprint for f in ruff), ordered)
 
@@ -87,8 +99,12 @@ def close_stale_tests(job: Job) -> None:
     """Close the issues of test findings parked over PARKED_TEST_DAYS ago: they pile up in
     `needs-human` and few owners write those tests by hand. The finding stays parked."""
     for fp, issue in job.state.stale_parked(job.ws.name, "untested:", PARKED_TEST_DAYS):
-        if github.close_issue(job.ws, issue, f"greenkeep could not write this test and it "
-                              f"has waited {PARKED_TEST_DAYS} days, closing."):
+        if github.close_issue(
+            job.ws,
+            issue,
+            f"greenkeep could not write this test and it "
+            f"has waited {PARKED_TEST_DAYS} days, closing.",
+        ):
             log.info("  closed parked issue #%d: %s", issue, fp)
             job.state.set(job.ws.name, fp, issue=None)
 
@@ -112,12 +128,16 @@ def _check_no_new_lint(job: Job, paths: list[str]) -> None:
     new_files = set(job.ws.git("diff", "--name-only", "--diff-filter=A", "-z", "HEAD").split("\0"))
     added = [p for p in py if p in new_files]
     old = [p for p in py if p not in new_files]
-    found = [*(lint(job.ws, *old) if old else []),
-             *(lint(replace(job.ws, extra_rules=()), *added) if added else [])]
+    found = [
+        *(lint(job.ws, *old) if old else []),
+        *(lint(replace(job.ws, extra_rules=()), *added) if added else []),
+    ]
     new = [a for a in found if a.fingerprint not in job.base.lint]
     if new:
-        raise GateFailure("the change adds lint findings: "
-                          + "; ".join(f"{a.path}:{a.line} {a.rule} {a.message}" for a in new))
+        raise GateFailure(
+            "the change adds lint findings: "
+            + "; ".join(f"{a.path}:{a.line} {a.rule} {a.message}" for a in new)
+        )
 
 
 def _check_tests(job: Job, f: Finding) -> None:
@@ -156,6 +176,7 @@ def _branch(f: Finding) -> str:
 @dataclass(frozen=True)
 class Fix:
     """A gated change ready to commit, and the plan issue it closes (push mode only)."""
+
     finding: Finding
     change: Change
     paths: list[str]
@@ -164,10 +185,12 @@ class Fix:
     def describe(self) -> str:
         f, c = self.finding, self.change
         where = f"`{f.path}:{f.line}`" if f.line else f"`{f.path}`"
-        lines = [f"Finding: `{f.rule}` at {where}: {f.message}",
-                 f"Patched by: `{c.model}` (prompt `{c.prompt_sha}`)"
-                 + (f", reviewed by: `{c.reviewer}`" if c.reviewer else ""),
-                 "Gate: " + kind_of(f).gate_note]
+        lines = [
+            f"Finding: `{f.rule}` at {where}: {f.message}",
+            f"Patched by: `{c.model}` (prompt `{c.prompt_sha}`)"
+            + (f", reviewed by: `{c.reviewer}`" if c.reviewer else ""),
+            "Gate: " + kind_of(f).gate_note,
+        ]
         if self.issue:
             lines.append(f"\nCloses #{self.issue}")
         return "\n".join(lines)
@@ -177,8 +200,11 @@ def commit(ws: Workspace, fix: Fix) -> str:
     branch = _branch(fix.finding)
     ws.git("checkout", "-q", "-B", branch)  # -B: a failed publish may have left it
     ws.git("add", "--", *fix.paths)
-    title = shorten(f"{kind_of(fix.finding).commit_type(fix.finding)}: {fix.finding.title}",
-                    SUBJECT_MAX, placeholder="…")
+    title = shorten(
+        f"{kind_of(fix.finding).commit_type(fix.finding)}: {fix.finding.title}",
+        SUBJECT_MAX,
+        placeholder="…",
+    )
     ws.git("commit", "-q", "-m", title, "-m", fix.describe(), "-m", TRAILER)
     return branch
 
@@ -215,14 +241,14 @@ def _record_failure(job: Job, f: Finding, reason: str) -> None:
     retries = kind_of(f).retries
     job.state.add_attempt(job.ws.name, f.fingerprint, last=not retries)
     n = job.state.attempts(job.ws.name, f.fingerprint)
-    log.info("  attempt %d/%d failed: %s", n, MAX_ATTEMPTS if retries else 1,
-             reason.splitlines()[0])
+    log.info(
+        "  attempt %d/%d failed: %s", n, MAX_ATTEMPTS if retries else 1, reason.splitlines()[0]
+    )
     log.debug("  full failure:\n%s", reason)
     if retries and n < MAX_ATTEMPTS:
         return
     issue = job.state.issue(job.ws.name, f.fingerprint)
-    job.digest.parked.append(f"{job.ws.name}: {f.title}"
-                             + (f" (issue #{issue})" if issue else ""))
+    job.digest.parked.append(f"{job.ws.name}: {f.title}" + (f" (issue #{issue})" if issue else ""))
     if issue:
         github.park_issue(job.ws, issue, reason.splitlines()[0])
 
@@ -236,10 +262,10 @@ def _land(job: Job, fix: Fix) -> None:
     else:
         pr, sha = None, job.ws.git("rev-parse", "HEAD").strip()
     job.state.set(job.ws.name, fix.finding.fingerprint, status="merged", pr=pr, sha=sha)
-    log.info("  merged %s via %s%s", fix.finding.title, fix.change.model,
-             f" (PR #{pr})" if pr else "")
-    job.digest.merged.append(f"{job.ws.name}: {fix.finding.title}"
-                             + (f" (PR #{pr})" if pr else ""))
+    log.info(
+        "  merged %s via %s%s", fix.finding.title, fix.change.model, f" (PR #{pr})" if pr else ""
+    )
+    job.digest.merged.append(f"{job.ws.name}: {fix.finding.title}" + (f" (PR #{pr})" if pr else ""))
     if not job.opts.push:
         log.info("%s", job.ws.git("show", "--stat", "--patch", "HEAD"))
 
@@ -283,10 +309,13 @@ def redact(text: str, secrets: list[str]) -> str:
 
 
 def _candidates(job: Job) -> list[Finding]:
-    return [f for f in job.base.findings
-            if job.state.is_workable(job.ws.name, f.fingerprint)
-            and not is_vendored(job.ws.root, f.path)
-            and kind_of(f).attemptable(job, f)]
+    return [
+        f
+        for f in job.base.findings
+        if job.state.is_workable(job.ws.name, f.fingerprint)
+        and not is_vendored(job.ws.root, f.path)
+        and kind_of(f).attemptable(job, f)
+    ]
 
 
 def _within_budget(job: Job, f: Finding) -> bool:
@@ -326,10 +355,13 @@ def _work_repo(job: Job, hunting: bool = False) -> None:
         parked_in_a_row += 1
         if parked_in_a_row >= MAX_PARKED_IN_A_ROW:
             # the repo, not the findings, is likely the problem: stop paying for it
-            until = job.state.cool_down(job.ws.name, job.ws.git("rev-parse", "HEAD").strip(),
-                                        tool_head())
-            job.digest.problems.append(f"{job.ws.name}: {parked_in_a_row} findings parked "
-                                       f"in a row, cool-down until {until}")
+            until = job.state.cool_down(
+                job.ws.name, job.ws.git("rev-parse", "HEAD").strip(), tool_head()
+            )
+            job.digest.problems.append(
+                f"{job.ws.name}: {parked_in_a_row} findings parked "
+                f"in a row, cool-down until {until}"
+            )
             return
     if not worked:
         job.digest.waiting.append(job.ws.name)
@@ -384,8 +416,9 @@ def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> Non
         else:
             digest.owner += [f"{ws.name}: {note}" for note in ready.owner_notes(ws.root)]
         if cooling:  # security fixes and Dependabot do not wait out a cool-down
-            base = replace(base, findings=[f for f in base.findings
-                                           if kind_of(f).exempt_from_budget])
+            base = replace(
+                base, findings=[f for f in base.findings if kind_of(f).exempt_from_budget]
+            )
         if base.findings or not cooling:
             _work_repo(Job(ws, base, opts, state, digest), target.hunt and not cooling)
         dependabot.merge_safe(ws, opts, state, digest)  # greenkeep's own fixes go first

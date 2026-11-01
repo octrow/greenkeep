@@ -32,20 +32,39 @@ UPDATED_CHARS = len("2026-10-29 20:33")  # to the minute: seconds widened the ta
 LOG_MAX_HEIGHT = "24rem"
 LOG_RECORD = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
 PROJECT = Path(__file__).resolve().parents[2]  # the greenkeep checkout uv runs from
-STATUSES = {"All": None, "Merged": "merged", "Needs you": "parked", "In progress": "open",
-            "Reverted": "reverted"}
+STATUSES = {
+    "All": None,
+    "Merged": "merged",
+    "Needs you": "parked",
+    "In progress": "open",
+    "Reverted": "reverted",
+}
 COLUMNS = [
     {"name": "repo", "label": "Repo", "field": "repo", "sortable": True, "align": "left"},
     {"name": "title", "label": "Finding", "field": "title", "align": "left"},
-    {"name": "status", "label": "Status", "field": "status", "sortable": True, "align": "left",
-     "classes": "ic-nowrap"},
+    {
+        "name": "status",
+        "label": "Status",
+        "field": "status",
+        "sortable": True,
+        "align": "left",
+        "classes": "ic-nowrap",
+    },
     {"name": "attempts", "label": "Attempts", "field": "attempts", "align": "right"},
-    {"name": "updated", "label": "Updated", "field": "updated", "sortable": True,
-     "align": "left", "classes": "ic-nowrap"},
+    {
+        "name": "updated",
+        "label": "Updated",
+        "field": "updated",
+        "sortable": True,
+        "align": "left",
+        "classes": "ic-nowrap",
+    },
     {"name": "link", "label": "", "field": "link", "align": "left"},
 ]
-LINK_SLOT = ('<q-td :props="props"><a v-if="props.value" :href="props.value" target="_blank" '
-             'rel="noopener">{{ props.row.link_text }}</a></q-td>')
+LINK_SLOT = (
+    '<q-td :props="props"><a v-if="props.value" :href="props.value" target="_blank" '
+    'rel="noopener">{{ props.row.link_text }}</a></q-td>'
+)
 
 
 def table_rows(rows: list[dict], status: str | None, query: str) -> list[dict]:
@@ -62,9 +81,14 @@ def _matches(row: dict, status: str | None, query: str) -> bool:
 def _decorate(row: dict) -> dict:
     number, kind = (row["pr"], "pull") if row["pr"] else (row["issue"], "issues")
     link = f"{row['url']}/{kind}/{number}" if row["url"] and number else ""
-    return {**row, "title": row["title"] or row["fp"], "key": f"{row['repo']}:{row['fp']}",
-            "updated": (row["updated"] or "")[:UPDATED_CHARS],
-            "link": link, "link_text": f"#{number}" if link else ""}
+    return {
+        **row,
+        "title": row["title"] or row["fp"],
+        "key": f"{row['repo']}:{row['fp']}",
+        "updated": (row["updated"] or "")[:UPDATED_CHARS],
+        "link": link,
+        "link_text": f"#{number}" if link else "",
+    }
 
 
 def budget_today() -> int | None:
@@ -96,21 +120,27 @@ def _pause_card(refresh) -> None:
 
             def resume() -> None:
                 PAUSE_FILE.unlink(missing_ok=True)
-                ui.notify("Resumed: the next hourly firing runs, unless today's run already finished")
+                ui.notify(
+                    "Resumed: the next hourly firing runs, unless today's run already finished"
+                )
                 refresh()
 
             layout.button("Resume", kind="primary", on_click=resume)
         else:
-            ui.label("Active: the systemd timer fires hourly; one run a day (every hour in a boost)")
+            ui.label(
+                "Active: the systemd timer fires hourly; one run a day (every hour in a boost)"
+            )
 
 
 def _summary(state: State) -> None:
     rows = state.rows()
     budget = budget_today()
     parked = sum(r["status"] == "parked" for r in rows)
-    text = (f"Merged today: {state.merged_today()}"
-            + (f" of {budget}" if budget is not None else "")
-            + f" · needs you: {parked} · tracked findings: {len(rows)}")
+    text = (
+        f"Merged today: {state.merged_today()}"
+        + (f" of {budget}" if budget is not None else "")
+        + f" · needs you: {parked} · tracked findings: {len(rows)}"
+    )
     ui.label(text).classes("t-status")
 
 
@@ -124,14 +154,19 @@ def _filters() -> tuple[ui.select, ui.input]:
     return status, search
 
 
-def run_argv(repos: list[str], push: bool, budget: int | None, model: str,
-             review_model: str, keep: bool) -> list[str]:
+def run_argv(
+    repos: list[str], push: bool, budget: int | None, model: str, review_model: str, keep: bool
+) -> list[str]:
     """The `greenkeep` command line for the dashboard's options; defaults and empties are omitted."""
     argv = ["uv", "run", "--project", str(PROJECT), "greenkeep"]
     argv += ["--push"] * push
     argv += ["--budget", str(budget)] if budget is not None else []
     argv += ["--model", model] if model and model != DEFAULT_MODEL else []
-    argv += ["--review-model", review_model] if review_model and review_model != DEFAULT_REVIEW_MODEL else []
+    argv += (
+        ["--review-model", review_model]
+        if review_model and review_model != DEFAULT_REVIEW_MODEL
+        else []
+    )
     # `--`: a repo typed as "--push" stays a repo, never a flag that skips the confirmation
     return argv + ["--keep"] * keep + (["--", *repos] if repos else [])
 
@@ -172,9 +207,14 @@ def _options_dialog() -> ui.dialog:
     """Every CLI option of a run; empty repos and budget mean the config's."""
     with ui.dialog() as dialog, layout.section_card():
         layout.heading("Run with options", level=2)
-        repos = ui.select(_config_repos(), multiple=True, new_value_mode="add-unique",
-                          label="Repos (empty: from config)").props(
-            "outlined dense stack-label bottom-slots use-chips")  # bottom-slots: as kit fields.classes("w-full")
+        repos = ui.select(
+            _config_repos(),
+            multiple=True,
+            new_value_mode="add-unique",
+            label="Repos (empty: from config)",
+        ).props(
+            "outlined dense stack-label bottom-slots use-chips"
+        )  # bottom-slots: as kit fields.classes("w-full")
         push = ui.switch("Push: open issues and PRs and merge (off: local dry run)")
         budget = layout.field("Budget (empty: from config)", kind="number")
         model = layout.field("Model", value=DEFAULT_MODEL)
@@ -186,28 +226,41 @@ def _options_dialog() -> ui.dialog:
             if raw and not (raw.isascii() and raw.isdigit()):  # '²' passes isdigit
                 budget.error = "A whole number"
                 return
-            argv = run_argv(list(repos.value or []), push.value, int(raw) if raw else None,
-                            model.value.strip(), review.value.strip(), keep.value)
+            argv = run_argv(
+                list(repos.value or []),
+                push.value,
+                int(raw) if raw else None,
+                model.value.strip(),
+                review.value.strip(),
+                keep.value,
+            )
             dialog.close()
             _start(argv, push.value)
 
         with layout.actions_row():
             layout.button("Cancel", kind="quiet", on_click=dialog.close)
-            layout.button("Start", kind="primary",
-                          on_click=lambda: _confirm_push(start) if push.value else start())
+            layout.button(
+                "Start",
+                kind="primary",
+                on_click=lambda: _confirm_push(start) if push.value else start(),
+            )
     return dialog
 
 
 def _log_card() -> ui.code:
     with layout.section_card(recessive=True):
         layout.heading("Recent events", level=2)
-        return ui.code("", language="text").classes("w-full").style(
-            f"max-height: {LOG_MAX_HEIGHT}; overflow: auto")
+        return (
+            ui.code("", language="text")
+            .classes("w-full")
+            .style(f"max-height: {LOG_MAX_HEIGHT}; overflow: auto")
+        )
 
 
 @dataclass
 class _Page:
     """The page's live parts; refresh() redraws them from the state and the log."""
+
     state: State
     top: ui.column
     status: ui.select
@@ -226,8 +279,9 @@ class _Page:
 
 
 def _findings_table() -> table.EmptyAwareTable:
-    findings = table.empty_aware_table(COLUMNS, row_key="key", pagination={"rowsPerPage": 25},
-                                       empty_text="No findings yet")
+    findings = table.empty_aware_table(
+        COLUMNS, row_key="key", pagination={"rowsPerPage": 25}, empty_text="No findings yet"
+    )
     findings.table.add_slot("body-cell-link", LINK_SLOT)
     return findings
 
@@ -275,8 +329,7 @@ def main(argv: list[str] | None = None) -> int:
     texts.TEXTS.update(texts.EN)  # kit strings are Russian by default; greenkeep speaks English
     theme.apply_theme()
     app.on_shutdown(_stop_runs)
-    ui.run(host=port.HOST, port=choice.port, title="greenkeep", show=not a.no_show,
-           reload=False)
+    ui.run(host=port.HOST, port=choice.port, title="greenkeep", show=not a.no_show, reload=False)
     return 0
 
 

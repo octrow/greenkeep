@@ -12,6 +12,7 @@ def test_patcher_reads_the_clone_with_read_only_tools(monkeypatch, tmp_path):
     def fake(prompt, **kw):
         seen.update(kw)
         return SimpleNamespace(text="```python\n```")
+
     monkeypatch.setattr(llm, "run_claude", fake)
     llm.ask("sys", "prompt", "m", tmp_path)
     assert seen["tools"] == llm.READ_TOOLS and seen["cwd"] == tmp_path
@@ -28,7 +29,9 @@ def test_the_import_name_is_relative_to_the_test_root():
 def test_a_retry_of_a_test_file_corrects_the_previous_one_instead_of_starting_over():
     f = Finding("untested", "coverage", "pkg/a.py", 1, "10% covered", "untested:pkg/a.py")
     first = llm.characterization_prompt(f, "x = 1", {}, 120, "")
-    retry = llm.characterization_prompt(f, "x = 1", {}, 120, "1 failed", previous="def test_x(): ...")
+    retry = llm.characterization_prompt(
+        f, "x = 1", {}, 120, "1 failed", previous="def test_x(): ..."
+    )
     assert "def test_x(): ..." not in first
     assert "def test_x(): ..." in retry and "1 failed" in retry
 
@@ -39,6 +42,7 @@ def test_the_planner_reads_the_repo_at_high_effort_and_returns_its_plan(monkeypa
     def fake(prompt, **kw):
         seen.update(kw, prompt=prompt)
         return SimpleNamespace(text="1. mirror tests/test_a.py")
+
     monkeypatch.setattr(llm, "run_claude", fake)
     assert llm.plan("TASK", "opus", tmp_path) == "1. mirror tests/test_a.py"
     assert seen["model"] == "opus" and seen["effort"] == "high"

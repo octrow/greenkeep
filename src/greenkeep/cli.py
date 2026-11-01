@@ -33,13 +33,23 @@ PROBLEM_CHARS = 200
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="greenkeep", description=__doc__)
     p.add_argument("repos", nargs="*", help="local checkouts or owner/name (default: config)")
-    p.add_argument("--push", action="store_true",
-                   help="open issues/PRs and merge them (default: local dry run)")
+    p.add_argument(
+        "--push",
+        action="store_true",
+        help="open issues/PRs and merge them (default: local dry run)",
+    )
     p.add_argument("--budget", type=int, help="merged fix PRs today (default: config)")
     p.add_argument("--model", default=DEFAULT_MODEL, help="Claude Code model that writes patches")
-    p.add_argument("--review-model", default=DEFAULT_REVIEW_MODEL,
-                   help="Claude Code model that reviews each patch inside the clone")
-    p.add_argument("--keep", action="store_true", help="keep the throwaway clones (the next run a day later removes them)")
+    p.add_argument(
+        "--review-model",
+        default=DEFAULT_REVIEW_MODEL,
+        help="Claude Code model that reviews each patch inside the clone",
+    )
+    p.add_argument(
+        "--keep",
+        action="store_true",
+        help="keep the throwaway clones (the next run a day later removes them)",
+    )
     return p.parse_args(argv)
 
 

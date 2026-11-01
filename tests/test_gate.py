@@ -46,8 +46,12 @@ def test_insertion_next_to_untested_statement_is_a_violation():
 
 def test_file_without_statements_cannot_be_changed():
     cov = {"files": {"pkg/a.py": {"executed_lines": [], "missing_lines": []}}}
-    assert coverage_violations(DIFF, cov) == ["pkg/a.py:1", "pkg/a.py:10", "pkg/a.py:11",
-                                              "pkg/a.py:20"]
+    assert coverage_violations(DIFF, cov) == [
+        "pkg/a.py:1",
+        "pkg/a.py:10",
+        "pkg/a.py:11",
+        "pkg/a.py:20",
+    ]
 
 
 def test_coverage_violations_flags_unmeasured_source_file_but_not_tests():

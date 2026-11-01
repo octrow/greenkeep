@@ -8,7 +8,9 @@ from datetime import date, timedelta
 from pathlib import Path
 
 MAX_ATTEMPTS = 3
-COLUMNS = frozenset({"status", "attempts", "issue", "pr", "sha", "title", "url"})  # what set() may write
+COLUMNS = frozenset(
+    {"status", "attempts", "issue", "pr", "sha", "title", "url"}
+)  # what set() may write
 DEFAULT_DB = Path.home() / ".local/share/greenkeep/state.db"
 SCHEMA = """CREATE TABLE IF NOT EXISTS finding (
     repo TEXT, fp TEXT, status TEXT DEFAULT 'open', attempts INT DEFAULT 0,
@@ -21,8 +23,10 @@ COOL_DOWN = timedelta(days=7)
 # nor spend the budget. State cannot import kinds; a test keeps the two in step
 BUDGET_FREE = ("vuln:",)
 # columns added after the first release, for databases created before them
-MIGRATIONS = {column: f"ALTER TABLE finding ADD COLUMN {column} TEXT"
-              for column in ("sha", "title", "url", "merged_at")}
+MIGRATIONS = {
+    column: f"ALTER TABLE finding ADD COLUMN {column} TEXT"
+    for column in ("sha", "title", "url", "merged_at")
+}
 # before merged_at, `updated` was the merge time, and any later write moved it
 BACKFILL_MERGED_AT = "UPDATE finding SET merged_at=updated WHERE status='merged'"
 
@@ -31,6 +35,7 @@ BACKFILL_MERGED_AT = "UPDATE finding SET merged_at=updated WHERE status='merged'
 class CoolDown:
     """Until when a repo is left alone, and what it and greenkeep looked like then: a change
     to either ends it early."""
+
     until: date
     repo_head: str
     tool_head: str
@@ -51,8 +56,9 @@ class State:
         self.db.commit()
 
     def _row(self, repo: str, fp: str) -> tuple | None:
-        return self.db.execute("SELECT status, attempts, issue FROM finding "
-                               "WHERE repo=? AND fp=?", (repo, fp)).fetchone()
+        return self.db.execute(
+            "SELECT status, attempts, issue FROM finding WHERE repo=? AND fp=?", (repo, fp)
+        ).fetchone()
 
     def status(self, repo: str, fp: str) -> str | None:
         row = self._row(repo, fp)
@@ -72,8 +78,10 @@ class State:
         cols = ", ".join(f"{k}=?" for k in fields)
         # merged_at, not `updated`, dates a merge: later writes (a backfilled sha) move `updated`
         merged = ", merged_at=CURRENT_TIMESTAMP" if fields.get("status") == "merged" else ""
-        self.db.execute(f"UPDATE finding SET {cols}, updated=CURRENT_TIMESTAMP{merged} "
-                        "WHERE repo=? AND fp=?", (*fields.values(), repo, fp))
+        self.db.execute(
+            f"UPDATE finding SET {cols}, updated=CURRENT_TIMESTAMP{merged} WHERE repo=? AND fp=?",
+            (*fields.values(), repo, fp),
+        )
         self.db.commit()
 
     def attempts(self, repo: str, fp: str) -> int:
@@ -88,45 +96,58 @@ class State:
 
     def open_issues(self, repo: str) -> list[tuple[str, int]]:
         """(fingerprint, issue) of every finding still waiting with an issue open for it."""
-        return self.db.execute("SELECT fp, issue FROM finding WHERE repo=? AND issue IS NOT "
-                               "NULL AND status IN ('open', 'parked')", (repo,)).fetchall()
+        return self.db.execute(
+            "SELECT fp, issue FROM finding WHERE repo=? AND issue IS NOT "
+            "NULL AND status IN ('open', 'parked')",
+            (repo,),
+        ).fetchall()
 
     def stale_parked(self, repo: str, prefix: str, days: int) -> list[tuple[str, int]]:
         """(fingerprint, issue) of findings with this prefix parked over `days` ago whose
         issue is still open."""
-        return self.db.execute("SELECT fp, issue FROM finding WHERE repo=? AND fp LIKE ? AND "
-                               "status='parked' AND issue IS NOT NULL AND "
-                               "updated < datetime('now', ?)",
-                               (repo, prefix + "%", f"-{days} days")).fetchall()
+        return self.db.execute(
+            "SELECT fp, issue FROM finding WHERE repo=? AND fp LIKE ? AND "
+            "status='parked' AND issue IS NOT NULL AND "
+            "updated < datetime('now', ?)",
+            (repo, prefix + "%", f"-{days} days"),
+        ).fetchall()
 
     def parked_count(self, repo: str, prefix: str) -> int:
-        return self.db.execute("SELECT count(*) FROM finding WHERE repo=? AND fp LIKE ? AND "
-                               "status='parked'", (repo, prefix + "%")).fetchone()[0]
+        return self.db.execute(
+            "SELECT count(*) FROM finding WHERE repo=? AND fp LIKE ? AND status='parked'",
+            (repo, prefix + "%"),
+        ).fetchone()[0]
 
     def merges(self, repo: str) -> list[tuple[str, int | None, str | None]]:
         """(fingerprint, PR, merge commit) of every live greenkeep merge in the repo."""
-        return self.db.execute("SELECT fp, pr, sha FROM finding WHERE repo=? AND "
-                               "status='merged'", (repo,)).fetchall()
+        return self.db.execute(
+            "SELECT fp, pr, sha FROM finding WHERE repo=? AND status='merged'", (repo,)
+        ).fetchall()
 
     def rows(self) -> list[dict]:
         """Every finding greenkeep has touched, newest first (the dashboard's data)."""
-        cur = self.db.execute("SELECT repo, fp, status, attempts, issue, pr, updated, title, "
-                              "url FROM finding ORDER BY updated DESC")
+        cur = self.db.execute(
+            "SELECT repo, fp, status, attempts, issue, pr, updated, title, "
+            "url FROM finding ORDER BY updated DESC"
+        )
         names = [d[0] for d in cur.description]
         return [dict(zip(names, row, strict=True)) for row in cur.fetchall()]
 
     def last_merge(self, repo: str) -> str:
         """When greenkeep last merged in this repo ("" if never): oldest goes first."""
-        row = self.db.execute("SELECT max(merged_at) FROM finding WHERE repo=? AND "
-                              "status='merged'", (repo,)).fetchone()
+        row = self.db.execute(
+            "SELECT max(merged_at) FROM finding WHERE repo=? AND status='merged'", (repo,)
+        ).fetchone()
         return row[0] or ""
 
     def merged_today(self) -> int:
         # merged_at is stored in UTC; the budget is per local day
-        return self.db.execute("SELECT count(*) FROM finding WHERE status='merged' AND "
-                               "date(merged_at, 'localtime') = date('now', 'localtime') "
-                               + "".join(" AND fp NOT LIKE ?" for _ in BUDGET_FREE),
-                               [p + "%" for p in BUDGET_FREE]).fetchone()[0]
+        return self.db.execute(
+            "SELECT count(*) FROM finding WHERE status='merged' AND "
+            "date(merged_at, 'localtime') = date('now', 'localtime') "
+            + "".join(" AND fp NOT LIKE ?" for _ in BUDGET_FREE),
+            [p + "%" for p in BUDGET_FREE],
+        ).fetchone()[0]
 
     def mark(self, key: str) -> str:
         row = self.db.execute("SELECT value FROM mark WHERE key=?", (key,)).fetchone()

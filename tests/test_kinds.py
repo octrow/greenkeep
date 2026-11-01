@@ -23,8 +23,13 @@ def finding(kind: str, rule: str) -> Finding:
 
 
 def test_work_order_is_security_bugs_tests_upgrades_style():
-    found = [finding("ruff", "E501"), finding("outdated", "x==2"), finding("untested", "cov"),
-             finding("ruff", "F401"), finding("vuln", "y==3")]
+    found = [
+        finding("ruff", "E501"),
+        finding("outdated", "x==2"),
+        finding("untested", "cov"),
+        finding("ruff", "F401"),
+        finding("vuln", "y==3"),
+    ]
     ordered = sorted(found, key=lambda f: kind_of(f).priority(f))
     assert [f.rule for f in ordered] == ["y==3", "F401", "cov", "x==2", "E501"]
 
@@ -40,24 +45,35 @@ def untested(path: str) -> Finding:
 
 def test_new_tests_go_where_the_repo_keeps_them(tmp_path):
     (tmp_path / "tests/db").mkdir(parents=True)
-    assert characterization_path(untested("src/pkg/db/repo.py"), tmp_path) == "tests/db/test_repo.py"
+    assert (
+        characterization_path(untested("src/pkg/db/repo.py"), tmp_path) == "tests/db/test_repo.py"
+    )
     assert characterization_path(untested("pkg/util.py"), tmp_path) == "tests/test_util.py"
     (tmp_path / "tests/db/test_repo.py").write_text("")
-    assert (characterization_path(untested("src/pkg/db/repo.py"), tmp_path)
-            == "tests/db/test_pkg_db_repo.py")
+    assert (
+        characterization_path(untested("src/pkg/db/repo.py"), tmp_path)
+        == "tests/db/test_pkg_db_repo.py"
+    )
 
 
 def test_context_has_the_tests_that_import_the_module_and_their_conftest(tmp_path):
-    files = {"tests/conftest.py": "FIXTURE", "tests/test_a.py": "from pkg.db import repo",
-             "tests/test_b.py": "import other", "tests/other/conftest.py": "NOPE",
-             "pyproject.toml": "[tool.pytest.ini_options]\nasyncio_mode = 'auto'\n"}
+    files = {
+        "tests/conftest.py": "FIXTURE",
+        "tests/test_a.py": "from pkg.db import repo",
+        "tests/test_b.py": "import other",
+        "tests/other/conftest.py": "NOPE",
+        "pyproject.toml": "[tool.pytest.ini_options]\nasyncio_mode = 'auto'\n",
+    }
     for name, text in files.items():
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / name).write_text(text)
     ws = SimpleNamespace(root=tmp_path, tests="", tracked=lambda: set(files))
     ctx = related_context(ws, untested("src/pkg/db/repo.py"))
-    assert set(ctx) == {"tests/conftest.py", "tests/test_a.py",
-                        "pyproject.toml [tool.pytest] / [tool.ruff]"}
+    assert set(ctx) == {
+        "tests/conftest.py",
+        "tests/test_a.py",
+        "pyproject.toml [tool.pytest] / [tool.ruff]",
+    }
     assert "asyncio_mode" in ctx["pyproject.toml [tool.pytest] / [tool.ruff]"]
 
 
@@ -70,8 +86,10 @@ def test_a_new_test_file_never_shares_a_basename_with_another_test(tmp_path):
     # pytest's default import mode fails on two test_extract.py in folders without __init__
     (tmp_path / "tests").mkdir()
     (tmp_path / "test_extract.py").write_text("")
-    assert (characterization_path(untested("src/cc_bench/extract.py"), tmp_path)
-            == "tests/test_cc_bench_extract.py")
+    assert (
+        characterization_path(untested("src/cc_bench/extract.py"), tmp_path)
+        == "tests/test_cc_bench_extract.py"
+    )
 
 
 def test_a_repo_with_its_tests_at_the_root_gets_the_new_one_there_too(tmp_path):
@@ -80,8 +98,10 @@ def test_a_repo_with_its_tests_at_the_root_gets_the_new_one_there_too(tmp_path):
 
 
 def test_new_tests_go_under_the_test_root(tmp_path):
-    assert (characterization_path(untested("app/gui/page.py"), tmp_path, "app")
-            == "app/tests/test_page.py")
+    assert (
+        characterization_path(untested("app/gui/page.py"), tmp_path, "app")
+        == "app/tests/test_page.py"
+    )
 
 
 def test_a_module_that_talks_to_a_service_gets_no_generated_tests():
@@ -98,16 +118,22 @@ def test_a_lint_fix_may_change_only_the_file_of_its_finding():
         kind_of(f).check_scope(None, f, ["tests/test_app.py", "src/app/core.py"])
 
 
-@pytest.mark.parametrize(("rule", "planned"), [("C901", True), ("PLR0915", True),
-                                               ("SIM117", False), ("F401", False)])
+@pytest.mark.parametrize(
+    ("rule", "planned"), [("C901", True), ("PLR0915", True), ("SIM117", False), ("F401", False)]
+)
 def test_a_boost_plans_only_the_hard_changes_first(monkeypatch, tmp_path, rule, planned):
     asked = []
     monkeypatch.setattr(kinds.llm, "plan", lambda prompt, model, root: "THE PLAN")
-    monkeypatch.setattr(kinds.llm, "ask",
-                        lambda system, prompt, model, root: asked.append(prompt)
-                        or kinds.llm.Reply("r", model, "sha"))
-    job = SimpleNamespace(opts=SimpleNamespace(model="sonnet", planner="opus"),
-                          ws=SimpleNamespace(root=tmp_path))
+    monkeypatch.setattr(
+        kinds.llm,
+        "ask",
+        lambda system, prompt, model, root: (
+            asked.append(prompt) or kinds.llm.Reply("r", model, "sha")
+        ),
+    )
+    job = SimpleNamespace(
+        opts=SimpleNamespace(model="sonnet", planner="opus"), ws=SimpleNamespace(root=tmp_path)
+    )
     reply = kinds.patch(job, "SYS", "TASK", hard=kinds.is_hard(finding("ruff", rule)))
     assert ("THE PLAN" in asked[0]) == planned
     assert (reply.model == "sonnet + plan by opus") == planned
@@ -116,8 +142,9 @@ def test_a_boost_plans_only_the_hard_changes_first(monkeypatch, tmp_path, rule, 
 def test_without_a_planner_nothing_is_planned(monkeypatch, tmp_path):
     monkeypatch.setattr(kinds.llm, "plan", lambda *a: pytest.fail("planned"))
     monkeypatch.setattr(kinds.llm, "ask", lambda s, p, m, r: kinds.llm.Reply("r", m, "sha"))
-    job = SimpleNamespace(opts=SimpleNamespace(model="sonnet", planner=""),
-                          ws=SimpleNamespace(root=tmp_path))
+    job = SimpleNamespace(
+        opts=SimpleNamespace(model="sonnet", planner=""), ws=SimpleNamespace(root=tmp_path)
+    )
     assert kinds.patch(job, "SYS", "TASK", hard=True).model == "sonnet"
     assert kinds.is_hard(finding("untested", "coverage")) and kinds.is_hard(finding("bug", "x"))
 
@@ -125,8 +152,9 @@ def test_without_a_planner_nothing_is_planned(monkeypatch, tmp_path):
 def lint_job(tmp_path, source: str, executed: list[int], missing: list[int]) -> SimpleNamespace:
     (tmp_path / "a.py").write_text(source)
     cov = {"files": {"a.py": {"executed_lines": executed, "missing_lines": missing}}}
-    return SimpleNamespace(ws=SimpleNamespace(root=tmp_path),
-                           base=SimpleNamespace(tests=SimpleNamespace(cov=cov)))
+    return SimpleNamespace(
+        ws=SimpleNamespace(root=tmp_path), base=SimpleNamespace(tests=SimpleNamespace(cov=cov))
+    )
 
 
 def test_a_lint_finding_needs_every_line_it_spans_covered(tmp_path):
@@ -149,9 +177,10 @@ def test_a_complexity_finding_needs_the_whole_function_covered(tmp_path):
 def test_fixing_one_of_several_identical_lines_passes_the_scope_check(monkeypatch):
     # tg-bot-template BLE001: eight identical `except Exception:` lines in one file
     fp = "ruff:BLE001:a.py:d"
-    job = SimpleNamespace(ws=SimpleNamespace(git=lambda *a: ""),
-                          base=SimpleNamespace(lint=frozenset({fp, fp + "#1"}),
-                                               tests=SimpleNamespace(cov={})))
+    job = SimpleNamespace(
+        ws=SimpleNamespace(git=lambda *a: ""),
+        base=SimpleNamespace(lint=frozenset({fp, fp + "#1"}), tests=SimpleNamespace(cov={})),
+    )
     f = Finding("ruff", "BLE001", "a.py", 3, "m", fp)
     monkeypatch.setattr(kinds, "lint", lambda ws, *p: [replace(f, line=9)])  # the other copy
     kind_of(f).check_scope(job, f, ["a.py"])
@@ -173,6 +202,7 @@ def test_a_dependency_upgrade_syncs_the_venv_before_the_suite(monkeypatch):
 def test_the_state_budget_count_skips_exactly_the_budget_exempt_kinds():
     # state cannot import kinds (kinds -> core -> state): its prefix list must follow them
     from greenkeep.state import BUDGET_FREE
+
     exempt = {f"{name}:" for name, k in kinds.KINDS.items() if k.exempt_from_budget}
     assert set(BUDGET_FREE) == exempt
 
@@ -188,16 +218,25 @@ def untested_job(tmp_path, pyproject: str, source: str, parked: int = 0) -> Simp
     return SimpleNamespace(ws=SimpleNamespace(root=tmp_path, tests="", name="demo"), state=state)
 
 
-PYPROJECT = ('[project]\nname = "bot"\ndependencies = ["httpx"]\n'
-             '[project.optional-dependencies]\ne2e = ["Telethon>=1"]\ndev = ["pytest", "rich"]\n'
-             'gui = ["rich"]\n[dependency-groups]\ndev = ["respx"]\n')
+PYPROJECT = (
+    '[project]\nname = "bot"\ndependencies = ["httpx"]\n'
+    '[project.optional-dependencies]\ne2e = ["Telethon>=1"]\ndev = ["pytest", "rich"]\n'
+    'gui = ["rich"]\n[dependency-groups]\ndev = ["respx"]\n'
+)
 
 
-@pytest.mark.parametrize(("source", "workable"), [
-    ("import telethon\n", False),            # chat-watch: only the e2e extra installs it
-    ("from telethon.tl import types\n", False),
-    ("import httpx\nimport rich\nimport respx\n", True),  # a dependency, a dev extra, a dev group
-    ("import json\n", True)])
+@pytest.mark.parametrize(
+    ("source", "workable"),
+    [
+        ("import telethon\n", False),  # chat-watch: only the e2e extra installs it
+        ("from telethon.tl import types\n", False),
+        (
+            "import httpx\nimport rich\nimport respx\n",
+            True,
+        ),  # a dependency, a dev extra, a dev group
+        ("import json\n", True),
+    ],
+)
 def test_a_module_needing_an_optional_extra_gets_no_generated_tests(tmp_path, source, workable):
     f = untested("bot/client.py")
     assert kind_of(f).attemptable(untested_job(tmp_path, PYPROJECT, source), f) == workable

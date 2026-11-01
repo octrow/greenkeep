@@ -11,7 +11,9 @@ from .gate import is_test_path
 
 BLOCK = re.compile(
     r"^(?P<path>[^\n<>=]+?)\s*\n<<<<<<< SEARCH\n(?P<search>.*?)\n?=======\n"
-    r"(?P<replace>.*?)\n?>>>>>>> REPLACE", re.DOTALL | re.MULTILINE)
+    r"(?P<replace>.*?)\n?>>>>>>> REPLACE",
+    re.DOTALL | re.MULTILINE,
+)
 # greedy, to the LAST fence: the one block we ask for may itself contain ``` in strings
 CODE = re.compile(r"```(?:python|py)?\n(.*)```", re.DOTALL)
 
@@ -28,8 +30,9 @@ class Edit:
 
 
 def parse_edits(reply: str) -> list[Edit]:
-    edits = [Edit(m["path"].strip().strip("`"), m["search"], m["replace"])
-             for m in BLOCK.finditer(reply)]
+    edits = [
+        Edit(m["path"].strip().strip("`"), m["search"], m["replace"]) for m in BLOCK.finditer(reply)
+    ]
     if not edits:
         raise EditError("no SEARCH/REPLACE blocks in reply")
     return edits
@@ -49,8 +52,9 @@ def _target(root: Path, rel: str, allowed: frozenset[str], *, new: bool = False)
     return target
 
 
-def apply_edits(root: Path, edits: list[Edit], allowed: frozenset[str], *,
-                new_tests: bool = False) -> list[str]:
+def apply_edits(
+    root: Path, edits: list[Edit], allowed: frozenset[str], *, new_tests: bool = False
+) -> list[str]:
     """Apply every edit or raise; each non-empty SEARCH must occur exactly once.
     `new_tests`: an empty SEARCH may create a test file that does not exist yet."""
     touched = []

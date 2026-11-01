@@ -37,8 +37,19 @@ BOOST_IGNORE = "RUF001,RUF002,RUF003,RUF100"
 # addopts that would break coverage: pytest-cov is disabled (its tracer hijacks ours), and
 # xdist workers run outside `coverage run`. Each name also covers its `--opt=value` form.
 DROPPED_OPTS = ("--cov", "--no-cov", "--dist", "--numprocesses", "-n")
-DROPPED_WITH_VALUE = frozenset({"--cov", "--cov-report", "--cov-config", "--cov-fail-under",
-                                "--cov-context", "--dist", "--numprocesses", "-n", "-p"})
+DROPPED_WITH_VALUE = frozenset(
+    {
+        "--cov",
+        "--cov-report",
+        "--cov-config",
+        "--cov-fail-under",
+        "--cov-context",
+        "--dist",
+        "--numprocesses",
+        "-n",
+        "-p",
+    }
+)
 # kept across attempt resets: secrets copied in, and the synced venv
 KEEP_ON_RESET = (".env", ".venv")
 MIN_SECRET_LEN = 6  # shorter .env values (ports, flags) would mask half the output
@@ -48,18 +59,21 @@ class WorkspaceError(RuntimeError):
     """The repo cannot be worked on in this run (no pyproject, sync failed...)."""
 
 
-def sh(args: list[str], cwd: Path, *, check: bool = True,
-       timeout: int = TEST_TIMEOUT) -> subprocess.CompletedProcess:
+def sh(
+    args: list[str], cwd: Path, *, check: bool = True, timeout: int = TEST_TIMEOUT
+) -> subprocess.CompletedProcess:
     # our own venv must not leak into the target's `uv run`
     env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
     try:
-        proc = subprocess.run(args, cwd=cwd, env=env, text=True, capture_output=True,
-                              check=False, timeout=timeout)
+        proc = subprocess.run(
+            args, cwd=cwd, env=env, text=True, capture_output=True, check=False, timeout=timeout
+        )
     except subprocess.TimeoutExpired as exc:
         raise WorkspaceError(f"{' '.join(args[:3])}… timed out after {timeout}s") from exc
     if check and proc.returncode != 0:
-        raise WorkspaceError(f"{' '.join(args[:3])}… exit {proc.returncode}: "
-                             f"{(proc.stderr or proc.stdout)[-800:]}")
+        raise WorkspaceError(
+            f"{' '.join(args[:3])}… exit {proc.returncode}: {(proc.stderr or proc.stdout)[-800:]}"
+        )
     return proc
 
 
@@ -88,11 +102,15 @@ class Workspace:
 
     def changed(self) -> list[str]:
         """Paths the attempt changed or added, except the kept secrets and venv."""
+
         def kept(name: str) -> bool:
             return name.split("/")[0] in KEEP_ON_RESET
 
-        new = [n for n in self.git("ls-files", "-o", "--exclude-standard", "-z").split("\0")
-               if n and not kept(n)]
+        new = [
+            n
+            for n in self.git("ls-files", "-o", "--exclude-standard", "-z").split("\0")
+            if n and not kept(n)
+        ]
         if new:  # intent-to-add: new files show up in `git diff` too (kept ones never are,
             self.git("add", "-N", "--", *new)  # or a hard reset would delete them)
         names = self.git("diff", "--name-only", "-z", "HEAD").split("\0")
@@ -103,8 +121,11 @@ class Workspace:
         env = self.root / ".env"
         if not env.is_file():
             return []
-        values = (ln.partition("=")[2].strip().strip("\"'") for ln in env.read_text().splitlines()
-                  if "=" in ln and not ln.lstrip().startswith("#"))
+        values = (
+            ln.partition("=")[2].strip().strip("\"'")
+            for ln in env.read_text().splitlines()
+            if "=" in ln and not ln.lstrip().startswith("#")
+        )
         return [v for v in values if len(v) >= MIN_SECRET_LEN]
 
     def read_line(self, path: str, n: int) -> str:
@@ -114,8 +135,11 @@ class Workspace:
 
 def _origin(target: Target) -> str:
     src = target.path
-    return sh(["git", "remote", "get-url", "origin"], src, check=False).stdout.strip() \
-        if src else target.origin
+    return (
+        sh(["git", "remote", "get-url", "origin"], src, check=False).stdout.strip()
+        if src
+        else target.origin
+    )
 
 
 def remote_head(target: Target) -> str:
@@ -146,8 +170,14 @@ def clone(target: Target) -> Workspace:
     sh(["git", "clone", "-q", *reference, origin, str(root)], run_dir)
     if src and (src / ".env").is_file():
         shutil.copy2(src / ".env", root / ".env")
-    ws = Workspace(name, root, scratch, origin=origin, tests=target.tests,
-                   extra_rules=BOOST_RULES if target.boost else ())
+    ws = Workspace(
+        name,
+        root,
+        scratch,
+        origin=origin,
+        tests=target.tests,
+        extra_rules=BOOST_RULES if target.boost else (),
+    )
     ws.base_branch = ws.git("rev-parse", "--abbrev-ref", "HEAD").strip()
     return ws
 
@@ -205,9 +235,15 @@ def kept_addopts(addopts: str | list[str]) -> list[str]:
 
 
 # where pytest looks, in its own order; "" is pyproject's [tool.pytest(.ini_options)]
-PYTEST_CONFIGS = (("pytest.toml", "pytest"), (".pytest.toml", "pytest"),
-                  ("pytest.ini", "pytest"), (".pytest.ini", "pytest"), ("pyproject.toml", ""),
-                  ("tox.ini", "pytest"), ("setup.cfg", "tool:pytest"))
+PYTEST_CONFIGS = (
+    ("pytest.toml", "pytest"),
+    (".pytest.toml", "pytest"),
+    ("pytest.ini", "pytest"),
+    (".pytest.ini", "pytest"),
+    ("pyproject.toml", ""),
+    ("tox.ini", "pytest"),
+    ("setup.cfg", "tool:pytest"),
+)
 
 
 def _config_addopts(path: Path, section: str) -> str | list[str] | None:
@@ -246,9 +282,25 @@ def test_file_exit(ws: Workspace, path: str) -> int:
     rel = path.removeprefix(f"{ws.tests}/") if ws.tests else path
     # `-m`, like run_tests: the test root importable the same way. `-B`: the unfixed
     # module's .pyc would outlive a same-size, same-second restore of the fixed one
-    return sh(["uv", "run", "--with", "pytest", "python", "-B", "-m", "pytest", "-q",
-               "-p", "no:cacheprovider",
-               *_addopts(ws), rel], ws.root / ws.tests, check=False).returncode
+    return sh(
+        [
+            "uv",
+            "run",
+            "--with",
+            "pytest",
+            "python",
+            "-B",
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            *_addopts(ws),
+            rel,
+        ],
+        ws.root / ws.tests,
+        check=False,
+    ).returncode
 
 
 def suite_tail(text: str) -> str:
@@ -257,10 +309,13 @@ def suite_tail(text: str) -> str:
     out of the tail."""
     if CRASH not in text:
         return text[-OUTPUT_TAIL:]
-    header, *frames = [ln for ln in text[text.index(CRASH):].splitlines()
-                       if "/site-packages/" not in ln and not ln.startswith("Extension modules:")]
+    header, *frames = [
+        ln
+        for ln in text[text.index(CRASH) :].splitlines()
+        if "/site-packages/" not in ln and not ln.startswith("Extension modules:")
+    ]
     # the header first even when the frames overflow: it is what says "crash"
-    return header + "\n" + "\n".join(frames)[-(OUTPUT_TAIL - len(header) - 1):]
+    return header + "\n" + "\n".join(frames)[-(OUTPUT_TAIL - len(header) - 1) :]
 
 
 def baseline_tests(ws: Workspace) -> TestRun:
@@ -279,12 +334,33 @@ def run_tests(ws: Workspace) -> TestRun:
     data.unlink(missing_ok=True)
     cwd = ws.root / ws.tests
     try:
-        proc = sh(["uv", "run", "--with", "pytest", "--with", "coverage", "coverage", "run",
-                   f"--data-file={data}", "--source=.", "--omit=tests/*,.venv/*",
-                   "-m", "pytest", "-q", "-p", "no:cacheprovider",
-                   # pytest-cov would hijack the tracer (0% everywhere): off, and its
-                   # options dropped from the repo's addopts, which otherwise still apply
-                   "-p", "no:pytest_cov", *_addopts(ws)], cwd, check=False)
+        proc = sh(
+            [
+                "uv",
+                "run",
+                "--with",
+                "pytest",
+                "--with",
+                "coverage",
+                "coverage",
+                "run",
+                f"--data-file={data}",
+                "--source=.",
+                "--omit=tests/*,.venv/*",
+                "-m",
+                "pytest",
+                "-q",
+                "-p",
+                "no:cacheprovider",
+                # pytest-cov would hijack the tracer (0% everywhere): off, and its
+                # options dropped from the repo's addopts, which otherwise still apply
+                "-p",
+                "no:pytest_cov",
+                *_addopts(ws),
+            ],
+            cwd,
+            check=False,
+        )
     except WorkspaceError as exc:  # a hanging test is a red suite, not a crashed run
         return TestRun(False, {}, str(exc))
     tail = suite_tail(proc.stdout + proc.stderr)
@@ -293,8 +369,22 @@ def run_tests(ws: Workspace) -> TestRun:
     # --source makes never-imported modules show up at 0%: that is what bootstraps a repo
     # without tests. With nothing measured at all, coverage refuses to report.
     out = ws.scratch / "cov.json"
-    rep = sh(["uv", "run", "--with", "coverage", "coverage", "json", f"--data-file={data}",
-              "-o", str(out), "-q"], cwd, check=False)
+    rep = sh(
+        [
+            "uv",
+            "run",
+            "--with",
+            "coverage",
+            "coverage",
+            "json",
+            f"--data-file={data}",
+            "-o",
+            str(out),
+            "-q",
+        ],
+        cwd,
+        check=False,
+    )
     cov = json.loads(out.read_text()) if rep.returncode == 0 else {"files": {}}
     if ws.tests:  # coverage names files from the test root; everything else from the repo
         cov["files"] = {f"{ws.tests}/{k}": v for k, v in cov.get("files", {}).items()}
@@ -302,10 +392,24 @@ def run_tests(ws: Workspace) -> TestRun:
 
 
 def ruff_json(ws: Workspace, *paths: str) -> list[dict]:
-    extra = (["--extend-select", ",".join(ws.extra_rules), "--extend-ignore", BOOST_IGNORE]
-             if ws.extra_rules else [])
-    proc = sh(["uvx", "ruff", "check", "--output-format", "json", "--exit-zero", *extra,
-               *(paths or ["."])], ws.root)
+    extra = (
+        ["--extend-select", ",".join(ws.extra_rules), "--extend-ignore", BOOST_IGNORE]
+        if ws.extra_rules
+        else []
+    )
+    proc = sh(
+        [
+            "uvx",
+            "ruff",
+            "check",
+            "--output-format",
+            "json",
+            "--exit-zero",
+            *extra,
+            *(paths or ["."]),
+        ],
+        ws.root,
+    )
     return json.loads(proc.stdout or "[]")
 
 
@@ -319,5 +423,17 @@ def ruff_fix_new_test(ws: Workspace, path: str) -> None:
     """A test file greenkeep just wrote: safe fixes, plus the unsafe ones that only drop
     an unused name. Not every unsafe fix: E721's turns `type(x) == int` into `int == int`."""
     ruff_fix(ws, path)
-    sh(["uvx", "ruff", "check", "--fix", "--unsafe-fixes", "--select", UNSAFE_OK,
-        "--exit-zero", path], ws.root)
+    sh(
+        [
+            "uvx",
+            "ruff",
+            "check",
+            "--fix",
+            "--unsafe-fixes",
+            "--select",
+            UNSAFE_OK,
+            "--exit-zero",
+            path,
+        ],
+        ws.root,
+    )

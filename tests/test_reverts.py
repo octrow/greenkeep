@@ -14,8 +14,9 @@ def test_reverted_matches_full_and_abbreviated_shas():
 
 
 def git(cwd, *args):
-    return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True,
-                          text=True).stdout.strip()
+    return subprocess.run(
+        ["git", *args], cwd=cwd, check=True, capture_output=True, text=True
+    ).stdout.strip()
 
 
 def test_check_pauses_on_a_reverted_merge_and_marks_it(tmp_path):
@@ -42,10 +43,13 @@ def test_check_pauses_on_a_reverted_merge_and_marks_it(tmp_path):
 
 def test_state_migrates_an_old_database(tmp_path):
     import sqlite3
+
     db = sqlite3.connect(tmp_path / "old.db")
-    db.execute("CREATE TABLE finding (repo TEXT, fp TEXT, status TEXT DEFAULT 'open', "
-               "attempts INT DEFAULT 0, issue INT, pr INT, "
-               "updated TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (repo, fp))")
+    db.execute(
+        "CREATE TABLE finding (repo TEXT, fp TEXT, status TEXT DEFAULT 'open', "
+        "attempts INT DEFAULT 0, issue INT, pr INT, "
+        "updated TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (repo, fp))"
+    )
     db.execute("INSERT INTO finding (repo, fp, status, pr) VALUES ('r', 'f', 'merged', 10)")
     db.commit()
     db.close()

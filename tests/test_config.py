@@ -55,8 +55,10 @@ def test_focus_outside_repos_fails_at_load(tmp_path):
 def test_repo_entry_can_name_its_test_root(tmp_path):
     (tmp_path / "jobs").mkdir()
     cfg = tmp_path / "config.toml"
-    cfg.write_text(f'repos = [{{ path = "{tmp_path}/jobs", tests = "pipeline" }}]\n'
-                   f'focus = ["{tmp_path}/jobs"]\n')
+    cfg.write_text(
+        f'repos = [{{ path = "{tmp_path}/jobs", tests = "pipeline" }}]\n'
+        f'focus = ["{tmp_path}/jobs"]\n'
+    )
     [t] = load(cfg).repos
     assert t.name == "jobs" and t.tests == "pipeline" and t.focus
 
@@ -74,8 +76,10 @@ def test_bug_hunt_is_off_unless_a_repo_entry_turns_it_on(tmp_path):
 
 def test_boost_raises_the_budget_until_its_end(tmp_path):
     cfg = tmp_path / "config.toml"
-    cfg.write_text('repos = ["octrow/a"]\nbudget = 3\n'
-                   "boost_until = 2026-10-30T03:00:00+05:00\nboost_budget = 15\n")
+    cfg.write_text(
+        'repos = ["octrow/a"]\nbudget = 3\n'
+        "boost_until = 2026-10-30T03:00:00+05:00\nboost_budget = 15\n"
+    )
     c = load(cfg)
     tz = timezone(timedelta(hours=5))
     assert c.boosting(datetime(2026, 10, 30, 2, 59, tzinfo=tz))

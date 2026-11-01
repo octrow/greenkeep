@@ -13,20 +13,27 @@ from greenkeep.core import DEFAULT_REVIEW_MODEL
 from greenkeep.digest import Digest
 from greenkeep.findings import Finding
 
-PYPROJECT = '[project]\nname = "demo"\nversion = "0"\ndescription = "Demo"\nrequires-python = ">=3.12"\n'
+PYPROJECT = (
+    '[project]\nname = "demo"\nversion = "0"\ndescription = "Demo"\nrequires-python = ">=3.12"\n'
+)
 CODE = "import os\n\n\ndef add(a, b):\n    return a + b\n"
 TEST = "from demo import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n"
-BIG = "def a(x):\n    if x:\n        return 1\n    return 2\n\n\ndef b(y):\n    z = y * 2\n" \
-      "    return z + 1\n"
+BIG = (
+    "def a(x):\n    if x:\n        return 1\n    return 2\n\n\ndef b(y):\n    z = y * 2\n"
+    "    return z + 1\n"
+)
 APPROVE = '{"approve": true, "reason": "fine"}'
 REJECT = '{"approve": false, "reason": "tests assert nothing real"}'
-CHAR_TEST = "```python\nfrom demo import a, b\n\n\ndef test_a():\n    assert a(1) == 1\n" \
-            "    assert a(0) == 2\n\n\ndef test_b():\n    assert b(1) == 3\n```"
+CHAR_TEST = (
+    "```python\nfrom demo import a, b\n\n\ndef test_a():\n    assert a(1) == 1\n"
+    "    assert a(0) == 2\n\n\ndef test_b():\n    assert b(1) == 3\n```"
+)
 
 
 def git(cwd: Path, *args: str) -> str:
-    return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True,
-                          text=True).stdout
+    return subprocess.run(
+        ["git", *args], cwd=cwd, check=True, capture_output=True, text=True
+    ).stdout
 
 
 def make_repo(tmp_path: Path, monkeypatch, files: dict[str, str]) -> Path:
@@ -37,8 +44,13 @@ def make_repo(tmp_path: Path, monkeypatch, files: dict[str, str]) -> Path:
     for rel, text in {"pyproject.toml": PYPROJECT, **files}.items():
         (src / rel).parent.mkdir(parents=True, exist_ok=True)
         (src / rel).write_text(text)
-    for args in (["init", "-q", "-b", "main"], ["add", "."], ["commit", "-qm", "init"],
-                 ["remote", "add", "origin", str(origin)], ["push", "-q", "origin", "main"]):
+    for args in (
+        ["init", "-q", "-b", "main"],
+        ["add", "."],
+        ["commit", "-qm", "init"],
+        ["remote", "add", "origin", str(origin)],
+        ["push", "-q", "origin", "main"],
+    ):
         git(src, *args)
     return src
 
@@ -118,10 +130,12 @@ def test_patch_that_adds_lint_findings_is_rejected_then_retried(tmp_path, monkey
 
 
 UNUSED_VAR = "def add(a, b):\n    total = 0\n    return a + b\n"
-NOQA_FIX = "demo.py\n<<<<<<< SEARCH\n    total = 0\n=======\n    total = 0  # noqa: F841\n" \
-           ">>>>>>> REPLACE"
-REAL_FIX = "demo.py\n<<<<<<< SEARCH\n    total = 0\n    return\n=======\n    return\n" \
-           ">>>>>>> REPLACE"
+NOQA_FIX = (
+    "demo.py\n<<<<<<< SEARCH\n    total = 0\n=======\n    total = 0  # noqa: F841\n>>>>>>> REPLACE"
+)
+REAL_FIX = (
+    "demo.py\n<<<<<<< SEARCH\n    total = 0\n    return\n=======\n    return\n>>>>>>> REPLACE"
+)
 
 
 def test_silencing_the_linter_is_not_a_fix(tmp_path, monkeypatch):
@@ -141,7 +155,8 @@ def test_fixable_lint_in_generated_tests_is_fixed_without_an_attempt(tmp_path, m
     src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
     # F401 has a safe fix, F841 only an unsafe one: both are fine on a brand-new test file
     dirty = CHAR_TEST.replace("```python\n", "```python\nimport os\n").replace(
-        "def test_a():\n", "def test_a():\n    unused = a(1)\n")
+        "def test_a():\n", "def test_a():\n    unused = a(1)\n"
+    )
     fake = fake_llm(monkeypatch, [dirty])
     state, clone = dry_run(src)
     assert state.merged_today() == 1 and len(fake.patch_prompts) == 1
@@ -175,7 +190,6 @@ def test_unreadable_review_is_a_rejection(tmp_path, monkeypatch):
     assert state.status("demo", "untested:demo.py") == "parked"
 
 
-
 def test_clip_keeps_reason_line_and_tail():
     text = "test suite failed: 1 failed in 2s\n" + "x" * 5000 + "\nE   assert 1 == 2"
     clipped = run.clip(text)
@@ -205,6 +219,7 @@ def test_timed_out_attempt_counts_and_the_finding_waits_for_the_next_run(tmp_pat
     def hang(*_):
         calls.append(1)
         raise run.ClaudeCliError("claude timed out after 600s")
+
     monkeypatch.setattr(llm, "ask", hang)
     state, _ = dry_run(src)
     assert len(calls) == 1
@@ -217,6 +232,7 @@ def test_a_logged_out_claude_stops_the_repo_without_counting_an_attempt(tmp_path
 
     def logged_out(*_):
         raise NotLoggedInError("claude reports 'Not logged in'")
+
     monkeypatch.setattr(llm, "ask", logged_out)
     state = run.State(Path(":memory:"))
     with pytest.raises(NotLoggedInError):
@@ -237,8 +253,15 @@ def test_repo_in_cool_down_still_gets_security_fixes_and_dependabot(tmp_path, mo
     src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
     state, digest = run.State(Path(":memory:")), Digest()
     state.cool_down("demo", git(src, "rev-parse", "HEAD").strip(), workspace.tool_head())
-    vuln = Finding("vuln", "pillow==12.0", "uv.lock", 0, "pillow 11: GHSA-1", "vuln:pillow:GHSA-1",
-                   title="Fix GHSA-1: bump pillow to 12.0")
+    vuln = Finding(
+        "vuln",
+        "pillow==12.0",
+        "uv.lock",
+        0,
+        "pillow 11: GHSA-1",
+        "vuln:pillow:GHSA-1",
+        title="Fix GHSA-1: bump pillow to 12.0",
+    )
     monkeypatch.setattr(deps, "collect", lambda ws: [vuln])
     worked, dependabot_runs = [], []
     monkeypatch.setattr(run, "work", lambda job, f: worked.append(f.fingerprint) or False)
@@ -276,47 +299,71 @@ def test_test_root_runs_the_suite_from_its_folder(tmp_path, monkeypatch):
 
 def test_a_test_root_with_its_own_project_gets_its_extras(tmp_path, monkeypatch):
     # chat-watch's bot/: a separate uv project whose pytest plugins live in its own `dev` extra
-    bot = PYPROJECT.replace('"demo"', '"bot"') + \
-        '\n[project.optional-dependencies]\ndev = ["pytest-timeout"]\n'
+    bot = (
+        PYPROJECT.replace('"demo"', '"bot"')
+        + '\n[project.optional-dependencies]\ndev = ["pytest-timeout"]\n'
+    )
     plugin_test = "import pytest_timeout\n\n\ndef test_plugin():\n    assert pytest_timeout\n"
-    src = make_repo(tmp_path, monkeypatch, {"bot/pyproject.toml": bot,
-                                            "bot/tests/test_plugin.py": plugin_test})
+    src = make_repo(
+        tmp_path, monkeypatch, {"bot/pyproject.toml": bot, "bot/tests/test_plugin.py": plugin_test}
+    )
     ws = workspace.clone(Target(str(src), tests="bot"))
     workspace.sync(ws)
     assert workspace.run_tests(ws).ok
 
 
 RUFF_UP_I = '\n[tool.ruff.lint]\nselect = ["UP", "I"]\n'
-OLD_IMPORT = "from os import sep\nfrom typing import Iterator\n\n\n" \
-             "def parts(p: str) -> Iterator[str]:\n    yield from p.split(sep)\n"
+OLD_IMPORT = (
+    "from os import sep\nfrom typing import Iterator\n\n\n"
+    "def parts(p: str) -> Iterator[str]:\n    yield from p.split(sep)\n"
+)
 PARTS_TEST = "from demo import parts\n\n\ndef test_parts():\n    assert list(parts('a')) == ['a']\n"
 
 
 def test_ruff_fix_also_fixes_the_lint_it_introduces(tmp_path, monkeypatch):
     # UP035 rewrites the import in place, which leaves the import block unsorted (I001)
-    src = make_repo(tmp_path, monkeypatch, {"pyproject.toml": PYPROJECT + RUFF_UP_I,
-                                            "demo.py": OLD_IMPORT,
-                                            "tests/test_demo.py": PARTS_TEST})
+    src = make_repo(
+        tmp_path,
+        monkeypatch,
+        {
+            "pyproject.toml": PYPROJECT + RUFF_UP_I,
+            "demo.py": OLD_IMPORT,
+            "tests/test_demo.py": PARTS_TEST,
+        },
+    )
     fake = fake_llm(monkeypatch, ["unused"])
     state, clone = dry_run(src)
     assert state.merged_today() == 1 and not fake.patch_prompts
-    assert (clone / "demo.py").read_text().startswith(
-        "from collections.abc import Iterator\nfrom os import sep\n")
+    assert (
+        (clone / "demo.py")
+        .read_text()
+        .startswith("from collections.abc import Iterator\nfrom os import sep\n")
+    )
 
 
-CLAMP = ("def clamp(x, lo, hi):\n    if x < lo:\n        return lo\n    if x > hi:\n"
-         "        return lo\n    return x\n")
-CLAMP_TEST = ("from demo import clamp\n\n\ndef test_clamp():\n    assert clamp(5, 0, 10) == 5\n"
-              "    assert clamp(-1, 0, 10) == 0\n    assert clamp(11, 0, 10) is not None\n")
-CLAIMS = ('{"bugs": [{"line": 5, "title": "clamp returns lo above hi", '
-          '"why": "clamp(11, 0, 10) gives 0, should be 10"}]}')
-FIX = "demo.py\n<<<<<<< SEARCH\n    if x > hi:\n        return lo\n=======\n" \
-      "    if x > hi:\n        return hi\n>>>>>>> REPLACE\n"
+CLAMP = (
+    "def clamp(x, lo, hi):\n    if x < lo:\n        return lo\n    if x > hi:\n"
+    "        return lo\n    return x\n"
+)
+CLAMP_TEST = (
+    "from demo import clamp\n\n\ndef test_clamp():\n    assert clamp(5, 0, 10) == 5\n"
+    "    assert clamp(-1, 0, 10) == 0\n    assert clamp(11, 0, 10) is not None\n"
+)
+CLAIMS = (
+    '{"bugs": [{"line": 5, "title": "clamp returns lo above hi", '
+    '"why": "clamp(11, 0, 10) gives 0, should be 10"}]}'
+)
+FIX = (
+    "demo.py\n<<<<<<< SEARCH\n    if x > hi:\n        return lo\n=======\n"
+    "    if x > hi:\n        return hi\n>>>>>>> REPLACE\n"
+)
 
 
 def bug_test(body: str) -> str:
-    return ("tests/test_clamp_above.py\n<<<<<<< SEARCH\n=======\nfrom demo import clamp\n\n\n"
-            f"def test_clamp_above_hi():\n    {body}\n>>>>>>> REPLACE\n")
+    return (
+        "tests/test_clamp_above.py\n<<<<<<< SEARCH\n=======\nfrom demo import clamp\n\n\n"
+        f"def test_clamp_above_hi():\n    {body}\n>>>>>>> REPLACE\n"
+    )
 
 
 def hunt_run(tmp_path, monkeypatch, patch: str) -> tuple[run.State, FakeLLM]:
@@ -338,8 +385,7 @@ def hunt_run(tmp_path, monkeypatch, patch: str) -> tuple[run.State, FakeLLM]:
 
 
 def test_hunted_bug_is_fixed_test_first(tmp_path, monkeypatch):
-    state, fake = hunt_run(tmp_path, monkeypatch,
-                           FIX + bug_test("assert clamp(11, 0, 10) == 10"))
+    state, fake = hunt_run(tmp_path, monkeypatch, FIX + bug_test("assert clamp(11, 0, 10) == 10"))
     assert state.merged_today() == 1 and fake.reviews == 1
     clone = next(workspace.CACHE.glob("run-demo-*/demo"))
     assert "return hi" in (clone / "demo.py").read_text()
@@ -347,8 +393,7 @@ def test_hunted_bug_is_fixed_test_first(tmp_path, monkeypatch):
 
 
 def test_a_test_that_passes_without_the_fix_does_not_prove_the_bug(tmp_path, monkeypatch):
-    state, fake = hunt_run(tmp_path, monkeypatch,
-                           FIX + bug_test("assert clamp(5, 0, 10) == 5"))
+    state, fake = hunt_run(tmp_path, monkeypatch, FIX + bug_test("assert clamp(5, 0, 10) == 5"))
     assert state.merged_today() == 0 and fake.reviews == 0
     assert "does not show the bug" in fake.patch_prompts[-1]
 
@@ -360,8 +405,9 @@ def test_nothing_hunted_when_the_skeptic_refutes_every_claim(tmp_path, monkeypat
 
     def claude(prompt: str, **kw) -> SimpleNamespace:
         calls.append(prompt)
-        return SimpleNamespace(text=CLAIMS if prompt.startswith(llm.HUNT_SYSTEM)
-                               else '{"keep": []}')
+        return SimpleNamespace(
+            text=CLAIMS if prompt.startswith(llm.HUNT_SYSTEM) else '{"keep": []}'
+        )
 
     monkeypatch.setattr(llm, "run_claude", claude)
     state = run.State(Path(":memory:"))
@@ -372,8 +418,10 @@ def test_nothing_hunted_when_the_skeptic_refutes_every_claim(tmp_path, monkeypat
 
 
 def test_a_bug_fix_may_not_edit_an_existing_test(tmp_path, monkeypatch):
-    edit = ("tests/test_demo.py\n<<<<<<< SEARCH\n    assert clamp(11, 0, 10) is not None\n"
-            "=======\n    assert clamp(11, 0, 10) == 10\n>>>>>>> REPLACE\n")
+    edit = (
+        "tests/test_demo.py\n<<<<<<< SEARCH\n    assert clamp(11, 0, 10) is not None\n"
+        "=======\n    assert clamp(11, 0, 10) == 10\n>>>>>>> REPLACE\n"
+    )
     state, fake = hunt_run(tmp_path, monkeypatch, FIX + edit)
     assert state.merged_today() == 0
     assert "never changed or removed ones" in fake.patch_prompts[-1]
@@ -397,26 +445,42 @@ def test_an_unreadable_hunter_reply_leaves_the_module_for_the_next_run(tmp_path,
 
 
 def test_the_repos_addopts_still_apply_without_its_coverage_options(tmp_path, monkeypatch):
-    pyproject = PYPROJECT + ('[tool.pytest.ini_options]\naddopts = "--cov=demo -m \'not slow\'"\n'
-                             'markers = ["slow"]\n')
+    pyproject = PYPROJECT + (
+        '[tool.pytest.ini_options]\naddopts = "--cov=demo -m \'not slow\'"\nmarkers = ["slow"]\n'
+    )
     slow = "import pytest\n\n\n@pytest.mark.slow\ndef test_needs_a_server():\n    assert False\n"
-    src = make_repo(tmp_path, monkeypatch, {"demo.py": CODE, "tests/test_demo.py": TEST,
-                                            "tests/test_slow.py": slow,
-                                            "pyproject.toml": pyproject})
+    src = make_repo(
+        tmp_path,
+        monkeypatch,
+        {
+            "demo.py": CODE,
+            "tests/test_demo.py": TEST,
+            "tests/test_slow.py": slow,
+            "pyproject.toml": pyproject,
+        },
+    )
     fake_llm(monkeypatch, ["unused"])
     state, _ = dry_run(src)
     assert state.merged_today() == 1  # baseline green: the slow test stayed deselected
 
 
 NO_DESCRIPTION = PYPROJECT.replace('description = "Demo"\n', "")
-DESCRIBE = ('pyproject.toml\n<<<<<<< SEARCH\nversion = "0"\n=======\nversion = "0"\n'
-            'description = "Adds numbers."\n>>>>>>> REPLACE\n')
+DESCRIBE = (
+    'pyproject.toml\n<<<<<<< SEARCH\nversion = "0"\n=======\nversion = "0"\n'
+    'description = "Adds numbers."\n>>>>>>> REPLACE\n'
+)
 
 
 def test_missing_description_is_written_reviewed_and_merged(tmp_path, monkeypatch):
-    src = make_repo(tmp_path, monkeypatch, {"demo.py": CODE.replace("import os\n\n\n", ""),
-                                            "tests/test_demo.py": TEST,
-                                            "pyproject.toml": NO_DESCRIPTION})
+    src = make_repo(
+        tmp_path,
+        monkeypatch,
+        {
+            "demo.py": CODE.replace("import os\n\n\n", ""),
+            "tests/test_demo.py": TEST,
+            "pyproject.toml": NO_DESCRIPTION,
+        },
+    )
     fake = fake_llm(monkeypatch, [DESCRIBE])
     state, clone = dry_run(src)
     assert state.merged_today() == 1 and fake.reviews == 1
@@ -424,12 +488,20 @@ def test_missing_description_is_written_reviewed_and_merged(tmp_path, monkeypatc
 
 
 def test_a_readiness_fix_may_change_only_its_own_field(tmp_path, monkeypatch):
-    src = make_repo(tmp_path, monkeypatch, {"demo.py": CODE.replace("import os\n\n\n", ""),
-                                            "tests/test_demo.py": TEST,
-                                            "pyproject.toml": NO_DESCRIPTION})
+    src = make_repo(
+        tmp_path,
+        monkeypatch,
+        {
+            "demo.py": CODE.replace("import os\n\n\n", ""),
+            "tests/test_demo.py": TEST,
+            "pyproject.toml": NO_DESCRIPTION,
+        },
+    )
     # inside [project], but not the field the finding is about
-    sneaky = DESCRIBE + ('pyproject.toml\n<<<<<<< SEARCH\nrequires-python = ">=3.12"\n=======\n'
-                         'requires-python = ">=3.11"\n>>>>>>> REPLACE\n')
+    sneaky = DESCRIBE + (
+        'pyproject.toml\n<<<<<<< SEARCH\nrequires-python = ">=3.12"\n=======\n'
+        'requires-python = ">=3.11"\n>>>>>>> REPLACE\n'
+    )
     fake = fake_llm(monkeypatch, [sneaky])
     state, _ = dry_run(src)
     assert state.merged_today() == 0
@@ -447,26 +519,32 @@ def test_owner_hears_about_a_missing_license_once(tmp_path):
 
 
 def test_a_bug_test_may_be_appended_where_the_repo_keeps_its_tests(tmp_path, monkeypatch):
-    append = ("tests/test_demo.py\n<<<<<<< SEARCH\n    assert clamp(11, 0, 10) is not None\n"
-              "=======\n    assert clamp(11, 0, 10) is not None\n\n\n"
-              "def test_clamp_above_hi():\n    assert clamp(11, 0, 10) == 10\n>>>>>>> REPLACE\n")
+    append = (
+        "tests/test_demo.py\n<<<<<<< SEARCH\n    assert clamp(11, 0, 10) is not None\n"
+        "=======\n    assert clamp(11, 0, 10) is not None\n\n\n"
+        "def test_clamp_above_hi():\n    assert clamp(11, 0, 10) == 10\n>>>>>>> REPLACE\n"
+    )
     state, _ = hunt_run(tmp_path, monkeypatch, FIX + append)
     assert state.merged_today() == 1
 
 
 def test_issues_of_findings_no_longer_reported_are_closed(monkeypatch):
     state = run.State(Path(":memory:"))
-    issues = {"ruff:F401:a.py:1": 1,       # the owner fixed it: closed
-              "ruff:C901:a.py:2": 2,       # a boost rule, still there outside the boost: kept
-              "bug:a.py:3:x": 3,           # bugs never show up in a baseline: kept
-              "untested:b.py": 4,          # covered now: closed
-              "vuln:pillow:GHSA-1": 5,     # superseded by a newer advisory: closed
-              "vuln:requests:GHSA-9": 6,   # pip-audit may just have failed: kept
-              "outdated:typer:0.27.3": 7}  # still reported: kept
+    issues = {
+        "ruff:F401:a.py:1": 1,  # the owner fixed it: closed
+        "ruff:C901:a.py:2": 2,  # a boost rule, still there outside the boost: kept
+        "bug:a.py:3:x": 3,  # bugs never show up in a baseline: kept
+        "untested:b.py": 4,  # covered now: closed
+        "vuln:pillow:GHSA-1": 5,  # superseded by a newer advisory: closed
+        "vuln:requests:GHSA-9": 6,  # pip-audit may just have failed: kept
+        "outdated:typer:0.27.3": 7,
+    }  # still reported: kept
     for fp, issue in issues.items():
         state.set("demo", fp, issue=issue)
-    current = [Finding("vuln", "r", "uv.lock", 0, "m", "vuln:pillow:GHSA-1+GHSA-2"),
-               Finding("outdated", "r", "uv.lock", 0, "m", "outdated:typer:0.27.3")]
+    current = [
+        Finding("vuln", "r", "uv.lock", 0, "m", "vuln:pillow:GHSA-1+GHSA-2"),
+        Finding("outdated", "r", "uv.lock", 0, "m", "outdated:typer:0.27.3"),
+    ]
     boost_lint = [Finding("ruff", "C901", "a.py", 2, "m", "ruff:C901:a.py:2")]
     monkeypatch.setattr(run, "lint", lambda ws, *p: boost_lint if ws.extra_rules else [])
     closed = []
@@ -481,10 +559,12 @@ def test_issues_of_findings_no_longer_reported_are_closed(monkeypatch):
 
 def test_parked_test_issues_close_after_a_while(monkeypatch):
     state = run.State(Path(":memory:"))
-    for fp, issue, status in (("untested:old.py", 1, "parked"),   # parked long ago: closed
-                              ("untested:new.py", 2, "parked"),   # parked yesterday: kept
-                              ("ruff:F401:a.py:1", 3, "parked"),  # not a test: kept
-                              ("untested:open.py", 4, "open")):   # still being worked: kept
+    for fp, issue, status in (
+        ("untested:old.py", 1, "parked"),  # parked long ago: closed
+        ("untested:new.py", 2, "parked"),  # parked yesterday: kept
+        ("ruff:F401:a.py:1", 3, "parked"),  # not a test: kept
+        ("untested:open.py", 4, "open"),
+    ):  # still being worked: kept
         state.set("demo", fp, issue=issue, status=status)
     state.db.execute("UPDATE finding SET updated=datetime('now', '-30 days') WHERE issue!=2")
     closed = []

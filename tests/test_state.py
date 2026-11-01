@@ -26,6 +26,7 @@ def test_last_merge_orders_never_touched_repos_first(tmp_path):
 
 def test_set_rejects_unknown_columns(tmp_path):
     import pytest
+
     with pytest.raises(ValueError, match="unknown finding columns"):
         State(tmp_path / "s.db").set("r", "fp", **{"status='x'; --": 1})
 
@@ -46,6 +47,7 @@ def test_security_merges_do_not_spend_the_budget(tmp_path):
 
 def test_cool_down_remembers_until_when_and_both_heads(tmp_path):
     from datetime import date, timedelta
+
     st = State(tmp_path / "s.db")
     assert st.cool_down_of("r") is None
     st.cool_down("r", "repo-sha", "tool-sha")
@@ -73,11 +75,14 @@ def test_a_later_write_to_an_old_merge_does_not_make_it_todays(tmp_path):
 
 def test_old_database_gets_merge_times_from_updated(tmp_path):
     import sqlite3
+
     db = tmp_path / "s.db"
     old = sqlite3.connect(db)
-    old.execute("CREATE TABLE finding (repo TEXT, fp TEXT, status TEXT DEFAULT 'open', "
-                "attempts INT DEFAULT 0, issue INT, pr INT, updated TEXT, "
-                "PRIMARY KEY (repo, fp))")
+    old.execute(
+        "CREATE TABLE finding (repo TEXT, fp TEXT, status TEXT DEFAULT 'open', "
+        "attempts INT DEFAULT 0, issue INT, pr INT, updated TEXT, "
+        "PRIMARY KEY (repo, fp))"
+    )
     old.execute("INSERT INTO finding VALUES ('r', 'a', 'merged', 0, 1, 2, '2026-10-15 18:24:25')")
     old.commit()
     old.close()

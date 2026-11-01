@@ -16,7 +16,10 @@ def _module_refs(path: Path) -> list[str]:
 def test_every_module_line_points_to_an_existing_module() -> None:
     for path in MAPS:
         refs = _module_refs(path)
-        missing = [ref for ref in refs
-                   if not (PACKAGE / f"{ref}.py").is_file() and not (PACKAGE / ref).is_dir()]
+        missing = [
+            ref
+            for ref in refs
+            if not (PACKAGE / f"{ref}.py").is_file() and not (PACKAGE / ref).is_dir()
+        ]
         assert refs, path
         assert missing == [], path

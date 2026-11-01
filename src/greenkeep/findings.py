@@ -48,8 +48,9 @@ def _digest(text: str) -> str:
     return hashlib.sha1(text.encode()).hexdigest()[:10]
 
 
-def ruff_findings(items: list[dict], *, root: str,
-                  read_line: Callable[[str, int], str]) -> list[Finding]:
+def ruff_findings(
+    items: list[dict], *, root: str, read_line: Callable[[str, int], str]
+) -> list[Finding]:
     """Ruff JSON output -> findings, most severe rule families first."""
     found, seen = [], Counter()
     for it in sorted(items, key=lambda it: (it["filename"], it["location"]["row"])):
@@ -63,10 +64,19 @@ def ruff_findings(items: list[dict], *, root: str,
         fp += f"#{seen[fp] - 1}" if seen[fp] > 1 else ""
         fix = it.get("fix") or {}
         noted = it["code"] == "RUF100" and NOQA_WITH_NOTE.search(text)
-        found.append(Finding("ruff", it["code"], path, row, it["message"], fp,
-                             fixable=fix.get("applicability") == "safe" and not noted,
-                             title=f"{it['code']}: {it['message']} ({path}:{row})",
-                             end_line=it.get("end_location", {}).get("row", row)))
+        found.append(
+            Finding(
+                "ruff",
+                it["code"],
+                path,
+                row,
+                it["message"],
+                fp,
+                fixable=fix.get("applicability") == "safe" and not noted,
+                title=f"{it['code']}: {it['message']} ({path}:{row})",
+                end_line=it.get("end_location", {}).get("row", row),
+            )
+        )
     return sorted(found, key=lambda f: rank(f.rule))
 
 
@@ -79,8 +89,17 @@ def untested_findings(cov: dict) -> list[Finding]:
             continue
         if s["percent_covered"] < UNTESTED_PERCENT:
             msg = f"{s['percent_covered']:.0f}% covered"
-            found.append(Finding("untested", "coverage", path, 1, msg, f"untested:{path}",
-                                 title=f"Add tests for {path}"))
+            found.append(
+                Finding(
+                    "untested",
+                    "coverage",
+                    path,
+                    1,
+                    msg,
+                    f"untested:{path}",
+                    title=f"Add tests for {path}",
+                )
+            )
     return found
 
 
@@ -88,5 +107,6 @@ def is_vendored(root: Path, path: str) -> bool:
     """Code copied from another project (a vendor folder, or a VENDORED.md beside it or
     above it): its fixes and tests belong upstream."""
     folders = list(PurePosixPath(path).parents)[:-1]  # the repo root's own note does not count
-    return bool(VENDOR_DIRS & set(PurePosixPath(path).parts[:-1])) \
-        or any((root / d / "VENDORED.md").is_file() for d in folders)
+    return bool(VENDOR_DIRS & set(PurePosixPath(path).parts[:-1])) or any(
+        (root / d / "VENDORED.md").is_file() for d in folders
+    )

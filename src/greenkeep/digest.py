@@ -32,10 +32,17 @@ class Digest:
         # one account runs out of Actions minutes for all its private repos: one line
         billing = f"CI does not start (GitHub Actions billing): {', '.join(self.billing)}"
         problems = [*self.problems, *([billing] if self.billing else [])]
-        lines = [(f"greenkeep: {len(self.merged)} merged, {len(self.parked)} parked, "
-                 f"{len(problems)} problems; budget left today: {budget_left}")]
-        for title, items in (("Merged", self.merged), ("Needs you", [*self.parked, *self.owner]),
-                             ("Problems", problems)):
+        lines = [
+            (
+                f"greenkeep: {len(self.merged)} merged, {len(self.parked)} parked, "
+                f"{len(problems)} problems; budget left today: {budget_left}"
+            )
+        ]
+        for title, items in (
+            ("Merged", self.merged),
+            ("Needs you", [*self.parked, *self.owner]),
+            ("Problems", problems),
+        ):
             if items:
                 lines += ["", f"{title}:", *(f"• {i}" for i in items)]
         if quiet := self._quiet():
@@ -43,10 +50,15 @@ class Digest:
         return "\n".join(lines)
 
     def _quiet(self) -> str:
-        parts = [f"{self.clean} clean" if self.clean else "",
-                 (f"{len(self.waiting)} waiting for budget ({', '.join(self.waiting)})"
-                  if self.waiting else ""),
-                 f"{self.cooling} in cool-down" if self.cooling else ""]
+        parts = [
+            f"{self.clean} clean" if self.clean else "",
+            (
+                f"{len(self.waiting)} waiting for budget ({', '.join(self.waiting)})"
+                if self.waiting
+                else ""
+            ),
+            f"{self.cooling} in cool-down" if self.cooling else "",
+        ]
         return ", ".join(p for p in parts if p)
 
 

@@ -45,12 +45,16 @@ def pick(job: Job) -> str | None:
     """The biggest covered module not yet left alone as it is now: its tests can show a bug,
     and the gate's coverage rule holds for a fix in it."""
     files = job.base.tests.cov.get("files", {})
-    fit = [(data["summary"]["num_statements"], path) for path, data in files.items()
-           if not is_test_path(path) and (job.ws.root / path).is_file()
-           and not is_vendored(job.ws.root, path)
-           and data["summary"]["num_statements"] >= UNTESTED_MIN_STATEMENTS
-           and data["summary"]["percent_covered"] >= UNTESTED_PERCENT
-           and _empty_hunts(job, path) < EMPTY_HUNTS]
+    fit = [
+        (data["summary"]["num_statements"], path)
+        for path, data in files.items()
+        if not is_test_path(path)
+        and (job.ws.root / path).is_file()
+        and not is_vendored(job.ws.root, path)
+        and data["summary"]["num_statements"] >= UNTESTED_MIN_STATEMENTS
+        and data["summary"]["percent_covered"] >= UNTESTED_PERCENT
+        and _empty_hunts(job, path) < EMPTY_HUNTS
+    ]
     return max(fit)[1] if fit else None
 
 
@@ -76,8 +80,11 @@ def hunt(job: Job) -> list[Finding]:
     kept = _surviving_claims(job, path)
     if kept is None:
         return []  # a failed hunt leaves the module unmarked: it is retried next run
-    found = [f for f in (_finding(job, path, c) for c in kept)
-             if f and job.state.is_workable(job.ws.name, f.fingerprint)]
+    found = [
+        f
+        for f in (_finding(job, path, c) for c in kept)
+        if f and job.state.is_workable(job.ws.name, f.fingerprint)
+    ]
     if not found:
         _record_empty_hunt(job, path)
     return found

@@ -29,6 +29,7 @@ class ConfigError(ValueError):
 @dataclass(frozen=True)
 class Target:
     """A tended repo: a local checkout, or `owner/name` cloned straight from GitHub."""
+
     spec: str
     focus: bool = False  # a Focus repo: run before the others every run
     tests: str = ""  # its test root: the folder its suite runs from, relative to the repo
@@ -79,8 +80,10 @@ def load(path: Path = CONFIG_FILE) -> Config:
         raise ConfigError(f"cannot read {path}: {exc}") from exc
     entries = data.get("repos")
     if not isinstance(entries, list) or not all(_entry_ok(r) for r in entries):
-        raise ConfigError(f"{path}: `repos` must list paths or owner/name strings, or "
-                          "{ path = ..., tests = ..., hunt = true } tables")
+        raise ConfigError(
+            f"{path}: `repos` must list paths or owner/name strings, or "
+            "{ path = ..., tests = ..., hunt = true } tables"
+        )
     # a table names the repo's test root; a plain string runs its suite from the root
     repos = [r if isinstance(r, str) else r["path"] for r in entries]
     tables = {r["path"]: r for r in entries if isinstance(r, dict)}
@@ -89,27 +92,38 @@ def load(path: Path = CONFIG_FILE) -> Config:
         raise ConfigError(f"{path}: `focus` must be a list of entries from `repos`")
     if stray := sorted(set(focus) - set(repos)):
         raise ConfigError(f"{path}: focus entries not in `repos`: {', '.join(stray)}")
-    targets = [Target(r, r in focus, tables.get(r, {}).get("tests", ""),
-                      tables.get(r, {}).get("hunt", False)) for r in repos]
+    targets = [
+        Target(
+            r, r in focus, tables.get(r, {}).get("tests", ""), tables.get(r, {}).get("hunt", False)
+        )
+        for r in repos
+    ]
     for t in targets:
         _ = t.path  # a typo in the config fails at load, not halfway through a run
     boost_until = data.get("boost_until")
-    if boost_until is not None and (not isinstance(boost_until, datetime)
-                                    or boost_until.tzinfo is None):
-        raise ConfigError(f"{path}: `boost_until` must be a time with its offset, "
-                          "like 2026-10-30T03:00:00+05:00")
-    return Config(targets,
-                  int(data.get("budget", DEFAULT_BUDGET)),
-                  int(data.get("weekend_budget", DEFAULT_WEEKEND_BUDGET)),
-                  boost_until,
-                  int(data.get("boost_budget", DEFAULT_BOOST_BUDGET)))
+    if boost_until is not None and (
+        not isinstance(boost_until, datetime) or boost_until.tzinfo is None
+    ):
+        raise ConfigError(
+            f"{path}: `boost_until` must be a time with its offset, like 2026-10-30T03:00:00+05:00"
+        )
+    return Config(
+        targets,
+        int(data.get("budget", DEFAULT_BUDGET)),
+        int(data.get("weekend_budget", DEFAULT_WEEKEND_BUDGET)),
+        boost_until,
+        int(data.get("boost_budget", DEFAULT_BOOST_BUDGET)),
+    )
 
 
 def _entry_ok(entry: object) -> bool:
     if isinstance(entry, dict):
-        return (isinstance(entry.get("path"), str) and isinstance(entry.get("tests", ""), str)
-                and isinstance(entry.get("hunt", False), bool)
-                and set(entry) <= {"path", "tests", "hunt"})
+        return (
+            isinstance(entry.get("path"), str)
+            and isinstance(entry.get("tests", ""), str)
+            and isinstance(entry.get("hunt", False), bool)
+            and set(entry) <= {"path", "tests", "hunt"}
+        )
     return isinstance(entry, str)
 
 

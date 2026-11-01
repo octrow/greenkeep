@@ -26,14 +26,17 @@ def block(path: str, search: str) -> str:
     return f"{path}\n<<<<<<< SEARCH\n{search}\n=======\ny\n>>>>>>> REPLACE"
 
 
-@pytest.mark.parametrize(("path", "search", "why"), [
-    ("a.py", "x", "matches 2 times"),
-    ("a.py", "z", "matches 0 times"),
-    ("a.py", "", "empty SEARCH"),
-    ("../x.py", "a", "outside repo"),
-    (".git/config", "a", "not a tracked file"),
-    ("untracked.py", "a", "not a tracked file"),
-])
+@pytest.mark.parametrize(
+    ("path", "search", "why"),
+    [
+        ("a.py", "x", "matches 2 times"),
+        ("a.py", "z", "matches 0 times"),
+        ("a.py", "", "empty SEARCH"),
+        ("../x.py", "a", "outside repo"),
+        (".git/config", "a", "not a tracked file"),
+        ("untracked.py", "a", "not a tracked file"),
+    ],
+)
 def test_apply_rejects_unsafe_or_unclear_edits(tmp_path, path, search, why):
     (tmp_path / "a.py").write_text("x\nx\n")
     (tmp_path / ".git").mkdir()
@@ -50,7 +53,8 @@ def test_parse_edits_without_blocks_raises():
 
 def test_python_block():
     assert python_block("text\n```python\ndef test_x():\n    pass\n```\n") == (
-        "def test_x():\n    pass\n")
+        "def test_x():\n    pass\n"
+    )
     with pytest.raises(EditError):
         python_block("no code")
 
@@ -66,8 +70,9 @@ NEW_TEST = "tests/test_b.py\n<<<<<<< SEARCH\n=======\ndef test_b():\n    pass\n>
 def test_empty_search_creates_a_new_test_file_only_when_allowed(tmp_path):
     with pytest.raises(EditError):
         apply_edits(tmp_path, parse_edits(NEW_TEST), frozenset())
-    assert apply_edits(tmp_path, parse_edits(NEW_TEST), frozenset(), new_tests=True) \
-        == ["tests/test_b.py"]
+    assert apply_edits(tmp_path, parse_edits(NEW_TEST), frozenset(), new_tests=True) == [
+        "tests/test_b.py"
+    ]
     assert (tmp_path / "tests/test_b.py").read_text() == "def test_b():\n    pass\n"
     with pytest.raises(EditError):  # never over an existing file
         apply_edits(tmp_path, parse_edits(NEW_TEST), frozenset(), new_tests=True)
@@ -79,5 +84,9 @@ def test_empty_search_creates_a_new_test_file_only_when_allowed(tmp_path):
 def test_a_new_test_file_never_lands_in_a_dot_folder(tmp_path):
     for path in ("tests/../.venv/lib/x.py", ".venv/lib/tests/test_x.py", ".git/tests/test_x.py"):
         with pytest.raises(EditError):
-            apply_edits(tmp_path, parse_edits(NEW_TEST.replace("tests/test_b.py", path)),
-                        frozenset(), new_tests=True)
+            apply_edits(
+                tmp_path,
+                parse_edits(NEW_TEST.replace("tests/test_b.py", path)),
+                frozenset(),
+                new_tests=True,
+            )

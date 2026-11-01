@@ -54,8 +54,9 @@ def is_free(port: int) -> bool:
 def running_dashboard(port: int) -> int | None:
     """PID of the greenkeep dashboard on this port, or None if something else holds it."""
     try:
-        with urllib.request.urlopen(f"http://{HOST}:{port}{MARKER_PATH}",
-                                    timeout=PROBE_TIMEOUT) as resp:
+        with urllib.request.urlopen(
+            f"http://{HOST}:{port}{MARKER_PATH}", timeout=PROBE_TIMEOUT
+        ) as resp:
             data = json.load(resp)
     except (OSError, ValueError):
         return None
@@ -74,8 +75,9 @@ def _stop(pid: int, port: int, kill: Callable[[int, int], None]) -> bool:
     return False
 
 
-def choose(port: int, ask: Callable[[str], bool],
-           kill: Callable[[int, int], None] = os.kill) -> Choice:
+def choose(
+    port: int, ask: Callable[[str], bool], kill: Callable[[int, int], None] = os.kill
+) -> Choice:
     """The port to serve on, or the running dashboard to open instead."""
     if is_free(port):
         return Choice(port, serve=True)

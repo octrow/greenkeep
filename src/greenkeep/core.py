@@ -45,6 +45,7 @@ class Change:
 @dataclass(frozen=True)
 class Baseline:
     """The repo before any attempt: what the gate compares every change against."""
+
     tests: TestRun
     lint: frozenset[str]  # fingerprints of ruff findings already there
     findings: list[Finding]
@@ -54,6 +55,7 @@ class Baseline:
 class Job:
     """Everything one repo's run shares: the clone, its baseline, the options, the history,
     and the digest it reports into."""
+
     ws: Workspace
     base: Baseline
     opts: Options

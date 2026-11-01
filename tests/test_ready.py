@@ -22,35 +22,58 @@ def rules(root, url=URL) -> list[str]:
 
 
 def test_a_ready_repo_has_no_findings(tmp_path):
-    root = repo(tmp_path, '[project]\nname = "d"\ndescription = "x"\nreadme = "README.md"\n'
-                          '[project.urls]\nHomepage = "h"\n')
+    root = repo(
+        tmp_path,
+        '[project]\nname = "d"\ndescription = "x"\nreadme = "README.md"\n'
+        '[project.urls]\nHomepage = "h"\n',
+    )
     assert rules(root) == []
 
 
 def test_each_missing_piece_is_its_own_finding(tmp_path):
     root = repo(tmp_path, '[project]\nname = "d"\n', readme="# demo\n\nText.\n", workflow=True)
-    assert rules(root) == ["description", "readme-field", "urls", "readme-install",
-                           "readme-usage", "ci-badge"]
-    assert rules(root, url="") == ["description", "readme-field", "readme-install",
-                                   "readme-usage"]  # nothing that needs a GitHub link
+    assert rules(root) == [
+        "description",
+        "readme-field",
+        "urls",
+        "readme-install",
+        "readme-usage",
+        "ci-badge",
+    ]
+    assert rules(root, url="") == [
+        "description",
+        "readme-field",
+        "readme-install",
+        "readme-usage",
+    ]  # nothing that needs a GitHub link
 
 
 def test_dynamic_fields_and_russian_headings_count(tmp_path):
-    root = repo(tmp_path, '[project]\nname = "d"\ndynamic = ["description", "readme", "urls"]\n',
-                readme="# demo\n\n## Установка\n\n## Использование\n")
+    root = repo(
+        tmp_path,
+        '[project]\nname = "d"\ndynamic = ["description", "readme", "urls"]\n',
+        readme="# demo\n\n## Установка\n\n## Использование\n",
+    )
     assert rules(root) == []
 
 
 def test_deterministic_fixes_make_their_check_pass(tmp_path):
-    root = repo(tmp_path, '[project]\nname = "d"\ndescription = "x"\n\n[tool.x]\ny = 1\n',
-                readme="# demo\n\n## Install\n\n## Usage\n", workflow=True)
+    root = repo(
+        tmp_path,
+        '[project]\nname = "d"\ndescription = "x"\n\n[tool.x]\ny = 1\n',
+        readme="# demo\n\n## Install\n\n## Usage\n",
+        workflow=True,
+    )
     for rule in ("readme-field", "urls", "ci-badge"):
         ready.FIXES[rule](root, URL)
     assert rules(root) == []
     data = tomllib.loads((root / "pyproject.toml").read_text())
     assert data["project"]["readme"] == "README.md" and data["tool"] == {"x": {"y": 1}}
-    assert (root / "pyproject.toml").read_text().startswith(
-        '[project]\nname = "d"\ndescription = "x"\nreadme = "README.md"\n')
+    assert (
+        (root / "pyproject.toml")
+        .read_text()
+        .startswith('[project]\nname = "d"\ndescription = "x"\nreadme = "README.md"\n')
+    )
     assert data["project"]["urls"]["Issues"] == f"{URL}/issues"
     lines = (root / "README.md").read_text().splitlines()
     assert lines[0] == "# demo" and "workflows/ci.yml/badge.svg" in lines[2]
@@ -64,18 +87,24 @@ def test_owner_notes_for_what_greenkeep_cannot_decide(tmp_path):
 
 
 def test_headings_in_code_blocks_do_not_count_and_other_heading_forms_do(tmp_path):
-    readme = ("Demo\n====\n\n```bash\n# install deps\npip install x\n```\n\n"
-              "<h2>Usage</h2>\n")
-    root = repo(tmp_path, '[project]\nname = "d"\ndescription = "x"\nreadme = "README.md"\n'
-                          "urls = {}\n", readme=readme)
+    readme = "Demo\n====\n\n```bash\n# install deps\npip install x\n```\n\n<h2>Usage</h2>\n"
+    root = repo(
+        tmp_path,
+        '[project]\nname = "d"\ndescription = "x"\nreadme = "README.md"\nurls = {}\n',
+        readme=readme,
+    )
     assert rules(root) == ["readme-install"]  # and an empty urls table is not "missing"
 
 
 def test_any_existing_ci_badge_counts_and_release_only_workflows_get_none(tmp_path):
-    root = repo(tmp_path, '[project]  # meta\nname = "d"\ndescription = "x"\nreadme = "README.md"\n'
-                          '[project.urls]\nHomepage = "h"\n',
-                readme=README_OK + "![ci](https://img.shields.io/github/actions/workflow/status/o/d/t.yml)\n",
-                workflow=True)
+    root = repo(
+        tmp_path,
+        '[project]  # meta\nname = "d"\ndescription = "x"\nreadme = "README.md"\n'
+        '[project.urls]\nHomepage = "h"\n',
+        readme=README_OK
+        + "![ci](https://img.shields.io/github/actions/workflow/status/o/d/t.yml)\n",
+        workflow=True,
+    )
     assert rules(root) == []
     (root / "README.md").write_text(README_OK)
     (root / ".github/workflows/ci.yml").unlink()
@@ -83,8 +112,12 @@ def test_any_existing_ci_badge_counts_and_release_only_workflows_get_none(tmp_pa
 
 
 def test_badge_goes_under_the_title_not_into_a_code_block(tmp_path):
-    root = repo(tmp_path, '[project]\nname = "d"\n',
-                readme="```sh\n# not a title\n```\n\n# demo\n", workflow=True)
+    root = repo(
+        tmp_path,
+        '[project]\nname = "d"\n',
+        readme="```sh\n# not a title\n```\n\n# demo\n",
+        workflow=True,
+    )
     ready.FIXES["ci-badge"](root, URL)
     lines = (root / "README.md").read_text().splitlines()
     assert lines[1] == "# not a title" and lines[4] == "# demo" and "badge.svg" in lines[6]
@@ -100,16 +133,24 @@ def test_dual_and_reuse_license_layouts_count(tmp_path):
 
 
 def test_a_code_block_that_calls_the_package_is_usage_without_a_heading(tmp_path):
-    pyproject = ('[project]\nname = "tiny-commons"\ndescription = "x"\nreadme = "README.md"\n'
-                 'urls = {}\n[project.scripts]\ntc = "tiny_commons:main"\n')
+    pyproject = (
+        '[project]\nname = "tiny-commons"\ndescription = "x"\nreadme = "README.md"\n'
+        'urls = {}\n[project.scripts]\ntc = "tiny_commons:main"\n'
+    )
     install = "## Install\n\n```bash\npip install tiny-commons\ncd tiny-commons\n```\n\n"
-    for block in ("```python\nfrom tiny_commons import slugify\n```",  # import name
-                  "```console\n$ tc add item\n```",                     # a script
-                  "```bash\nuvx tiny-commons run\n```"):                # the project name
-        root = repo(tmp_path, pyproject, readme=f"# x\n\n{install}## What it looks like\n\n"
-                                                f"{block}\n")
+    for block in (
+        "```python\nfrom tiny_commons import slugify\n```",  # import name
+        "```console\n$ tc add item\n```",  # a script
+        "```bash\nuvx tiny-commons run\n```",
+    ):  # the project name
+        root = repo(
+            tmp_path, pyproject, readme=f"# x\n\n{install}## What it looks like\n\n{block}\n"
+        )
         assert rules(root) == [], block
     # install lines, a heading or prose naming it do not show how to use it
-    root = repo(tmp_path, pyproject, readme=f"# tiny-commons\n\n{install}Use tiny_commons.\n"
-                                            "```text\nunrelated\n```\n")
+    root = repo(
+        tmp_path,
+        pyproject,
+        readme=f"# tiny-commons\n\n{install}Use tiny_commons.\n```text\nunrelated\n```\n",
+    )
     assert rules(root) == ["readme-usage"]

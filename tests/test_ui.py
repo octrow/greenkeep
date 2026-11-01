@@ -1,11 +1,28 @@
 from greenkeep.ui import table_rows
 
 ROWS = [
-    {"repo": "repo-scout", "fp": "untested:a.py", "status": "merged", "attempts": 1, "issue": 9,
-     "pr": 10, "updated": "2026-10-15", "title": "Add tests for a.py",
-     "url": "https://github.com/octrow/repo-scout"},
-    {"repo": "repo-scout", "fp": "untested:b.py", "status": "parked", "attempts": 3,
-     "issue": 8, "pr": None, "updated": "2026-10-15", "title": None, "url": ""},
+    {
+        "repo": "repo-scout",
+        "fp": "untested:a.py",
+        "status": "merged",
+        "attempts": 1,
+        "issue": 9,
+        "pr": 10,
+        "updated": "2026-10-15",
+        "title": "Add tests for a.py",
+        "url": "https://github.com/octrow/repo-scout",
+    },
+    {
+        "repo": "repo-scout",
+        "fp": "untested:b.py",
+        "status": "parked",
+        "attempts": 3,
+        "issue": 8,
+        "pr": None,
+        "updated": "2026-10-15",
+        "title": None,
+        "url": "",
+    },
 ]
 
 
@@ -20,11 +37,16 @@ def test_table_rows_link_pr_first_then_issue_and_filter():
 
 def test_log_tail_keeps_event_lines_only():
     from greenkeep.ui import log_tail
-    text = "2026-10-16 00:29:21,596 INFO a: start\n+ diff line\n    traceback\n" \
-           "2026-10-16 00:29:22,000 DEBUG   full failure:\n" \
-           "2026-10-16 00:30:00,000 INFO   merged x\n"
-    assert log_tail(text).splitlines() == ["2026-10-16 00:30:00,000 INFO   merged x",
-                                           "2026-10-16 00:29:21,596 INFO a: start"]
+
+    text = (
+        "2026-10-16 00:29:21,596 INFO a: start\n+ diff line\n    traceback\n"
+        "2026-10-16 00:29:22,000 DEBUG   full failure:\n"
+        "2026-10-16 00:30:00,000 INFO   merged x\n"
+    )
+    assert log_tail(text).splitlines() == [
+        "2026-10-16 00:30:00,000 INFO   merged x",
+        "2026-10-16 00:29:21,596 INFO a: start",
+    ]
     assert log_tail("") == "(no events yet)"
 
 
@@ -32,6 +54,7 @@ def test_the_budget_shown_is_the_boost_budget_during_a_boost(monkeypatch):
     from types import SimpleNamespace
 
     from greenkeep import ui
+
     cfg = SimpleNamespace(budget_at=lambda now: 15 if now.tzinfo else 0)
     monkeypatch.setattr(ui, "load", lambda: cfg)
     assert ui.budget_today() == 15
@@ -65,6 +88,7 @@ async def test_the_page_resumes_a_pause_and_says_when_the_run_queue_is_full(tmp_
 
 def test_a_second_start_opens_the_running_dashboard(monkeypatch):
     from greenkeep import port, ui
+
     opened = []
     monkeypatch.setattr(ui.port, "choose", lambda p, ask: port.Choice(p, serve=False))
     monkeypatch.setattr(ui.webbrowser, "open", opened.append)
@@ -76,11 +100,22 @@ def test_a_second_start_opens_the_running_dashboard(monkeypatch):
 def test_run_argv_is_the_bare_command_for_defaults_and_carries_every_option():
     from greenkeep import ui
     from greenkeep.core import DEFAULT_MODEL, DEFAULT_REVIEW_MODEL
+
     base = ["uv", "run", "--project", str(ui.PROJECT), "greenkeep"]
     assert ui.run_argv([], False, None, DEFAULT_MODEL, DEFAULT_REVIEW_MODEL, False) == base
     assert ui.run_argv(["a/b", "/x/y"], True, 5, "m1", "m2", True) == base + [
-        "--push", "--budget", "5", "--model", "m1", "--review-model", "m2", "--keep", "--",
-        "a/b", "/x/y"]
+        "--push",
+        "--budget",
+        "5",
+        "--model",
+        "m1",
+        "--review-model",
+        "m2",
+        "--keep",
+        "--",
+        "a/b",
+        "/x/y",
+    ]
 
 
 async def test_the_options_dialog_starts_a_push_run_only_after_confirmation(tmp_path, monkeypatch):
@@ -99,8 +134,9 @@ async def test_the_options_dialog_starts_a_push_run_only_after_confirmation(tmp_
     monkeypatch.setattr(ui, "LOG_FILE", tmp_path / "greenkeep.log")
     monkeypatch.setattr(ui, "State", lambda: State(tmp_path / "state.db"))
     monkeypatch.setattr(ui, "load", no_config)
-    monkeypatch.setattr(ui.run_pool, "submit",
-                        lambda argv, **k: submitted.append((argv, k)) or object())
+    monkeypatch.setattr(
+        ui.run_pool, "submit", lambda argv, **k: submitted.append((argv, k)) or object()
+    )
     async with user_simulation(root=ui.index) as user:
         await user.open("/")
         user.find("Run with options…").click()
@@ -116,5 +152,6 @@ async def test_the_options_dialog_starts_a_push_run_only_after_confirmation(tmp_
 
 def test_repos_never_turn_into_flags():
     from greenkeep.ui import run_argv
+
     argv = run_argv(["o/r"], False, 0, "", "", False)
     assert argv[-4:] == ["--budget", "0", "--", "o/r"]

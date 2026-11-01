@@ -11,8 +11,12 @@ FILE = re.compile(r"^\+\+\+ b/(.+)$")
 
 def is_test_path(path: str) -> bool:
     p = PurePosixPath(path)
-    return "tests" in p.parts or "test" in p.parts or p.name.startswith("test_") \
+    return (
+        "tests" in p.parts
+        or "test" in p.parts
+        or p.name.startswith("test_")
         or p.name == "conftest.py"
+    )
 
 
 def changed_old_lines(diff: str) -> dict[str, set[int]]:
@@ -41,8 +45,9 @@ def _guards(statements: list[int], line: int) -> set[int]:
     """
     before = [s for s in statements if s <= line]
     after = [s for s in statements if s >= line]
-    return {g for g in (before[-1] if before else None, after[0] if after else None)
-            if g is not None}
+    return {
+        g for g in (before[-1] if before else None, after[0] if after else None) if g is not None
+    }
 
 
 def line_is_covered(cov: dict, path: str, line: int) -> bool:
@@ -67,16 +72,21 @@ def coverage_violations(diff: str, baseline_cov: dict) -> list[str]:
         if path not in files:
             bad.append(f"{path} (not measured)")
             continue
-        bad.extend(f"{path}:{n}" for n in sorted(lines)
-                   if not line_is_covered(baseline_cov, path, n))
+        bad.extend(
+            f"{path}:{n}" for n in sorted(lines) if not line_is_covered(baseline_cov, path, n)
+        )
     return bad
 
 
-SUPPRESSION = re.compile(r"noqa|ruff\s*:|type:\s*ignore|pylint:\s*disable|pragma:\s*no cover",
-                         re.IGNORECASE)
+SUPPRESSION = re.compile(
+    r"noqa|ruff\s*:|type:\s*ignore|pylint:\s*disable|pragma:\s*no cover", re.IGNORECASE
+)
 
 
 def suppressions(diff: str) -> list[str]:
     """Added lines that silence a tool instead of fixing the code."""
-    return [ln[1:].strip() for ln in diff.splitlines()
-            if ln.startswith("+") and not ln.startswith("+++") and SUPPRESSION.search(ln)]
+    return [
+        ln[1:].strip()
+        for ln in diff.splitlines()
+        if ln.startswith("+") and not ln.startswith("+++") and SUPPRESSION.search(ln)
+    ]

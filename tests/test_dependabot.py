@@ -10,10 +10,12 @@ from greenkeep.digest import Digest
 from greenkeep.state import State
 from greenkeep.workspace import Workspace, WorkspaceError
 
-GROUPED = ("Bumps the pip group with 2 updates.\n"
-           "Updates `requests` from 2.31.0 to 2.32.3\n"
-           "<details><summary>Commits</summary>Bump actions/checkout from 3 to 4</details>\n"
-           "Updates `ruff` from 0.6.1 to 0.6.9.\n")
+GROUPED = (
+    "Bumps the pip group with 2 updates.\n"
+    "Updates `requests` from 2.31.0 to 2.32.3\n"
+    "<details><summary>Commits</summary>Bump actions/checkout from 3 to 4</details>\n"
+    "Updates `ruff` from 0.6.1 to 0.6.9.\n"
+)
 
 
 def test_minor_bump_in_the_title_is_safe():
@@ -38,17 +40,29 @@ def test_a_0x_minor_bump_is_a_major_one():
 def test_actions_only_and_their_checks():
     assert dependabot.actions_only([{"path": ".github/workflows/ci.yml"}])
     assert not dependabot.actions_only([{"path": ".github/workflows/ci.yml"}, {"path": "uv.lock"}])
-    assert dependabot.checks_passed([{"conclusion": "SUCCESS"}, {"state": "SUCCESS"},
-                                     {"conclusion": "SKIPPED"}])
+    assert dependabot.checks_passed(
+        [{"conclusion": "SUCCESS"}, {"state": "SUCCESS"}, {"conclusion": "SKIPPED"}]
+    )
     assert not dependabot.checks_passed([{"conclusion": "SUCCESS"}, {"conclusion": ""}])
     assert not dependabot.checks_passed([])  # CI never started: no verdict
 
 
-def pr(n: int, title: str = "Bump requests from 2.31.0 to 2.32.0", files: tuple = ("uv.lock",),
-       checks: tuple = (), mergeable: str = "MERGEABLE") -> dict:
-    return {"number": n, "title": title, "body": "", "headRefOid": f"sha{n}",
-            "mergeable": mergeable, "files": [{"path": p} for p in files],
-            "statusCheckRollup": [{"conclusion": c} for c in checks]}
+def pr(
+    n: int,
+    title: str = "Bump requests from 2.31.0 to 2.32.0",
+    files: tuple = ("uv.lock",),
+    checks: tuple = (),
+    mergeable: str = "MERGEABLE",
+) -> dict:
+    return {
+        "number": n,
+        "title": title,
+        "body": "",
+        "headRefOid": f"sha{n}",
+        "mergeable": mergeable,
+        "files": [{"path": p} for p in files],
+        "statusCheckRollup": [{"conclusion": c} for c in checks],
+    }
 
 
 class Fake:
@@ -70,8 +84,7 @@ class Fake:
         return SimpleNamespace(ok=self.green, output="1 failed")
 
     def run(self, push: bool = True) -> None:
-        dependabot.merge_safe(self.ws, Options(push, 3, None, False, None), self.state,
-                              self.digest)
+        dependabot.merge_safe(self.ws, Options(push, 3, None, False, None), self.state, self.digest)
 
 
 @pytest.fixture
@@ -98,17 +111,34 @@ def test_a_red_pr_is_not_retested_until_its_head_changes(fake):
 
 
 def test_majors_and_conflicts_are_skipped_and_at_most_three_are_tested(fake):
-    f = fake([pr(1, "Bump django from 4.2 to 5.0"), pr(2, mergeable="CONFLICTING"),
-              *(pr(n) for n in range(3, 8))])
+    f = fake(
+        [
+            pr(1, "Bump django from 4.2 to 5.0"),
+            pr(2, mergeable="CONFLICTING"),
+            *(pr(n) for n in range(3, 8)),
+        ]
+    )
     f.run()
     assert f.merged == [3, 4, 5]
 
 
 def test_an_actions_pr_merges_on_its_checks_without_a_suite_run(fake):
-    f = fake([pr(1, "Bump actions/checkout from 4.1.0 to 4.2.0", (".github/workflows/ci.yml",),
-                 ("SUCCESS",)),
-              pr(2, "Bump actions/setup-python from 5.0 to 5.1", (".github/workflows/ci.yml",),
-                 ("PENDING",))])
+    f = fake(
+        [
+            pr(
+                1,
+                "Bump actions/checkout from 4.1.0 to 4.2.0",
+                (".github/workflows/ci.yml",),
+                ("SUCCESS",),
+            ),
+            pr(
+                2,
+                "Bump actions/setup-python from 5.0 to 5.1",
+                (".github/workflows/ci.yml",),
+                ("PENDING",),
+            ),
+        ]
+    )
     f.run()
     assert f.merged == [1] and f.tested == []
 
