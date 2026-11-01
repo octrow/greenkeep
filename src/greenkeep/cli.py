@@ -133,31 +133,50 @@ def main(argv: list[str] | None = None) -> int:
     scheduled = a.push and not a.repos
     # a dry run never touches the persistent state: attempts and budget stay unspent
     state = State() if a.push else State(Path(":memory:"))
-    if scheduled and state.ran_today() and not _boosting():
+    if scheduled and _ran_today(state):
         log.debug("already ran today")
         return 0
     started = date.today()  # a run past midnight still counts for the day it began
     sweep()
     try:
         targets, budget = _targets(a)
-    except ConfigError as exc:  # every hourly run would fail the same way: say it once a day
-        log.error("config: %s", exc)
-        if a.push and state.mark("config-error") != started.isoformat():
-            send(f"greenkeep: no run, the config is broken: {exc}")
-            state.set_mark("config-error", started.isoformat())
-        return 1
+    except ConfigError as exc:
+        return _config_broken(exc, a.push, state, started)
     # a boost: the reviewer's model also plans each hard change before the patcher writes it
     planner = a.review_model if _boosting() else ""
     opts = Options(a.push, budget, a.model, a.keep, a.review_model, planner)
     digest = _run_all(targets, opts, state)
+    _report(digest, opts, state)
+    if scheduled and _day_done(digest, targets):
+        state.record_run(started)
+    return 0
+
+
+def _ran_today(state: State) -> bool:
+    """A boost runs every hour; otherwise one scheduled run a day."""
+    return state.ran_today() and not _boosting()
+
+
+def _day_done(digest: Digest, targets: list[Target]) -> bool:
+    """The day counts unless Claude stopped the run or no repo could be cloned (no network)."""
+    return not digest.limited and (digest.reached or not targets)
+
+
+def _report(digest: Digest, opts: Options, state: State) -> None:
     text = digest.text(max(opts.budget - state.merged_today(), 0))
-    if a.push:
+    if opts.push:
         send(text)
-        if scheduled and not digest.limited and (digest.reached or not targets):
-            state.record_run(started)
     else:
         log.info("%s", text)
-    return 0
+
+
+def _config_broken(exc: ConfigError, push: bool, state: State, started: date) -> int:
+    """Every hourly run would fail the same way: say it once a day."""
+    log.error("config: %s", exc)
+    if push and state.mark("config-error") != started.isoformat():
+        send(f"greenkeep: no run, the config is broken: {exc}")
+        state.set_mark("config-error", started.isoformat())
+    return 1
 
 
 if __name__ == "__main__":
