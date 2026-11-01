@@ -208,21 +208,29 @@ def constraints(root: Path) -> dict[str, SpecifierSet]:
         data,
         *(_toml(p) for m in members for p in sorted(root.glob(f"{m}/pyproject.toml"))),
     ]:
-        project = doc.get("project", {})
-        texts = [
-            *project.get("dependencies", []),
-            *(r for group in project.get("optional-dependencies", {}).values() for r in group),
-            *(r for group in doc.get("dependency-groups", {}).values() for r in group),
-        ]
-        for text in texts:
-            try:
-                req = Requirement(text) if isinstance(text, str) else None
-            except InvalidRequirement:
-                continue
-            if req:
-                name = canonicalize_name(req.name)
-                specs[name] = specs.get(name, SpecifierSet()) & req.specifier
+        for req in _requirements(doc):
+            name = canonicalize_name(req.name)
+            specs[name] = specs.get(name, SpecifierSet()) & req.specifier
     return specs
+
+
+def _requirements(doc: dict) -> list[Requirement]:
+    """One pyproject's dependencies, extras and groups; an include-group table or an
+    unparsable line is skipped."""
+    project = doc.get("project", {})
+    texts = [
+        *project.get("dependencies", []),
+        *(r for group in project.get("optional-dependencies", {}).values() for r in group),
+        *(r for group in doc.get("dependency-groups", {}).values() for r in group),
+    ]
+    reqs = []
+    for text in texts:
+        try:
+            if isinstance(text, str):
+                reqs.append(Requirement(text))
+        except InvalidRequirement:
+            continue
+    return reqs
 
 
 # extras and groups a test run installs too (uv syncs the `dev` group by default)
