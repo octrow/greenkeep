@@ -66,7 +66,7 @@ def test_restart_kills_the_running_dashboard_and_takes_its_port(dashboard):
     p = dashboard.server_address[1]
     killed = []
 
-    def kill(pid, sig):
+    def kill(pid, _sig):
         killed.append(pid)
         dashboard.shutdown()
         dashboard.server_close()
