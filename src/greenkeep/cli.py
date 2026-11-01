@@ -64,9 +64,13 @@ def _setup_logging() -> None:
 
 
 def _targets(a: argparse.Namespace) -> tuple[list[Target], int]:
-    cfg = _config() if a.repos else load()
+    if a.repos:
+        cfg = _config()
+        repos = _named(a.repos, cfg)
+    else:
+        cfg = load()
+        repos = cfg.repos
     now = datetime.now().astimezone()
-    repos = _named(a.repos, cfg) if a.repos else cfg.repos
     # a boost spends the subscription: every repo lints with extra rules (complexity,
     # simplify…) and bug-hunts once nothing else is left
     if cfg and cfg.boosting(now):
@@ -159,7 +163,7 @@ def _ran_today(state: State) -> bool:
 
 def _day_done(digest: Digest, targets: list[Target]) -> bool:
     """The day counts unless Claude stopped the run or no repo could be cloned (no network)."""
-    return not digest.limited and (digest.reached or not targets)
+    return not digest.limited and (digest.reached > 0 or not targets)
 
 
 def _report(digest: Digest, opts: Options, state: State) -> None:

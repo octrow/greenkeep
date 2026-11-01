@@ -28,7 +28,7 @@ DEFAULT_RANK = 4
 
 def rank(rule: str) -> int:
     # the whole letter prefix: SIM102 is simplify, not S (security)
-    return RULE_RANK.get(re.match(r"[A-Z]*", rule).group(), DEFAULT_RANK)
+    return RULE_RANK.get(re.sub(r"[^A-Z].*", "", rule), DEFAULT_RANK)
 
 
 @dataclass(frozen=True)

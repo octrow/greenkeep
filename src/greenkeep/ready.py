@@ -181,6 +181,7 @@ def _insert_under_project(root: Path, line: str, after: str) -> None:
     """Below the one-line `after = ...` key of [project] when there is one, else the header."""
     # ponytail: rewrites line endings as \n; keep CRLF if a CRLF repo shows up
     path, at = root / PYPROJECT, _project_header(root)
+    assert at is not None  # _pyproject offers these fixes only under a [project] header
     lines = path.read_text().splitlines()
     key = re.compile(rf"^{after}\s*=\s*(\".*\"|'.*')\s*(#.*)?$")
     for i in range(at + 1, len(lines)):

@@ -134,12 +134,9 @@ class Workspace:
 
 
 def _origin(target: Target) -> str:
-    src = target.path
-    return (
-        sh(["git", "remote", "get-url", "origin"], src, check=False).stdout.strip()
-        if src
-        else target.origin
-    )
+    if src := target.path:
+        return sh(["git", "remote", "get-url", "origin"], src, check=False).stdout.strip()
+    return target.origin or ""
 
 
 def remote_head(target: Target) -> str:
