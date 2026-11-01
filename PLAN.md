@@ -12,7 +12,6 @@
 |---|---|---|
 | Карта логики #6 | В бусте оставить слот на охоту в каждом репо? | владелец |
 | Разбор 2 недель R7 | Бюджет 3 → 4–5 в будни? (буст уже есть) | владелец |
-| Разбор 2 недель R10 | Пустой `~/.local/state/greenkeep/state.db` (0 байт) удалить | владелец |
 
 ## Карта логики (2026-10-29)
 
@@ -89,4 +88,4 @@
 | R9 ✅ | ADR-0003, `CONTEXT.md` Triage, демо в README | ADR-0003 заменяет модели и triage из 0001; Triage убран из `CONTEXT.md`; демо в README — настоящий PR whisper-gpu#4 (Sonnet + ревью Opus) |
 | 3.6 ✅ | Readiness «usage» только по заголовку | блок кода с импортом или запуском пакета (имя, имя импорта, скрипт; кроме строк установки) считается usage (`ready._calls_package`) |
 | 7.3 ✅ | Строка в дайджесте «CI не запускается: billing» | `github.ci_not_started`: аннотация «spending limit» у первого упавшего check run на HEAD базы; одна строка в Problems со списком репо; check run старше 3 дней не считается (`BILLING_FRESH`) |
-| R10 | `greenkeep#2` certifi; пустой `state.db` | certifi закрыт (`8641031`); `state.db` — владелец |
+| R10 ✅ | `greenkeep#2` certifi; пустой `state.db` | certifi закрыт (`8641031`); пустой `~/.local/state/greenkeep/state.db` удалён 2026-11-01 |
