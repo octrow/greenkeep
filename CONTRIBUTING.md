@@ -17,7 +17,9 @@ uv run greenkeep --help
 ## Before a pull request
 
 ```bash
-uvx ruff check .
+uv run ruff check .
+uv run ruff format --check .
+uv run ty check
 uv run pytest -q
 ```
 

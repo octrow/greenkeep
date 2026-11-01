@@ -32,6 +32,7 @@ dev = [
     "pytest>=8",
     "pytest-asyncio>=1.4.1",
     "ruff==0.17.3",
+    "ty==0.0.95",
 ]
 
 [tool.uv.sources]
@@ -49,3 +50,6 @@ asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 100
+
+[tool.ty.src]
+include = ["src"]  # tests fake Workspace and Job with SimpleNamespace

@@ -1,4 +1,9 @@
 repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.3              # same as the ruff pin in pyproject.toml
+    hooks:
+      - id: ruff-check
+      - id: ruff-format
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:                    # checks only; no whitespace fixers, so the first run on an old repo isn't a mass rewrite
