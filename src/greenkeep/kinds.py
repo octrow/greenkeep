@@ -399,19 +399,7 @@ class Bug(Kind):
         return Change(edited, reply.model, reply.prompt_sha)
 
     def check_scope(self, job: Job, f: Finding, paths: list[str]) -> None:
-        tests = [p for p in paths if p != f.path]
-        # tests may only be added: an edited existing test or conftest could redefine
-        # "correct", but a test appended where the repo keeps them is what a reviewer wants
-        added = [
-            p
-            for p in tests
-            if is_test_path(p) and Path(p).name != "conftest.py" and _only_added(job, p)
-        ]
-        if f.path not in paths or not tests or added != tests:
-            raise GateFailure(
-                f"a bug fix changes {f.path} and adds tests (new lines in test "
-                f"files, never changed or removed ones), nothing else: {paths}"
-            )
+        added = _added_tests(job, f, paths)
         if bad := coverage_violations(job.ws.git("diff", "-U0", "--", f.path), job.base.tests.cov):
             raise GateFailure(f"changed lines were not covered before the change: {bad}")
         for test in added:
@@ -421,6 +409,24 @@ class Bug(Kind):
                     f"{code}; a collection error or a timeout is not a "
                     "failure): it does not show the bug"
                 )
+
+
+def _added_tests(job: Job, f: Finding, paths: list[str]) -> list[str]:
+    """The tests a bug fix adds; raise unless it changes its file and only adds tests."""
+    tests = [p for p in paths if p != f.path]
+    # tests may only be added: an edited existing test or conftest could redefine
+    # "correct", but a test appended where the repo keeps them is what a reviewer wants
+    added = [
+        p
+        for p in tests
+        if is_test_path(p) and Path(p).name != "conftest.py" and _only_added(job, p)
+    ]
+    if f.path not in paths or not tests or added != tests:
+        raise GateFailure(
+            f"a bug fix changes {f.path} and adds tests (new lines in test "
+            f"files, never changed or removed ones), nothing else: {paths}"
+        )
+    return added
 
 
 def _only_added(job: Job, path: str) -> bool:
