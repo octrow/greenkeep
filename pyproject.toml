@@ -1,6 +1,6 @@
 [project]
 name = "greenkeep"
-version = "0.2.1"
+version = "0.2.2"
 description = "Scheduled, gated maintainer for your own repos: deterministic tools find problems, an LLM writes one patch per finding, and the PR auto-merges only when tests pass and every changed line is covered."
 readme = "README.md"
 requires-python = ">=3.12"

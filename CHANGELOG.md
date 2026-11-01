@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.2.2 - 2026-11-01
+
+Code health, no change in what a run does.
+
+- The whole repo is ruff-formatted; the format commit is in `.git-blame-ignore-revs`.
+- Eight functions split until each is under cyclomatic complexity 10 and cognitive complexity 15 (`config.load`, `cli.main`, `run.run_repo` and five more).
+- ty checks `src` in CI and ruff runs in pre-commit; ty's seven findings are fixed.
+
 ## 0.2.1 - 2026-11-01
 
 - pyasn1 0.6.5 (CVE-2026-119194, CVE-2026-119195, CVE-2026-119196, CVE-2026-119197), which greenkeep installs through tg-toolkit → telethon → rsa.
