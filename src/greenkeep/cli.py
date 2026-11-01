@@ -66,12 +66,7 @@ def _setup_logging() -> None:
 def _targets(a: argparse.Namespace) -> tuple[list[Target], int]:
     cfg = _config() if a.repos else load()
     now = datetime.now().astimezone()
-    if a.repos:
-        # a repo in the config keeps its entry (test root, hunt), so a dry run matches
-        known = {t.path or t.spec: t for t in (cfg.repos if cfg else [])}
-        repos = [known.get(t.path or t.spec, t) for t in map(Target, a.repos)]
-    else:
-        repos = cfg.repos
+    repos = _named(a.repos, cfg) if a.repos else cfg.repos
     # a boost spends the subscription: every repo lints with extra rules (complexity,
     # simplify…) and bug-hunts once nothing else is left
     if cfg and cfg.boosting(now):
@@ -79,6 +74,12 @@ def _targets(a: argparse.Namespace) -> tuple[list[Target], int]:
     if a.budget is not None:  # 0 is a budget too: nothing merged today
         return repos, a.budget
     return repos, cfg.budget_at(now) if cfg else DEFAULT_BUDGET
+
+
+def _named(specs: list[str], cfg: Config | None) -> list[Target]:
+    # a repo in the config keeps its entry (test root, hunt), so a dry run matches
+    known = {t.path or t.spec: t for t in (cfg.repos if cfg else [])}
+    return [known.get(t.path or t.spec, t) for t in map(Target, specs)]
 
 
 def _boosting() -> bool:
