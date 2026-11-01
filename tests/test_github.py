@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -65,13 +66,18 @@ def fake_api(monkeypatch, failed: str, message: str) -> None:
 def test_ci_that_github_did_not_start_for_billing_is_told_apart(monkeypatch):
     # linux-coding 2026-10-29: every job failed with this annotation, no step ran
     ws = SimpleNamespace(root=Path("."), origin="https://github.com/octrow/linux-coding.git")
-    fake_api(monkeypatch, "122420575008", "true")
+    fresh = f"122420575008 {datetime.now(UTC).isoformat()}"
+    fake_api(monkeypatch, fresh, "true")
     assert github.ci_not_started(ws, "d6a7fb8")
-    fake_api(monkeypatch, "122420575008", "false")  # a real failure
+    fake_api(monkeypatch, fresh, "false")  # a real failure
     assert not github.ci_not_started(ws, "d6a7fb8")
     fake_api(monkeypatch, "", "")  # nothing failed, or gh failed
     assert not github.ci_not_started(ws, "d6a7fb8")
-    fake_api(monkeypatch, "122420575008", "true")  # not on GitHub: nothing to ask
+    # minutes came back with the new month, and no commit has run CI since
+    stale = datetime.now(UTC) - github.BILLING_FRESH - timedelta(hours=1)
+    fake_api(monkeypatch, f"122420575008 {stale.isoformat()}", "true")
+    assert not github.ci_not_started(ws, "d6a7fb8")
+    fake_api(monkeypatch, fresh, "true")  # not on GitHub: nothing to ask
     assert not github.ci_not_started(SimpleNamespace(root=Path("."), origin="/srv/x"), "d6")
 
 

@@ -88,5 +88,5 @@
 | R8 ✅ | `needs-human` в дайджесте / автозакрытие | автозакрытие: issue запаркованного `untested:` закрывается через 14 дней (`run.close_stale_tests`); еженедельный раздел не нужен |
 | R9 ✅ | ADR-0003, `CONTEXT.md` Triage, демо в README | ADR-0003 заменяет модели и triage из 0001; Triage убран из `CONTEXT.md`; демо в README — настоящий PR whisper-gpu#4 (Sonnet + ревью Opus) |
 | 3.6 ✅ | Readiness «usage» только по заголовку | блок кода с импортом или запуском пакета (имя, имя импорта, скрипт; кроме строк установки) считается usage (`ready._calls_package`) |
-| 7.3 ✅ | Строка в дайджесте «CI не запускается: billing» | `github.ci_not_started`: аннотация «spending limit» у первого упавшего check run на HEAD базы; одна строка в Problems со списком репо |
+| 7.3 ✅ | Строка в дайджесте «CI не запускается: billing» | `github.ci_not_started`: аннотация «spending limit» у первого упавшего check run на HEAD базы; одна строка в Problems со списком репо; check run старше 3 дней не считается (`BILLING_FRESH`) |
 | R10 | `greenkeep#2` certifi; пустой `state.db` | certifi закрыт (`8641031`); `state.db` — владелец |

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import time
+from datetime import UTC, datetime, timedelta
 
 from .workspace import Workspace, WorkspaceError, sh
 
@@ -17,6 +18,9 @@ MERGE_STATE_WAIT = 3
 NO_REQUIRED_CHECKS = "no required checks reported"  # gh's words before they appear
 # the annotation on every job GitHub refused to start: Actions minutes or payment ran out
 BILLING = "spending limit"
+# a refusal older than this may be stale: the minutes come back with the new month, and
+# CI runs again only on the next commit
+BILLING_FRESH = timedelta(days=3)
 
 
 def web_url(origin: str) -> str:
@@ -61,15 +65,20 @@ def close_issue(ws: Workspace, issue: int, reason: str) -> bool:
 
 def ci_not_started(ws: Workspace, sha: str) -> bool:
     """Whether CI on `sha` failed because GitHub would not start it (billing), judged by the
-    first failed check run: such a run failed every job the same way. False when gh fails."""
+    first failed check run: such a run failed every job the same way. False when gh fails,
+    and when that run is older than BILLING_FRESH: minutes may have come back since."""
     # named, not `{owner}/{repo}`: gh resolves those to an `upstream` remote when there is one
     repo = web_url(ws.origin).removeprefix("https://github.com/")
     if not repo:
         return False
-    failed = sh(["gh", "api", f"repos/{repo}/commits/{sha}/check-runs", "--jq",
-                 '[.check_runs[] | select(.conclusion == "failure") | .id][0] // empty'],
-                ws.root, check=False).stdout.strip()
-    if not failed:
+    failed, _, completed = sh(
+        ["gh", "api", f"repos/{repo}/commits/{sha}/check-runs", "--jq",
+         ('[.check_runs[] | select(.conclusion == "failure") | "\\(.id) \\(.completed_at)"][0]'
+          ' // empty')], ws.root, check=False).stdout.strip().partition(" ")
+    try:
+        if datetime.now(UTC) - datetime.fromisoformat(completed) > BILLING_FRESH:
+            return False
+    except ValueError:  # nothing failed, or gh failed
         return False
     return sh(["gh", "api", f"repos/{repo}/check-runs/{failed}/annotations",
                "--jq", f'any(.[]; .message | contains("{BILLING}"))'],

@@ -175,7 +175,7 @@ Branches:
 - boost → `extra_rules` = C901, PLR0912, PLR0915, SIM, PERF, UP, RUF (minus RUF001-003, RUF100) for every ruff call in this repo, the no-new-lint check included, except on files the change adds (step 19).
 Fails: no origin or clone error → `WorkspaceError`, the repo is a problem line (step 24).
 The owner's checkout is never written.
-CI check (GitHub origin): the first failed check run on the clone's HEAD has the annotation "spending limit" → the repo joins the digest's billing line (GitHub did not start CI, greenkeep's gate is the only check); a gh error → nothing.
+CI check (GitHub origin): the first failed check run on the clone's HEAD finished within 3 days (`BILLING_FRESH`: minutes come back with the new month, CI reruns only on a commit) and has the annotation "spending limit" → the repo joins the digest's billing line (GitHub did not start CI, greenkeep's gate is the only check); a gh error → nothing.
 Module: `workspace`, `config`, `github`
 
 ### 9. Revert check

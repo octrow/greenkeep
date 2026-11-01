@@ -169,7 +169,7 @@ Module: `run`, `state`, `workspace`
 - буст → `extra_rules` = C901, PLR0912, PLR0915, SIM, PERF, UP, RUF (без RUF001-003, RUF100) во всех вызовах ruff в этом репо, включая проверку нового lint, кроме файлов, которые изменение добавляет (шаг 19).
 Сбой: нет origin или ошибка клона → `WorkspaceError`, строка в Problems (шаг 24).
 Checkout владельца не пишется никогда.
-Проверка CI (origin на GitHub): у первого упавшего check run на HEAD клона аннотация «spending limit» → репо попадает в строку billing в дайджесте (GitHub не запустил CI, единственная проверка — гейт greenkeep); ошибка gh → ничего.
+Проверка CI (origin на GitHub): первый упавший check run на HEAD клона завершён не раньше 3 дней назад (`BILLING_FRESH`: минуты возвращаются с новым месяцем, CI перезапускается только на коммите) и в его аннотации «spending limit» → репо попадает в строку billing в дайджесте (GitHub не запустил CI, единственная проверка — гейт greenkeep); ошибка gh → ничего.
 Module: `workspace`, `config`, `github`
 
 ### 9. Откаты
