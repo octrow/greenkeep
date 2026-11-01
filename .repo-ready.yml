@@ -1,0 +1,6 @@
+exempt:
+  language_mirrors: "the user docs (README, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, logic map) have RU mirrors; AGENTS.md, CLAUDE.md, PLAN.md, the ADRs and the dated review are working notes for agents and stay in one language"
+  internal_files_tracked: "PLAN.md is published on purpose: AGENTS.md sends agents there, it is the one file of plans and open items"
+  private_paths_in_files: "~/dev/my-repo, ~/dev/repo-a and the like are placeholder examples in usage docs and the bug form, not real paths"
+  private_paths_in_history: "history holds only the same placeholder paths and ~/dev/tidy, a demo repo; checked 2026-11-01"
+  deps_drift: "claude-subprocess comes from git main, which equals the PyPI v0.1.4 tag (0 commits ahead, checked 2026-11-01); recheck when claude-cli main moves"
