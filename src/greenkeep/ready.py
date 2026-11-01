@@ -80,10 +80,7 @@ def _pyproject(root: Path, url: str) -> list[Finding]:
     project = _project(root)
     if project is None or _project_header(root) is None:
         return []  # no [project] header line to insert under
-    # an empty description needs words; an empty urls table must not get a second header
-    missing = {"description"} if not project.get("description") else set()
-    missing |= {k for k in ("readme", "urls") if k not in project}
-    missing -= set(project.get("dynamic", []))
+    missing = _missing(project)
     found = []
     if "description" in missing:
         found.append(
@@ -113,6 +110,14 @@ def _pyproject(root: Path, url: str) -> list[Finding]:
             )
         )
     return found
+
+
+def _missing(project: dict) -> set[str]:
+    """The [project] fields to fill: a field the build fills (`dynamic`) is not missing."""
+    # an empty description needs words; an empty urls table must not get a second header
+    missing = {"description"} if not project.get("description") else set()
+    missing |= {k for k in ("readme", "urls") if k not in project}
+    return missing - set(project.get("dynamic", []))
 
 
 def _readme(root: Path, url: str) -> list[Finding]:
