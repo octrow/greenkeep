@@ -401,30 +401,38 @@ def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> Non
     if github.ci_not_started(ws, ws.git("rev-parse", "HEAD").strip()):
         digest.billing.append(ws.name)  # greenkeep's gate is then the only check its merges get
     try:
-        reverts.check(ws, state, backfill=opts.push)  # raises AutoPause before any work
-        sync(ws)
-        tests = baseline_tests(ws)
-        if not tests.ok:
-            log.warning("%s: baseline tests are red, skipping\n%s", ws.name, tests.output)
-            digest.problems.append(f"{ws.name}: baseline tests are red in a clean clone")
-            return
-        if opts.push:
-            github.ensure_labels(ws)
-        base = baseline(ws, tests)
-        if opts.push:
-            close_vanished(job := Job(ws, base, opts, state, digest))
-            close_stale_tests(job)
-        if opts.push:  # a dry run tells, but does not remember it told
-            _tell_owner(ws, state, digest)
-        else:
-            digest.owner += [f"{ws.name}: {note}" for note in ready.owner_notes(ws.root)]
-        if cooling:  # security fixes and Dependabot do not wait out a cool-down
-            base = replace(
-                base, findings=[f for f in base.findings if kind_of(f).exempt_from_budget]
-            )
-        if base.findings or not cooling:
-            _work_repo(Job(ws, base, opts, state, digest), target.hunt and not cooling)
-        dependabot.merge_safe(ws, opts, state, digest)  # greenkeep's own fixes go first
+        _tend(ws, target, cooling, opts, state, digest)
     finally:
         if not opts.keep:
             discard(ws)
+
+
+def _tend(
+    ws: Workspace, target: Target, cooling: bool, opts: Options, state: State, digest: Digest
+) -> None:
+    reverts.check(ws, state, backfill=opts.push)  # raises AutoPause before any work
+    sync(ws)
+    tests = baseline_tests(ws)
+    if not tests.ok:
+        log.warning("%s: baseline tests are red, skipping\n%s", ws.name, tests.output)
+        digest.problems.append(f"{ws.name}: baseline tests are red in a clean clone")
+        return
+    if opts.push:
+        github.ensure_labels(ws)
+    base = baseline(ws, tests)
+    _upkeep(Job(ws, base, opts, state, digest))
+    if cooling:  # security fixes and Dependabot do not wait out a cool-down
+        base = replace(base, findings=[f for f in base.findings if kind_of(f).exempt_from_budget])
+    if base.findings or not cooling:
+        _work_repo(Job(ws, base, opts, state, digest), target.hunt and not cooling)
+    dependabot.merge_safe(ws, opts, state, digest)  # greenkeep's own fixes go first
+
+
+def _upkeep(job: Job) -> None:
+    """Close the issues of what is gone and tell the owner what only they can settle."""
+    if not job.opts.push:  # a dry run tells, but does not remember it told
+        job.digest.owner += [f"{job.ws.name}: {note}" for note in ready.owner_notes(job.ws.root)]
+        return
+    close_vanished(job)
+    close_stale_tests(job)
+    _tell_owner(job.ws, job.state, job.digest)
