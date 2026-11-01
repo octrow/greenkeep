@@ -1,7 +1,7 @@
 [project]
 name = "greenkeep"
 version = "0.2.2"
-description = "Scheduled, gated maintainer for your own repos: deterministic tools find problems, an LLM writes one patch per finding, and the PR auto-merges only when tests pass and every changed line is covered."
+description = "Gated maintainer for your Python repos: tools find problems, an LLM patches them, merged only if tests cover the change"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
