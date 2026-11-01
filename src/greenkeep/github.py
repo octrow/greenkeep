@@ -14,6 +14,7 @@ NUMBER = re.compile(r"/(\d+)\s*$")
 CHECKS_TIMEOUT = 1800
 MERGE_STATE_POLLS = 10  # GitHub works mergeability out within seconds of `pr create`
 MERGE_STATE_WAIT = 3
+NO_REQUIRED_CHECKS = "no required checks reported"  # gh's words before they appear
 # the annotation on every job GitHub refused to start: Actions minutes or payment ran out
 BILLING = "spending limit"
 
@@ -107,14 +108,28 @@ def merge(ws: Workspace, pr: int, head: str = "") -> None:
     # BLOCKED: required checks still running (or a review); without required checks
     # `checks --required` itself fails, so any other state just tries the merge again
     if _merge_state(ws, pr) == "BLOCKED":
-        sh(["gh", "pr", "checks", str(pr), "--watch", "--required", "--fail-fast"], ws.root,
-           timeout=CHECKS_TIMEOUT)  # red or hung CI raises: the attempt fails
+        _wait_for_required_checks(ws, pr)  # red or hung CI raises: the attempt fails
     proc = sh(cmd, ws.root, check=False)
     # gh can fail after GitHub merged (a dropped connection): the merge still stands
     if proc.returncode and _gh(ws, "pr", "view", str(pr), "--json", "state",
                                "--jq", ".state") != "MERGED":
         raise WorkspaceError(f"gh pr merge {pr} exit {proc.returncode}: "
                              f"{(proc.stderr or proc.stdout)[-800:]}")
+
+
+def _wait_for_required_checks(ws: Workspace, pr: int) -> None:
+    """Watch the required checks until they pass. A ruleset's checks show up seconds after
+    the PR opens, and until then gh says none are reported: wait for them to appear."""
+    for _ in range(MERGE_STATE_POLLS):
+        proc = sh(["gh", "pr", "checks", str(pr), "--watch", "--required", "--fail-fast"],
+                  ws.root, check=False, timeout=CHECKS_TIMEOUT)
+        out = proc.stderr + proc.stdout
+        if proc.returncode == 0:
+            return
+        if NO_REQUIRED_CHECKS not in out:
+            raise WorkspaceError(f"gh pr checks {pr} exit {proc.returncode}: {out[-800:]}")
+        time.sleep(MERGE_STATE_WAIT)
+    # still none: a review or something else blocks it, and the merge after this says so
 
 
 def _merge_state(ws: Workspace, pr: int) -> str:

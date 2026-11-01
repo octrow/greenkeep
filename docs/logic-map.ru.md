@@ -297,7 +297,7 @@ Module: `run`, `llm`
 Решает: как изменение попадает в базовую ветку.
 Коммит в `greenkeep/<sha1(отпечатка)[:10]>`: `<type>: <title>` ≤ 72 символов, тело: находка, модель, ревьюер, условия гейта, `Closes #N`. Заголовок PR — заголовок находки.
 Ветки:
-- push → force-push, открытый PR этой ветки или новый, `gh pr merge --squash --delete-branch`; отказ → опрос `mergeStateStatus`, пока UNKNOWN (10 × 3 с); BLOCKED → `gh pr checks --watch --required --fail-fast` (30 мин); затем ещё один merge; снова отказ, но `gh pr view` говорит MERGED → слито;
+- push → force-push, открытый PR этой ветки или новый, `gh pr merge --squash --delete-branch`; отказ → опрос `mergeStateStatus`, пока UNKNOWN (10 × 3 с); BLOCKED → `gh pr checks --watch --required --fail-fast` (30 мин), повтор каждые 3 с (10 раз), пока gh отвечает «no required checks reported» (проверки ruleset появляются через секунды после PR); затем ещё один merge; снова отказ, но `gh pr view` говорит MERGED → слито;
 - dry run → только локальный коммит, diff в лог.
 Состояние: `merged`, PR, sha слияния. Одно слияние на репо за прогон: база после него устарела.
 Сбой: слияние всё ещё отклонено (конфликт, отстала, нужен review, красный CI) или ошибка gh/git → попытка, изменение делается заново; `ValueError` из вывода gh → уровень прогона (шаг 24), ничего не засчитано.

@@ -303,7 +303,7 @@ Module: `run`, `llm`
 Decides: how the change reaches the base branch.
 Commit on `greenkeep/<sha1(fingerprint)[:10]>`: `<type>: <title>` ≤ 72 chars, body with finding, model, reviewer, gate note, `Closes #N`. PR title: the finding's title.
 Branches:
-- push → force-push, reuse an open PR on that branch or create one, `gh pr merge --squash --delete-branch`; refused → poll `mergeStateStatus` while UNKNOWN (10 × 3 s); BLOCKED → `gh pr checks --watch --required --fail-fast` (30 min); then merge once more; still refused but `gh pr view` says MERGED → merged;
+- push → force-push, reuse an open PR on that branch or create one, `gh pr merge --squash --delete-branch`; refused → poll `mergeStateStatus` while UNKNOWN (10 × 3 s); BLOCKED → `gh pr checks --watch --required --fail-fast` (30 min), asked again every 3 s (10 times) while gh says "no required checks reported" (a ruleset's checks appear seconds after the PR); then merge once more; still refused but `gh pr view` says MERGED → merged;
 - dry run → local commit only, diff to the log.
 State: `merged`, PR, merge sha. One merge per repo per run: the baseline is stale after it.
 Fails: a merge still refused (conflict, behind, a required review, red CI) or a gh/git error → an attempt, the change is made again next attempt; a `ValueError` from gh output → run-level (step 24), nothing counted.
