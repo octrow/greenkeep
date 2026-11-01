@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-11-01
+
+From one slice to a maintainer that runs unattended on 19 repos. In the first two weeks: 57 merged fix PRs, 0 reverts.
+
+- Roles on Claude Code (`claude -p`, the logged-in account pays): Sonnet patches, Opus reviews every model-written change in the clone (ADR 0003).
+- New kinds of finding: vulnerabilities (budget-free), outdated dependencies, readiness checks, and an opt-in bug hunt whose fixes must come with a test that fails first (ADR 0002).
+- Boost nights (`boost_until`, `boost_budget`): extra ruff rules, a hunt in every repo, and an Opus plan before each hard change.
+- Safe Dependabot PRs merged after greenkeep's own suite; issues of findings that vanished, or of tests parked 14 days, are closed.
+- Robust to outages: a logout, the usage limit or an API outage stops the run without counting an attempt, and a run that cloned nothing (no network) leaves the day open; the next hourly firing retries.
+- Hourly timer with one run a day, a cool-down for repos that keep failing, a NiceGUI dashboard with every CLI option, and a Telegram digest that names repos whose CI GitHub did not start.
+
+All changes, newest first:
+
 - A merge blocked by a ruleset's required checks waits for them to appear: right after the PR opens gh says "no required checks reported", and that counted an attempt (repo-scout#25 merged only on the second one).
 - No characterization tests for a module that imports a package only a non-test optional extra installs (telethon in chat-watch's `e2e`): the suite fails wherever that extra is not installed. A repo with 3 parked test findings gets no more of them (cc-bench parked 8 of 8).
 - The digest says when GitHub does not start CI for lack of Actions minutes or payment: one Problems line names the repos ("CI does not start (GitHub Actions billing): …"), judged by the annotation on the first failed check run on the base branch, if it finished in the last 3 days: the minutes come back with the new month, and CI reruns only on the next commit. From about 2026-10-20 CI in 7 private repos was red for this reason alone, and greenkeep's gate was the only check its merges got there.
@@ -9,12 +22,10 @@
 - The issue of a parked test finding closes itself after 14 days with a comment; the finding stays parked and is not tried again. Parked tests were two-thirds of the 31 open `needs-human` issues, and the digest names a parked finding only once.
 - Dashboard options: a repo typed as `--push` stays a repo (argv puts `--` before the repos), so nothing skips the push confirmation; a budget like `²` is refused instead of failing the click; `--budget 0` means 0, not the config's budget.
 - Dashboard table: status and the update time (now to the minute) no longer wrap and the PR links column stays on screen; the options dialog keeps an even rhythm between fields.
-
 - A baseline suite that crashed (`Fatal Python error`, as a Qt test segfaulting now and then in buy-smarter) runs once more before the repo counts as red (a gate run after a patch does not: there a crash may be the patch's own), and the log keeps the crash header and the repo's own frames: the last 3000 characters held only library frames and the extension module list.
 - Dashboard: "Run with options…" starts a run with every CLI option (repos, push with a confirmation, budget, models, keep clones), so nothing the command line does is missing from the GUI.
 - `greenkeep owner/name` takes the budget and the boost (rules, hunt, Opus planner) from the config when it loads, instead of always the default 3; `--budget` still wins and a dry run needs no config.
 - `greenkeep-ui` started while a dashboard already runs opens that one in the browser instead of only printing its URL, so a menu launcher works on the second click too.
-
 - Dashboard: stopping it kills a dry run still going instead of leaving it orphaned, and "Dry run now" says so when the run queue is full instead of doing nothing.
 - Dashboard: the budget shown is the one in force now (a boost's included), the status line says the timer fires hourly with one run a day, and Resume no longer promises a run when today's is already done.
 - A scheduled run that cloned no repo (no network after boot or sleep) leaves the day open, so the next hourly firing tries again; before, it marked the day done and the next try was tomorrow. The day mark is the date the run started, so a run past midnight no longer takes the next day's run.
@@ -64,7 +75,7 @@
 - `uv sync --all-packages`: workspace members' dependencies are installed for the tests. A patcher reply without a code block is logged in full.
 - Bug hunt: an unchanged module is left alone after two empty hunts in a row, not one (the Hunter saw the same real bug in about half its looks).
 - A bug fix may append its test to the module's existing test file (added lines only, no conftest.py): the reviewer rejected new files that re-created the repo's fixtures.
-- Models are pinned by provider (`claude/claude-sonnet-5-5`, `claude/claude-opus-5-5`): through OmniRoute a bare `claude-sonnet-5-5` went to a free combo and was answered by another model under the same label, which caused the 600s timeouts. Hunter and Skeptic run at medium effort with the module in the prompt and a 300s limit; one hunt call went from a timeout to 15s.
+- Hunter and Skeptic run at medium effort with the module in the prompt and a 300s limit; one hunt call went from a timeout to 15s.
 - Bug hunt: the Hunter no longer reports races or timing bugs, and the Skeptic rejects behaviour the code, comments or tests mark as a choice (both claims on nicegui-kit's run pool were of these kinds).
 - The patcher, reviewer and bug hunt run without the owner's Claude Code settings (hooks, plugins, CLAUDE.md): a role's prompt no longer depends on the machine, and a call is a third faster and cheaper (63s → 40s on a README section). Each call's duration is in the full log.
 - A failed dependency upgrade parks at once: `uv lock` fails the same way every time, so a second and third attempt only cost time.
