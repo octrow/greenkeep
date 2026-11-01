@@ -78,6 +78,16 @@ def load(path: Path = CONFIG_FILE) -> Config:
         data = tomllib.loads(path.read_text())
     except (OSError, tomllib.TOMLDecodeError) as exc:
         raise ConfigError(f"cannot read {path}: {exc}") from exc
+    return Config(
+        _repo_targets(data, path),
+        int(data.get("budget", DEFAULT_BUDGET)),
+        int(data.get("weekend_budget", DEFAULT_WEEKEND_BUDGET)),
+        _boost_until(data, path),
+        int(data.get("boost_budget", DEFAULT_BOOST_BUDGET)),
+    )
+
+
+def _repo_targets(data: dict, path: Path) -> list[Target]:
     entries = data.get("repos")
     if not isinstance(entries, list) or not all(_entry_ok(r) for r in entries):
         raise ConfigError(
@@ -87,11 +97,7 @@ def load(path: Path = CONFIG_FILE) -> Config:
     # a table names the repo's test root; a plain string runs its suite from the root
     repos = [r if isinstance(r, str) else r["path"] for r in entries]
     tables = {r["path"]: r for r in entries if isinstance(r, dict)}
-    focus = data.get("focus", [])
-    if not isinstance(focus, list) or not all(isinstance(r, str) for r in focus):
-        raise ConfigError(f"{path}: `focus` must be a list of entries from `repos`")
-    if stray := sorted(set(focus) - set(repos)):
-        raise ConfigError(f"{path}: focus entries not in `repos`: {', '.join(stray)}")
+    focus = _focus(data, path, repos)
     targets = [
         Target(
             r, r in focus, tables.get(r, {}).get("tests", ""), tables.get(r, {}).get("hunt", False)
@@ -100,20 +106,27 @@ def load(path: Path = CONFIG_FILE) -> Config:
     ]
     for t in targets:
         _ = t.path  # a typo in the config fails at load, not halfway through a run
+    return targets
+
+
+def _focus(data: dict, path: Path, repos: list[str]) -> list[str]:
+    focus = data.get("focus", [])
+    if not isinstance(focus, list) or not all(isinstance(r, str) for r in focus):
+        raise ConfigError(f"{path}: `focus` must be a list of entries from `repos`")
+    if stray := sorted(set(focus) - set(repos)):
+        raise ConfigError(f"{path}: focus entries not in `repos`: {', '.join(stray)}")
+    return focus
+
+
+def _boost_until(data: dict, path: Path) -> datetime | None:
     boost_until = data.get("boost_until")
-    if boost_until is not None and (
-        not isinstance(boost_until, datetime) or boost_until.tzinfo is None
-    ):
+    if boost_until is None:
+        return None
+    if not isinstance(boost_until, datetime) or boost_until.tzinfo is None:
         raise ConfigError(
             f"{path}: `boost_until` must be a time with its offset, like 2026-10-30T03:00:00+05:00"
         )
-    return Config(
-        targets,
-        int(data.get("budget", DEFAULT_BUDGET)),
-        int(data.get("weekend_budget", DEFAULT_WEEKEND_BUDGET)),
-        boost_until,
-        int(data.get("boost_budget", DEFAULT_BOOST_BUDGET)),
-    )
+    return boost_until
 
 
 def _entry_ok(entry: object) -> bool:
