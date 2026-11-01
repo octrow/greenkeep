@@ -373,5 +373,4 @@ Module: `ui`, `port`
 
 ## Known gaps
 
-Details and fixes are in the plan (number in brackets).
-- No open HIGH or MEDIUM findings; the LOW ones and the owner's questions are in the plan.
+None open: every finding in `PLAN.md` is fixed or decided (#6, the hunt during a boost, stays as is).
