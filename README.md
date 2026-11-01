@@ -58,7 +58,7 @@ What it did not manage: 20 findings were parked after three attempts, 16 of them
 1. Clone: each repo you pass is cloned into `~/.cache/greenkeep`; your checkout is never touched. If its tests are red before greenkeep changes anything, the repo is skipped.
 2. Find: findings come from deterministic tools only: pip-audit (vulnerable dependencies), ruff (security, bug and pyflakes rules first), coverage (poorly tested modules), outdated dependencies and readiness checks. An opt-in bug hunt adds model-suspected bugs, each fixed test first.
 3. Patch: for each finding the LLM gets the finding and its code and returns SEARCH/REPLACE edits. For an untested module it writes characterization tests that pin down what the code does today.
-4. Gate: the change is kept only if the full suite passes, every changed line was covered before the change (for a new test file: module coverage grew), and ruff reports nothing new.
+4. Gate: the change is kept only if the full suite passes, every changed line was covered before the change (for a new test file: module coverage grew), and ruff reports nothing new. Then Opus reviews it inside the clone, reading the repo and not just the diff.
 5. Merge or park: a passing change is committed (and with `--push`, opened as a PR and merged on green). A finding gets three attempts; after that it is parked and labelled `needs-human`.
 
 Why deterministic findings and not a free-roaming coding agent: [ADR 0001](docs/adr/0001-deterministic-findings-llm-patches.md). Terms used here: [CONTEXT.md](CONTEXT.md).
@@ -92,72 +92,23 @@ You also need:
 
 ```bash
 greenkeep ~/dev/repo-a ~/dev/repo-b          # dry run: nothing leaves the machine except LLM calls
-greenkeep ~/dev/repo-a --push --budget 3     # open issues and PRs, merge on green, at most 3 merges a day
+greenkeep ~/dev/repo-a --push --budget 3     # open issues and PRs, merge on green, at most 3 merges today
+greenkeep --push                             # the scheduled run, over the repos in the config
 ```
 
 | Option | Default | What it does |
 |---|---|---|
 | `--push` | off | Open a plan issue and a fix PR, wait for the required checks, squash-merge |
-| `--budget N` | 3 | Merged fix PRs per day, across all repos |
+| `--budget N` | config, 3 | Merged fix PRs today, across all repos |
 | `--model NAME` | `claude-sonnet-5-5` | Claude Code model that writes the patches |
 | `--review-model NAME` | `claude-opus-5-5` | Claude Code model that reviews each patch inside the clone |
 | `--keep` | off | Keep the throwaway clones in `~/.cache/greenkeep` for inspection |
 
-A run makes at most one fix per repo, so it's meant to run on a schedule. A daily cron line is enough:
+A run makes at most one fix per repo, so it's meant to run on a schedule. State (attempts per finding, merges per day) lives in `~/.local/share/greenkeep/state.db`; a dry run never writes it. Full log: `~/.local/state/greenkeep/greenkeep.log`.
 
-```cron
-0 6 * * * $HOME/.local/bin/greenkeep $HOME/dev/repo-a $HOME/dev/repo-b --push >> $HOME/.local/state/greenkeep.log 2>&1
-```
+### Config
 
-State (attempts per finding, merges per day) lives in `~/.local/share/greenkeep/state.db`. A dry run never writes it.
-
-## What a repo needs
-
-- Python, managed with uv: a `pyproject.toml` at the root (`uv sync` must work).
-- Tests that pytest can run and that pass today. A repo with no tests at all is fine: greenkeep starts by writing characterization tests.
-- For `--push`: a GitHub remote you can push to and merge into.
-
-## How it differs
-
-- Dependabot, Renovate: they bump dependencies, with a PR per bump. greenkeep only bumps a dependency for a known vulnerability or a same-major update, and only merges it on a green suite; most of its work is code findings and tests. Both can run on the same repo.
-- ruff `--fix`, pre-commit.ci autofix: they apply only the fixes ruff can make mechanically. greenkeep uses ruff's safe fix when there is one and calls the LLM only for findings ruff can't fix, like `B006` above; both kinds go through the same gate and get their own PR.
-- Coding agents (Copilot coding agent, OpenHands, Sweep): an agent decides what to change and how much. Here a deterministic tool picks the problem, the patch is limited to one finding, and nothing merges unless tests already covered every line it touched. The agents can do more; greenkeep aims to be boring and repeatable.
-- [patchwork](https://github.com/patched-codes/patchwork): closest in spirit (AutoFix flows). It doesn't own the schedule, the daily budget, the coverage gate or the issue → PR → merge loop, and greenkeep is built around those.
-
-## Status
-
-In daily use on the author's repos since 2026-10-16. What is done and what comes next: [Status and roadmap](#status-and-roadmap).
-
-## Contributing and security
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). Changes: [CHANGELOG.md](CHANGELOG.md).
-
-## License
-
-[MIT](LICENSE)
-
-## How a run works
-
-1. Clone each tended repo into a throwaway directory (the local checkout is only read).
-2. Baseline: `uv sync`, then the full test suite under coverage. Red baseline → skip the repo.
-3. Findings, in work order: known vulnerabilities (pip-audit), ruff bugs, modules with
-   little or no test coverage, outdated dependencies (same major), ruff style.
-4. Per finding, up to 3 attempts: a deterministic ruff fix or an LLM patch (Sonnet), then the
-   gate — only allowed files touched, changed lines covered before the change, no new lint, no
-   `noqa`-style suppressions, full suite green — then a review by Opus in Claude Code, which reads the repo, not just the diff.
-5. A plan issue, a PR that closes it, squash merge once required CI checks pass.
-6. A digest of the run goes to Telegram.
-
-At most one merge per repo per run and a daily budget across all repos.
-
-## Use
-
-```bash
-uv run greenkeep ~/dev/some-repo            # dry run: commits in a throwaway clone, no state
-uv run greenkeep --push                     # the real thing, over the config's repos
-```
-
-Config `~/.config/greenkeep/config.toml`:
+`~/.config/greenkeep/config.toml`:
 
 ```toml
 budget = 3            # merged PRs per weekday
@@ -175,39 +126,49 @@ repos = [
 focus = ["~/dev/my-repo"]   # optional: these run first every run
 ```
 
-Telegram digest: `GREENKEEP_TG_BOT_TOKEN` and `GREENKEEP_TG_CHAT_ID` in
-`~/.config/greenkeep/env` (without them: desktop notification). Full log:
-`~/.local/state/greenkeep/greenkeep.log`. Pause: `touch ~/.config/greenkeep/PAUSE`.
+Fixes for vulnerable dependencies neither need nor spend the budget.
 
-Dashboard (findings, pause/resume, dry run with live log, recent events):
-
-```bash
-uv run greenkeep-ui            # http://127.0.0.1:8095
-```
-
-If the port belongs to another app it moves to the next free one; if a greenkeep
-dashboard already runs there it asks whether to restart it (default No) and prints its link.
-
-Once a day: the timer fires hourly and greenkeep exits at once if today's digest already went
-out, so a run cut short by a shutdown starts over after the next boot. During a boost
-every hourly firing is a run. A run where Claude does not answer (usage limit, logged out,
-API down) stops there without counting an attempt and leaves the day open, so the next
-hourly firing tries again.
+### Schedule
 
 ```bash
 cp contrib/systemd/greenkeep.* ~/.config/systemd/user/
 systemctl --user daemon-reload && systemctl --user enable --now greenkeep.timer
 ```
 
-## Status and roadmap
+The timer fires hourly and greenkeep exits at once if today's digest already went out, so a run cut short by a shutdown starts over after the next boot. During a boost every hourly firing is a run. A run where Claude does not answer (usage limit, logged out, API down) stops there without counting an attempt and leaves the day open, so the next firing tries again.
 
-Done: ruff, coverage and dependency findings (vulnerabilities neither need nor spend the daily budget;
-upgrades need 60% coverage), gate, Sonnet patcher + Opus reviewer, issue → PR → merge,
-config, daily timer, digest (with a one-line `Quiet:` summary), pause, cool-down, dashboard, auto-pause (a reverted greenkeep merge stops all
-runs until you delete the pause file, which says which merge it was), opt-in bug hunt
-(Hunter → Skeptic, then a test-first fix whose test must fail without it), readiness checks
-(pyproject description/readme/urls, README install and usage sections, CI badge; a missing
-LICENSE or README is left to you, once, in the digest).
+The unit runs `uv run` from a checkout in `~/dev/greenkeep`; for the installed tool, set `ExecStart=%h/.local/bin/greenkeep --push` and drop `WorkingDirectory`. Any other scheduler works the same way: run `greenkeep --push` hourly with the variables from `~/.config/greenkeep/env` set and `gh`, `claude` and `uv` on `PATH`.
+
+### Digest, pause, dashboard
+
+Telegram digest: `GREENKEEP_TG_BOT_TOKEN` and `GREENKEEP_TG_CHAT_ID` in `~/.config/greenkeep/env` (without them: a desktop notification). Pause: `touch ~/.config/greenkeep/PAUSE`, delete the file to resume. A reverted greenkeep merge pauses every run the same way, and the file says which merge it was.
+
+Dashboard (findings, pause/resume, dry run with a live log, recent events):
+
+```bash
+greenkeep-ui            # http://127.0.0.1:8095
+```
+
+If the port belongs to another app it moves to the next free one; if a greenkeep dashboard already runs there it asks whether to restart it (default No) and prints its link.
+
+## What a repo needs
+
+- Python, managed with uv: a `pyproject.toml` at the root (`uv sync` must work).
+- Tests that pytest can run and that pass today. A repo with no tests at all is fine: greenkeep starts by writing characterization tests.
+- For `--push`: a GitHub remote you can push to and merge into.
+
+## How it differs
+
+- Dependabot, Renovate: they bump dependencies, with a PR per bump. greenkeep only bumps a dependency for a known vulnerability or a same-major update, and only merges it on a green suite; most of its work is code findings and tests. Both can run on the same repo.
+- ruff `--fix`, pre-commit.ci autofix: they apply only the fixes ruff can make mechanically. greenkeep uses ruff's safe fix when there is one and calls the LLM only for findings ruff can't fix, like `PLW1510` above; both kinds go through the same gate and get their own PR.
+- Coding agents (Copilot coding agent, OpenHands, Sweep): an agent decides what to change and how much. Here a deterministic tool picks the problem, the patch is limited to one finding, and nothing merges unless tests already covered every line it touched. The agents can do more; greenkeep aims to be boring and repeatable.
+- [patchwork](https://github.com/patched-codes/patchwork): closest in spirit (AutoFix flows). It doesn't own the schedule, the daily budget, the coverage gate or the issue → PR → merge loop, and greenkeep is built around those.
+
+## Status
+
+In daily use on the author's repos since 2026-10-16.
+
+Done: ruff, coverage and dependency findings (upgrades need 60% coverage), the gate, Sonnet patcher + Opus reviewer, issue → PR → merge, config, the hourly timer with one run a day, the digest (with a one-line `Quiet:` summary), pause, cool-down for repos that keep failing, the dashboard, auto-pause after a reverted merge, the opt-in bug hunt (Hunter → Skeptic, then a test-first fix whose test must fail without it), readiness checks (pyproject description/readme/urls, README install and usage sections, CI badge; a missing LICENSE or README is left to you, once, in the digest).
 
 Next, roughly in this order:
 
@@ -215,3 +176,11 @@ Next, roughly in this order:
 2. JS/TS as a second language plugin.
 
 Design: [CONTEXT.md](CONTEXT.md) (glossary), [docs/adr](docs/adr) (decisions).
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). Changes: [CHANGELOG.md](CHANGELOG.md).
+
+## License
+
+[MIT](LICENSE)
