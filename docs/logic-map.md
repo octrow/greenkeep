@@ -246,7 +246,7 @@ Decides: whether to look for bugs, and in which module.
 Branches:
 - candidates exist, or `hunt` off, or budget spent → no hunt;
 - else pick the biggest module ≥ 50% covered, ≥ 5 statements, not hunted empty twice as it is now (mark `hunt:<repo>:<path>` = sha + count).
-Hunter (`--model`, 5 min) claims ≤ 3 bugs as JSON; Skeptic (`--review-model`) keeps what it cannot refute; each kept claim on a real line that could pass the coverage rule is a `bug` finding.
+Hunter (`--model`, 5 min) claims ≤ 3 bugs as JSON; Skeptic (`--review-model`) keeps what it cannot refute; each kept claim on a real line that could pass the coverage rule (on a `def` line, the line after it too: the body must have run) is a `bug` finding.
 Fails: timeout, CLI error or unreadable JSON → warning, no findings, module not marked; Claude unavailable (`llm.unavailable`) → raised (step 24).
 Module: `hunt`, `llm`, `run`
 

@@ -60,9 +60,17 @@ def pick(job: Job) -> str | None:
 
 def _finding(job: Job, path: str, c: llm.Claim) -> Finding | None:
     """None for a claim on a line the module does not have, or one no test ran: the gate
-    would reject every fix there."""
+    would reject every fix there. A `def` line runs at import, so a claim on it needs the
+    function's body run too (`line + 1` reaches the body's first statement)."""
     text = job.ws.read_line(path, c.line)
-    if not text.strip() or not line_is_covered(job.base.tests.cov, path, c.line):
+    cov = job.base.tests.cov
+    # ponytail: a one-line `def f(): ...` checks the next statement instead of its body
+    is_def = text.lstrip().startswith(("def ", "async def "))
+    if (
+        not text.strip()
+        or not line_is_covered(cov, path, c.line)
+        or (is_def and not line_is_covered(cov, path, c.line + 1))
+    ):
         return None
     title = shorten(c.title, TITLE_MAX, placeholder="…")
     # the line number too: two claims on identical lines (`return None`) are two bugs

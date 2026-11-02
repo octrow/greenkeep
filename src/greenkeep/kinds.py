@@ -407,7 +407,11 @@ class Bug(Kind):
     def check_scope(self, job: Job, f: Finding, paths: list[str]) -> None:
         added = _added_tests(job, f, paths)
         if bad := coverage_violations(job.ws.git("diff", "-U0", "--", f.path), job.base.tests.cov):
-            raise GateFailure(f"changed lines were not covered before the change: {bad}")
+            raise GateFailure(
+                f"changed lines were not covered before the change: {bad}. Coverage is "
+                "measured before the change, so tests it adds do not count: change only "
+                "source lines the existing tests already run"
+            )
         for test in added:
             if (code := _exit_without_fix(job, f, test)) != PYTEST_FAILED:
                 raise GateFailure(
