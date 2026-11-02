@@ -93,7 +93,11 @@ def apply_edits(
     return touched
 
 
+# a shell heredoc's terminator the model sometimes closes the code with
+HEREDOC_END = re.compile(r"\nEOF\s*\Z")
+
+
 def python_block(reply: str) -> str:
     if m := CODE.search(reply):
-        return m.group(1)
+        return HEREDOC_END.sub("\n", m.group(1))
     raise EditError("no python code block in reply")

@@ -107,3 +107,9 @@ def test_a_bare_name_two_tracked_files_share_is_still_rejected(tmp_path):
         (tmp_path / d / "a.py").write_text("x\n")
     with pytest.raises(EditError, match="not a tracked file"):
         apply_edits(tmp_path, parse_edits(block("a.py", "x")), frozenset({"pkg/a.py", "lib/a.py"}))
+
+
+def test_python_block_drops_a_heredoc_eof_line():
+    # olx 2026-10-30: the file ended with a shell heredoc's `EOF`, F821 cost the attempt
+    reply = "```python\ndef test_x():\n    assert True\nEOF\n```"
+    assert python_block(reply) == "def test_x():\n    assert True\n"

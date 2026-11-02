@@ -270,7 +270,7 @@ Decides: the change for one attempt, made after `git reset --hard` + `clean -fdx
 Branches by kind:
 - ruff, safe-fixable, first attempt of this run → `ruff --fix --select <rule>` on the file (every occurrence of the rule), then the new fixable lint it caused; no LLM;
 - ruff otherwise → Claude (`FIX_SYSTEM`, file or ±40 lines around it) → SEARCH/REPLACE on tracked files (a bare file name that names one tracked file, or a path written as `# path`, counts as that file);
-- untested → Claude (`TEST_SYSTEM`, module, related tests, conftests, settings, line budget × 0.85, this run's previous file on retry) → one python block → test file, then the repo's safe fixes and unused-name fixes;
+- untested → Claude (`TEST_SYSTEM`, module, related tests, conftests, settings, line budget × 0.85, this run's previous file on retry) → one python block (a closing heredoc `EOF` line dropped) → test file, then the repo's safe fixes and unused-name fixes;
 - bug → Claude (`BUG_SYSTEM`) → source edit + new or appended test;
 - vuln/outdated → `uv lock --upgrade-package name==version`;
 - ready → template fix (readme-field, urls, ci-badge) or Claude (`READY_SYSTEM`).
