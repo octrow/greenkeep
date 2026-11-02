@@ -1,5 +1,7 @@
 import tomllib
 
+import pytest
+
 from greenkeep import ready
 
 URL = "https://github.com/o/demo"
@@ -153,4 +155,19 @@ def test_a_code_block_that_calls_the_package_is_usage_without_a_heading(tmp_path
         pyproject,
         readme=f"# tiny-commons\n\n{install}Use tiny_commons.\n```text\nunrelated\n```\n",
     )
+    assert rules(root) == ["readme-usage"]
+
+
+PROJECT = '[project]\nname = "d"\ndescription = "x"\nreadme = "README.md"\nurls = {}\n'
+
+
+@pytest.mark.parametrize("heading", ["Run", "Running", "How to use", "Using it", "Запуск"])
+def test_a_run_or_use_heading_counts_as_usage(tmp_path, heading):
+    root = repo(tmp_path, PROJECT, readme=f"# x\n\n## Install\n\n## {heading}\n\n./run.sh\n")
+    assert rules(root) == []
+
+
+@pytest.mark.parametrize("heading", ["Runtime", "Users"])
+def test_words_that_only_start_like_run_or_use_do_not(tmp_path, heading):
+    root = repo(tmp_path, PROJECT, readme=f"# x\n\n## Install\n\n## {heading}\n")
     assert rules(root) == ["readme-usage"]

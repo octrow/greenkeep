@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A README heading `Run`, `Running`, `Use`, `Using` or `Запуск` counts as a usage section, so such a README no longer gets a false `readme-usage` finding.
 - A patch whose path is written as `# src/x.py` or as a bare file name that names one tracked file is applied instead of failing the attempt.
 
 ## 0.2.3 - 2026-11-02

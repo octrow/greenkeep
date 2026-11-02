@@ -36,7 +36,9 @@ SECTIONS = {
     "readme-usage": (
         "a usage",
         re.compile(
-            r"usage|example|how to|getting started|quick ?start|использ|пример", re.IGNORECASE
+            r"usage|example|how to|getting started|quick ?start|\brun(ning)?\b|\bus(e|ing)\b|"
+            r"использ|пример|запуск",
+            re.IGNORECASE,
         ),
     ),
 }
