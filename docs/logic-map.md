@@ -207,7 +207,7 @@ In: clone, baseline. Out: `Baseline` (tests, lint fingerprints, ordered findings
 Push mode first: `gh label create greenkeep / needs-human --force` (fails on a non-GitHub origin).
 Sources:
 - ruff JSON with the repo's own config (+ boost rules); fingerprint `ruff:<code>:<path>:<digest of the line text>`, no line number; identical lines in a file get `#1`, `#2`… in line order, the first keeps the plain one; the last line of ruff's range is kept (`end_line`);
-- `untested`: modules < 50% covered with ≥ 5 statements, if coverage measured anything or there are no tests;
+- `untested`: modules < 50% covered with ≥ 5 statements, if coverage measured anything or there are no tests; test code is never a target (`gate.is_test_path`: a `tests`/`test` folder or a variant like `tests_e2e`, `integration_tests`, a `test_*.py` file, `conftest.py`);
 - `vuln`: `uv export` → `pip-audit`, only with a tracked `uv.lock`; target = lowest version fixing every advisory that has a fixed release, same line preferred; advisories with none go to the message ("no fix yet"); fingerprint holds the fixable advisory ids;
 - `outdated`: `uv tree --outdated --depth 1` + PyPI, newest stable on the same major (minor for 0.x) that the specifiers in `pyproject.toml` and its uv workspace members allow (an `==` pin → no finding); skipped when `.github/dependabot.yml` (not `.yaml`) has a `uv`/`pip` ecosystem;
 - `ready`: pyproject `description`/`readme`/`urls`, README install/usage heading (a usage heading may also say Run, Running, Use or Using; a code block that imports or runs the package, install lines aside, counts as usage), CI badge.
@@ -233,7 +233,7 @@ Module: `kinds`, `findings`
 Decides: what this repo may work on now.
 Kept: state `open` or unseen; not vendored (vendor dir or a `VENDORED.md` above it); `attemptable`:
 - ruff: every line from the finding's first to its last could pass the coverage rule; for C901/PLR0912/PLR0915 the last line is the function's end (`ast`); always in test files;
-- untested: no test file at the target path yet, fewer than 3 parked `untested:` findings in the repo (`MAX_PARKED_TESTS`), no database/broker client import, and no import of a package that only a non-test optional extra of the nearest `pyproject.toml` installs (`dev`/`test` extras and the `dev` group count as installed);
+- untested: no test file at the target path yet, fewer than 3 parked `untested:` findings the baseline still reports in the repo (`MAX_PARKED_TESTS`; a module tested or deleted since does not count), no database/broker client import, and no import of a package that only a non-test optional extra of the nearest `pyproject.toml` installs (`dev`/`test` extras and the `dev` group count as installed);
 - outdated: suite exists and total coverage ≥ 60%;
 - vuln, ready: always.
 Cut: the first 10. Hunted bugs (step 15) skip this step and the cut.

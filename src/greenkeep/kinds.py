@@ -290,7 +290,13 @@ class Untested(Kind):
     def attemptable(self, job: Job, f: Finding) -> bool:
         if (job.ws.root / characterization_path(f, job.ws.root, job.ws.tests)).exists():
             return False
-        if job.state.parked_count(job.ws.name, "untested:") >= MAX_PARKED_TESTS:
+        # parked test findings the repo still has: a module tested or deleted since is gone
+        parked = sum(
+            job.state.status(job.ws.name, g.fingerprint) == "parked"
+            for g in job.base.findings
+            if g.fingerprint.startswith("untested:")
+        )
+        if parked >= MAX_PARKED_TESTS:
             return False  # the repo's tests are what the patcher cannot match
         source = (job.ws.root / f.path).read_text()
         return not needs_service(source) and not needs_extra(job.ws.root, f.path, source)

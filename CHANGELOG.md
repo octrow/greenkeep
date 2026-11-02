@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The cap of 3 parked test findings per repo counts only findings the repo still has: a module tested or deleted since no longer keeps the repo from getting tests.
+- Test helpers in folders like `tests_e2e/` or `integration_tests/` are test code: they no longer get characterization-test findings.
 - A README heading `Run`, `Running`, `Use`, `Using` or `Запуск` counts as a usage section, so such a README no longer gets a false `readme-usage` finding.
 - A patch whose path is written as `# src/x.py` or as a bare file name that names one tracked file is applied instead of failing the attempt.
 

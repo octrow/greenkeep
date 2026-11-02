@@ -207,7 +207,10 @@ def test_the_state_budget_count_skips_exactly_the_budget_exempt_kinds():
     assert set(BUDGET_FREE) == exempt
 
 
-def untested_job(tmp_path, pyproject: str, source: str, parked: int = 0) -> SimpleNamespace:
+def untested_job(
+    tmp_path, pyproject: str, source: str, parked: int = 0, gone: int = 0
+) -> SimpleNamespace:
+    """`parked` test findings, of which the last `gone` the baseline no longer reports."""
     (tmp_path / "pyproject.toml").write_text(pyproject)
     (tmp_path / "bot").mkdir(exist_ok=True)
     (tmp_path / "bot/client.py").write_text(source)
@@ -215,7 +218,12 @@ def untested_job(tmp_path, pyproject: str, source: str, parked: int = 0) -> Simp
     for i in range(parked):
         state.set("demo", f"untested:m{i}.py", status="parked")
     state.set("demo", "ruff:F401:x", status="parked")  # not a test: does not count
-    return SimpleNamespace(ws=SimpleNamespace(root=tmp_path, tests="", name="demo"), state=state)
+    found = [untested(f"m{i}.py") for i in range(parked - gone)] + [untested("bot/client.py")]
+    return SimpleNamespace(
+        ws=SimpleNamespace(root=tmp_path, tests="", name="demo"),
+        state=state,
+        base=SimpleNamespace(findings=found),
+    )
 
 
 PYPROJECT = (
@@ -246,3 +254,10 @@ def test_a_repo_with_three_parked_test_findings_gets_no_more(tmp_path):
     f = untested("bot/client.py")
     assert kind_of(f).attemptable(untested_job(tmp_path, PYPROJECT, "import json\n", 2), f)
     assert not kind_of(f).attemptable(untested_job(tmp_path, PYPROJECT, "import json\n", 3), f)
+
+
+def test_parked_test_findings_the_repo_no_longer_has_do_not_count(tmp_path):
+    # jobs: two parked modules got tests by hand, yet kept the repo near the cap
+    f = untested("bot/client.py")
+    job = untested_job(tmp_path, PYPROJECT, "import json\n", parked=3, gone=1)
+    assert kind_of(f).attemptable(job, f)

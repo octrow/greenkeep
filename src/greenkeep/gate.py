@@ -9,11 +9,19 @@ HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+\d+(?:,\d+)? @@")
 FILE = re.compile(r"^\+\+\+ b/(.+)$")
 
 
+def _test_dir(name: str) -> bool:
+    """tests/, test/ and their variants: tests_e2e/, tests-integration/, integration_tests/."""
+    return (
+        name in ("tests", "test")
+        or name.startswith(("tests_", "tests-"))
+        or name.endswith(("_tests", "-tests"))
+    )
+
+
 def is_test_path(path: str) -> bool:
     p = PurePosixPath(path)
     return (
-        "tests" in p.parts
-        or "test" in p.parts
+        any(_test_dir(d) for d in p.parts[:-1])
         or p.name.startswith("test_")
         or p.name == "conftest.py"
     )

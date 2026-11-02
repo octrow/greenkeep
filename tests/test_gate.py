@@ -61,6 +61,9 @@ def test_coverage_violations_flags_unmeasured_source_file_but_not_tests():
 def test_is_test_path():
     assert is_test_path("tests/test_a.py") and is_test_path("pkg/tests/conftest.py")
     assert is_test_path("test_top.py") and not is_test_path("pkg/a.py")
+    # chat-watch keeps e2e helpers in bot/tests_e2e/: test code, not code to write tests for
+    assert is_test_path("bot/tests_e2e/helpers.py") and is_test_path("integration_tests/x.py")
+    assert not is_test_path("pkg/testing.py") and not is_test_path("contest/a.py")
 
 
 def test_line_is_covered_uses_enclosing_and_next_statement():
