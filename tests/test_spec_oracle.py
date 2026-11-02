@@ -62,24 +62,32 @@ def _side(prefix: str, path: str | None) -> str:
     return f"{prefix}/{path}" + ("\t" if " " in path else "")
 
 
+_MODE_LINES = {
+    "new": ["new file mode 100644", "index 0000000..1111111"],
+    "delete": ["deleted file mode 100644", "index 1111111..0000000"],
+    "modify": ["index 1111111..2222222 100644"],
+}
+
+
+@st.composite
+def _hunks(draw, kind: str) -> list[tuple[int, int, int, int]]:
+    """(old start, old count, new start, new count) per hunk, as git writes them for this kind of change."""
+    if kind == "new":
+        return [(0, 0, 1, draw(st.integers(1, 3)))]
+    if kind == "delete":
+        return [(1, draw(st.integers(1, 3)), 0, 0)]
+    shapes = st.sampled_from([(0, 1), (1, 0), (1, 1), (2, 1), (0, 2), (3, 2)])
+    return [
+        (draw(st.integers(0, 25)), c, draw(st.integers(1, 25)), k)
+        for c, k in draw(st.lists(shapes, min_size=1, max_size=3))
+    ]
+
+
 @st.composite
 def file_diff(draw, path: str) -> str:
     kind = draw(st.sampled_from(["modify", "modify", "modify", "new", "delete"]))
-    head = [f"diff --git a/{path} b/{path}"]
-    if kind == "new":
-        k = draw(st.integers(1, 3))
-        head += ["new file mode 100644", "index 0000000..1111111"]
-        hunks = [(0, 0, 1, k)]
-    elif kind == "delete":
-        c = draw(st.integers(1, 3))
-        head += ["deleted file mode 100644", "index 1111111..0000000"]
-        hunks = [(1, c, 0, 0)]
-    else:
-        head += ["index 1111111..2222222 100644"]
-        hunks = []
-        for _ in range(draw(st.integers(1, 3))):
-            c, k = draw(st.sampled_from([(0, 1), (1, 0), (1, 1), (2, 1), (0, 2), (3, 2)]))
-            hunks.append((draw(st.integers(0, 25)), c, draw(st.integers(1, 25)), k))
+    head = [f"diff --git a/{path} b/{path}", *_MODE_LINES[kind]]
+    hunks = draw(_hunks(kind))
     old = None if kind == "new" else path
     new = None if kind == "delete" else path
     head += [f"--- {_side('a', old)}", f"+++ {_side('b', new)}"]
