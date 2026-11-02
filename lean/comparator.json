@@ -1,0 +1,17 @@
+{
+  "challenge_module": "Frozen",
+  "solution_module": "Spec",
+  "theorem_names": [
+    "Gate.suppressions_iff",
+    "Gate.map_marker_caught",
+    "Gate.coverage_passes_iff",
+    "Gate.executed_covered",
+    "Gate.missing_not_covered",
+    "Gate.under_tests_is_test"
+  ],
+  "permitted_axioms": [
+    "propext",
+    "Quot.sound",
+    "Classical.choice"
+  ]
+}

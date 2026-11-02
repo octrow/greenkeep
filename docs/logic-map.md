@@ -8,7 +8,8 @@ Read `CONTEXT.md` first for the terms (tended repo, finding, gate, attempt, park
 Known gaps and fixes in progress are in `PLAN.md`.
 
 Rule: if you change a step or a branch, update this file in the same commit.
-`tests/test_logic_map.py` checks that every `Module:` line points to a real module.
+A step with a `Proved:` line has a Lean model: changing the step means revisiting its statements and `lean/Frozen.lean`, with the author's consent.
+`tests/test_logic_map.py` checks that every `Module:` line points to a real module and every `Proved:` path exists.
 The Russian mirror is `docs/logic-map.ru.md`; this file is the source of truth.
 
 ## The flow at a glance
@@ -290,6 +291,7 @@ Checks in order:
 6. untested → module coverage grew.
 Fails: `GateFailure` with the reason (an attempt).
 Module: `run`, `gate`, `kinds`, `workspace`
+Proved: `lean/Spec/Gate` (6 theorems: changed lines covered, suppression markers, test files), checked against `gate` by `tests/test_spec_oracle.py`.
 
 ### 20. Review
 
@@ -373,4 +375,4 @@ Module: `ui`, `port`
 
 ## Known gaps
 
-None open: every finding in `PLAN.md` is fixed or decided (#6, the hunt during a boost, stays as is).
+Open: L1–L7 from the Lean check of step 19 «Gate» (`PLAN.md`, section «Lean: шаг 19 Gate»). Earlier findings are fixed or decided (#6, the hunt during a boost, stays as is).

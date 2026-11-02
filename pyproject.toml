@@ -29,6 +29,7 @@ greenkeep-ui = "greenkeep.ui:main"
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.170.14",
     "pytest>=8",
     "pytest-asyncio>=1.4.1",
     "ruff==0.17.3",

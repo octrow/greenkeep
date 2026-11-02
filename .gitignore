@@ -9,3 +9,5 @@ build/
 .env
 .env.*
 .claude/worktrees/
+lean/.lake/
+.hypothesis/

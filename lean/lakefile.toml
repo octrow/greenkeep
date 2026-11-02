@@ -1,0 +1,14 @@
+name = "spec"
+defaultTargets = ["Spec", "oracle"]
+
+# One folder per target under Spec/: Model.lean (executable model) and Props.lean (theorems).
+[[lean_lib]]
+name = "Spec"
+
+# Frozen copy of every model and approved statement. Only `lake comparator` builds it.
+[[lean_lib]]
+name = "Frozen"
+
+[[lean_exe]]
+name = "oracle"
+root = "Oracle"

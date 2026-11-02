@@ -1,4 +1,4 @@
-"""docs/logic-map.md names real modules: a rename that forgets the map fails here."""
+"""docs/logic-map.md names real modules and Lean models: a rename that forgets the map fails here."""
 
 import re
 from pathlib import Path
@@ -22,4 +22,13 @@ def test_every_module_line_points_to_an_existing_module() -> None:
             if not (PACKAGE / f"{ref}.py").is_file() and not (PACKAGE / ref).is_dir()
         ]
         assert refs, path
+        assert missing == [], path
+
+
+def test_every_proved_line_points_to_an_existing_path() -> None:
+    for path in MAPS:
+        lines = [line for line in path.read_text().splitlines() if line.startswith("Proved:")]
+        refs = [ref for line in lines for ref in re.findall(r"`([^`]+/[^`]+)`", line)]
+        missing = [ref for ref in refs if not (ROOT / ref).exists()]
+        assert len(refs) >= len(lines), path  # every Proved: line names at least one path
         assert missing == [], path
