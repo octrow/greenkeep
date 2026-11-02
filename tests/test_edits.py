@@ -90,3 +90,20 @@ def test_a_new_test_file_never_lands_in_a_dot_folder(tmp_path):
                 frozenset(),
                 new_tests=True,
             )
+
+
+@pytest.mark.parametrize("path", ["# pkg/a.py", "`pkg/a.py`", "a.py"])
+def test_a_sloppy_or_bare_path_finds_the_one_tracked_file(tmp_path, path):
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg/a.py").write_text("x\n")
+    edits = parse_edits(block(path, "x"))
+    assert apply_edits(tmp_path, edits, frozenset({"pkg/a.py", "pkg/b.py"})) == ["pkg/a.py"]
+    assert (tmp_path / "pkg/a.py").read_text() == "y\n"
+
+
+def test_a_bare_name_two_tracked_files_share_is_still_rejected(tmp_path):
+    for d in ("pkg", "lib"):
+        (tmp_path / d).mkdir()
+        (tmp_path / d / "a.py").write_text("x\n")
+    with pytest.raises(EditError, match="not a tracked file"):
+        apply_edits(tmp_path, parse_edits(block("a.py", "x")), frozenset({"pkg/a.py", "lib/a.py"}))

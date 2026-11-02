@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A patch whose path is written as `# src/x.py` or as a bare file name that names one tracked file is applied instead of failing the attempt.
+
 ## 0.2.3 - 2026-11-02
 
 Docs and package metadata, no change in what a run does.

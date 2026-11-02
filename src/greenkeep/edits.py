@@ -31,16 +31,28 @@ class Edit:
 
 def parse_edits(reply: str) -> list[Edit]:
     edits = [
-        Edit(m["path"].strip().strip("`"), m["search"], m["replace"]) for m in BLOCK.finditer(reply)
+        # models sometimes write the path as a comment ("# src/x.py") or in backticks
+        Edit(m["path"].strip().lstrip("#").strip().strip("`"), m["search"], m["replace"])
+        for m in BLOCK.finditer(reply)
     ]
     if not edits:
         raise EditError("no SEARCH/REPLACE blocks in reply")
     return edits
 
 
+def _bare_name(rel: str, allowed: frozenset[str]) -> str:
+    """A bare file name ("utils.py") that names exactly one tracked file means that file."""
+    if "/" in rel:
+        return rel
+    hits = [a for a in allowed if a.rsplit("/", 1)[-1] == rel]
+    return hits[0] if len(hits) == 1 else rel
+
+
 def _target(root: Path, rel: str, allowed: frozenset[str], *, new: bool = False) -> Path:
     """Only files git tracks: never .git, .venv, untracked or generated files. `new`: a
     test file that does not exist yet."""
+    if not new:
+        rel = _bare_name(rel, allowed)
     target = (root / rel).resolve()
     if not target.is_relative_to(root.resolve()):
         raise EditError(f"path outside repo: {rel}")
@@ -67,7 +79,7 @@ def apply_edits(
                 raise EditError(f"empty SEARCH for an existing file: {e.path}")
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(e.replace + "\n")
-            touched.append(e.path)
+            touched.append(target.relative_to(root.resolve()).as_posix())
             continue
         target = _target(root, e.path, allowed)
         try:
@@ -77,7 +89,7 @@ def apply_edits(
         if text.count(e.search) != 1:
             raise EditError(f"SEARCH matches {text.count(e.search)} times in {e.path}")
         target.write_text(text.replace(e.search, e.replace))
-        touched.append(e.path)
+        touched.append(target.relative_to(root.resolve()).as_posix())
     return touched
 
 
