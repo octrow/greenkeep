@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 312" width="1200" height="312" role="img" aria-labelledby="t d">
+  <title id="t">Как находка становится влитым PR</title>
+  <desc id="d">Пять шагов на находку: Поиск через pip-audit, ruff и coverage; Патч: Sonnet пишет один патч на одну находку; Гейт: тесты зелёные, строки покрыты, нового lint нет; Ревью: Opus читает репозиторий, а не только diff; Влить: plan issue, PR, squash merge. Отклонённый патч пробуется снова, после трёх попыток находка откладывается с меткой needs-human.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#4d6b5c"/>
+    </marker>
+    <marker id="arrow-park" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#d29922"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="312" rx="20" fill="#0d1512"/>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif">
+    <!-- steps: x = 40 + i * 231, width 196 -->
+    <g id="find" transform="translate(40 32)">
+      <rect width="196" height="164" rx="14" fill="#13201b" stroke="#22352d"/>
+      <text x="22" y="44" font-size="28" font-weight="700" fill="#e6efe9">Поиск</text>
+      <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" fill="#b4c7bc">
+        <text x="22" y="84">pip-audit</text><text x="22" y="112">ruff</text><text x="22" y="140">coverage</text>
+      </g>
+    </g>
+    <g id="patch" transform="translate(271 32)">
+      <rect width="196" height="164" rx="14" fill="#13201b" stroke="#22352d"/>
+      <text x="22" y="44" font-size="28" font-weight="700" fill="#e6efe9">Патч</text>
+      <g font-size="20" fill="#b4c7bc"><text x="22" y="84">Sonnet пишет</text><text x="22" y="112">один патч на</text><text x="22" y="140">одну находку</text></g>
+    </g>
+    <g id="gate" transform="translate(502 32)">
+      <rect width="196" height="164" rx="14" fill="#13201b" stroke="#3fb950" stroke-width="2"/>
+      <text x="22" y="44" font-size="28" font-weight="700" fill="#3fb950">Гейт</text>
+      <g font-size="20" fill="#b4c7bc"><text x="22" y="84">тесты зелёные</text><text x="22" y="112">строки покрыты</text><text x="22" y="140">нового lint нет</text></g>
+    </g>
+    <g id="review" transform="translate(733 32)">
+      <rect width="196" height="164" rx="14" fill="#13201b" stroke="#22352d"/>
+      <text x="22" y="44" font-size="28" font-weight="700" fill="#e6efe9">Ревью</text>
+      <g font-size="20" fill="#b4c7bc"><text x="22" y="84">Opus читает</text><text x="22" y="112">репозиторий,</text><text x="22" y="140">а не только diff</text></g>
+    </g>
+    <g id="merge" transform="translate(964 32)">
+      <rect width="196" height="164" rx="14" fill="#1a3d24" stroke="#2e6b3d"/>
+      <text x="22" y="44" font-size="28" font-weight="700" fill="#e6efe9">Влить</text>
+      <g font-size="20" fill="#b4c7bc"><text x="22" y="84">plan issue</text><text x="22" y="112">→ PR</text><text x="22" y="140">→ squash merge</text></g>
+    </g>
+
+    <g stroke="#4d6b5c" stroke-width="2" marker-end="url(#arrow)">
+      <line x1="238" y1="114" x2="268" y2="114"/>
+      <line x1="469" y1="114" x2="499" y2="114"/>
+      <line x1="700" y1="114" x2="730" y2="114"/>
+      <line x1="931" y1="114" x2="961" y2="114"/>
+    </g>
+
+    <g id="park">
+      <path d="M831 198 V236 H369 V202" fill="none" stroke="#d29922" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow-park)"/>
+      <path d="M600 198 V236" fill="none" stroke="#d29922" stroke-width="2" stroke-dasharray="6 6"/>
+      <text x="600" y="276" font-size="20" fill="#d29922" text-anchor="middle">отклонён → новая попытка; после трёх находка откладывается с меткой needs-human</text>
+    </g>
+  </g>
+</svg>

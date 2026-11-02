@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 440" width="1200" height="440" role="img" aria-labelledby="t d">
+  <title id="t">greenkeep</title>
+  <desc id="d">greenkeep: инструменты находят проблемы, LLM пишет по патчу на находку, и PR вливается, только если тесты уже покрывали каждую изменённую строку. Справа: настоящий fix PR whisper-gpu #4 для ruff PLW1510 и проверки гейта, которые он прошёл.</desc>
+  <rect width="1200" height="440" rx="20" fill="#0d1512"/>
+
+  <g id="title-block" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif">
+    <text x="64" y="92" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" fill="#8fa89a"><tspan fill="#3fb950">$</tspan> greenkeep --push</text>
+    <text x="58" y="196" font-size="100" font-weight="700" letter-spacing="-3" fill="#e6efe9"><tspan fill="#3fb950">green</tspan>keep</text>
+    <g font-size="26" fill="#b4c7bc">
+      <text x="64" y="256">Инструменты находят проблемы, LLM</text>
+      <text x="64" y="292">пишет по патчу на каждую. PR вливается,</text>
+      <text x="64" y="328">только если тесты покрывали все строки.</text>
+    </g>
+    <text x="64" y="388" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#8fa89a">Python · uv · Claude Code · MIT</text>
+  </g>
+
+  <g id="real-pr" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+    <rect x="664" y="40" width="476" height="360" rx="14" fill="#13201b" stroke="#22352d"/>
+    <text x="692" y="80" font-size="18" fill="#8fa89a">whisper-gpu #4 · 2026-10-21</text>
+    <rect x="1022" y="60" width="92" height="28" rx="14" fill="#1a3d24" stroke="#2e6b3d"/>
+    <text x="1068" y="80" font-size="16" fill="#3fb950" text-anchor="middle">влит</text>
+    <text x="692" y="118" font-size="20" font-weight="600" fill="#e6efe9">fix: PLW1510 subprocess.run</text>
+    <text x="692" y="146" font-size="18" fill="#8fa89a">src/whisper_gpu/transcribe.py:94</text>
+    <g font-size="20">
+      <text x="692" y="186" fill="#8fa89a">&#160;&#160;out = subprocess.run(</text>
+      <text x="692" y="214" fill="#f85149">-&#160;&#160;&#160;&#160;…, timeout=10,</text>
+      <text x="692" y="242" fill="#3fb950">+&#160;&#160;&#160;&#160;…, timeout=10, check=False,</text>
+    </g>
+    <line x1="692" y1="264" x2="1112" y2="264" stroke="#22352d"/>
+    <g font-size="20" fill="#3fb950">
+      <text x="692" y="296">✓ <tspan fill="#b4c7bc">все тесты зелёные</tspan></text>
+      <text x="692" y="324">✓ <tspan fill="#b4c7bc">строка была покрыта</tspan></text>
+      <text x="692" y="352">✓ <tspan fill="#b4c7bc">нового lint нет</tspan></text>
+      <text x="692" y="380">✓ <tspan fill="#b4c7bc">ревью Opus пройдено</tspan></text>
+    </g>
+  </g>
+</svg>

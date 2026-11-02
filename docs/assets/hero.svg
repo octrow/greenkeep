@@ -1,28 +1,37 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" width="1200" height="400" role="img" aria-labelledby="t d">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 440" width="1200" height="440" role="img" aria-labelledby="t d">
   <title id="t">greenkeep</title>
-  <desc id="d">greenkeep: deterministic tools find problems, an LLM writes one patch per finding, and it merges only when the tests already covered every changed line. Right: a real fix for ruff B006 with the three gate checks passed.</desc>
-  <rect width="1200" height="400" rx="20" fill="#0d1512"/>
-  <g font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
-    <text x="64" y="84" font-family="'JetBrains Mono', SFMono-Regular, Menlo, Consolas, monospace" font-size="20" fill="#8fa89a">$ greenkeep ~/dev/my-repos --push</text>
-    <text x="60" y="176" font-size="96" font-weight="700" letter-spacing="-2" fill="#e6efe9"><tspan fill="#3fb950">green</tspan>keep</text>
-    <g font-size="25" fill="#b4c7bc">
-      <text x="64" y="236">Deterministic tools find the problems.</text>
-      <text x="64" y="270">An LLM writes one patch per finding.</text>
-      <text x="64" y="304">It merges only when the tests already</text>
-      <text x="64" y="338">covered every changed line.</text>
+  <desc id="d">greenkeep: tools find the problems, an LLM writes one patch per finding, and the PR merges only when the tests already covered every changed line. Right: the real fix PR whisper-gpu #4 for ruff PLW1510, with the gate checks it passed.</desc>
+  <rect width="1200" height="440" rx="20" fill="#0d1512"/>
+
+  <g id="title-block" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif">
+    <text x="64" y="92" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" fill="#8fa89a"><tspan fill="#3fb950">$</tspan> greenkeep --push</text>
+    <text x="58" y="196" font-size="100" font-weight="700" letter-spacing="-3" fill="#e6efe9"><tspan fill="#3fb950">green</tspan>keep</text>
+    <g font-size="26" fill="#b4c7bc">
+      <text x="64" y="256">Tools find the problems. An LLM writes</text>
+      <text x="64" y="292">one patch per finding. The PR merges only</text>
+      <text x="64" y="328">when tests already covered every line.</text>
     </g>
+    <text x="64" y="388" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#8fa89a">Python · uv · Claude Code · MIT</text>
   </g>
-  <g font-family="'JetBrains Mono', SFMono-Regular, Menlo, Consolas, monospace" font-size="20">
-    <rect x="684" y="44" width="452" height="320" rx="14" fill="#13201b" stroke="#22352d"/>
-    <text x="712" y="84" fill="#e6efe9" font-weight="600">fix: B006 mutable default</text>
-    <text x="712" y="114" fill="#8fa89a">src/tidy/tags.py</text>
-    <text x="712" y="152" fill="#f85149">-def add_tag(tag, tags=[]):</text>
-    <text x="712" y="180" fill="#3fb950">+def add_tag(tag, tags=None):</text>
-    <text x="712" y="208" fill="#3fb950">+&#160;&#160;&#160;&#160;if tags is None:</text>
-    <text x="712" y="236" fill="#3fb950">+&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;tags = []</text>
-    <line x1="712" y1="258" x2="1108" y2="258" stroke="#22352d"/>
-    <text x="712" y="288" fill="#3fb950">✓ <tspan fill="#b4c7bc">full test suite green</tspan></text>
-    <text x="712" y="316" fill="#3fb950">✓ <tspan fill="#b4c7bc">changed lines were covered</tspan></text>
-    <text x="712" y="344" fill="#3fb950">✓ <tspan fill="#b4c7bc">no new lint findings</tspan></text>
+
+  <g id="real-pr" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+    <rect x="664" y="40" width="476" height="360" rx="14" fill="#13201b" stroke="#22352d"/>
+    <text x="692" y="80" font-size="18" fill="#8fa89a">whisper-gpu #4 · 2026-10-21</text>
+    <rect x="1022" y="60" width="92" height="28" rx="14" fill="#1a3d24" stroke="#2e6b3d"/>
+    <text x="1068" y="80" font-size="16" fill="#3fb950" text-anchor="middle">merged</text>
+    <text x="692" y="118" font-size="20" font-weight="600" fill="#e6efe9">fix: PLW1510 subprocess.run</text>
+    <text x="692" y="146" font-size="18" fill="#8fa89a">src/whisper_gpu/transcribe.py:94</text>
+    <g font-size="20">
+      <text x="692" y="186" fill="#8fa89a">&#160;&#160;out = subprocess.run(</text>
+      <text x="692" y="214" fill="#f85149">-&#160;&#160;&#160;&#160;…, timeout=10,</text>
+      <text x="692" y="242" fill="#3fb950">+&#160;&#160;&#160;&#160;…, timeout=10, check=False,</text>
+    </g>
+    <line x1="692" y1="264" x2="1112" y2="264" stroke="#22352d"/>
+    <g font-size="20" fill="#3fb950">
+      <text x="692" y="296">✓ <tspan fill="#b4c7bc">full test suite green</tspan></text>
+      <text x="692" y="324">✓ <tspan fill="#b4c7bc">changed line was covered</tspan></text>
+      <text x="692" y="352">✓ <tspan fill="#b4c7bc">no new lint findings</tspan></text>
+      <text x="692" y="380">✓ <tspan fill="#b4c7bc">reviewed by Opus</tspan></text>
+    </g>
   </g>
 </svg>

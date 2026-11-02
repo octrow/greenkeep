@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/assets/hero.svg" width="100%" alt="greenkeep: deterministic tools find problems, an LLM writes one patch per finding, merged only when the tests already covered every changed line"></p>
+<p align="center"><img src="docs/assets/hero.svg" width="100%" alt="greenkeep: tools find the problems, an LLM writes one patch per finding, the PR merges only when tests already covered every changed line. Shown: the real fix PR whisper-gpu #4 for ruff PLW1510 and the gate checks it passed"></p>
 
 [![test](https://github.com/octrow/greenkeep/actions/workflows/test.yml/badge.svg)](https://github.com/octrow/greenkeep/actions/workflows/test.yml)
 [![release](https://img.shields.io/github/v/release/octrow/greenkeep)](https://github.com/octrow/greenkeep/releases/latest)
@@ -54,6 +54,8 @@ The first week on the author's 19 tended repos (2026-10-15 to 2026-10-22), from 
 What it did not manage: 20 findings were parked after three attempts, 16 of them characterization tests (wrong guesses about behaviour, new lint, a reviewer rejection, tests put where the repo does not keep them). Writing good tests for untested code is the hardest job it has, and the one it fails most.
 
 ## How it works
+
+<p align="center"><img src="docs/assets/workflow.svg" width="100%" alt="Per finding: Find (pip-audit, ruff, coverage), Patch (Sonnet, one patch for one finding), Gate (suite green, lines covered, no new lint), Review (Opus reads the repo), Merge (plan issue, PR, squash merge). Rejected patches are retried; after 3 attempts the finding is parked as needs-human"></p>
 
 1. Clone: each repo you pass is cloned into `~/.cache/greenkeep`; your checkout is never touched. If its tests are red before greenkeep changes anything, the repo is skipped.
 2. Find: findings come from deterministic tools only: pip-audit (vulnerable dependencies), ruff (security, bug and pyflakes rules first), coverage (poorly tested modules), outdated dependencies and readiness checks. An opt-in bug hunt adds model-suspected bugs, each fixed test first.
