@@ -171,9 +171,11 @@ def occurs (p : List Tok) : Str → Bool
   | x :: xs => matchPrefix p (x :: xs) || occurs p xs
 
 -- silent (see the docstring below)
-/-- Silent in the map: the map lists the markers; case and the spaces around `:` come from the code. -/
+/-- Silent in the map: the map lists the markers; case and the spaces around `:` come from the code,
+the colonless `pragma no cover` from coverage.py, which excludes a line for it too. -/
 def markers : List (List Tok) :=
-  ["noqa", "ruff~:", "type:~ignore", "pylint:~disable", "pragma: no cover"].map (pat ·.toList)
+  ["noqa", "ruff~:", "type:~ignore", "pylint:~disable", "pragma:~no~cover", "pragma~no~cover"].map
+    (pat ·.toList)
 
 def hasMarker (t : Str) : Bool := markers.any (occurs · t)
 

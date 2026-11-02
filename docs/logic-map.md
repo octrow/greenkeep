@@ -289,6 +289,9 @@ Checks in order:
 4. no ruff finding whose fingerprint was not in the baseline (boost rules included; a file the change adds gets the repo's own rules only);
 5. full suite green (`uv run`; a dependency kind runs `uv sync --all-extras --all-packages` after `uv lock`, or `uv run` would keep a package only an extra needs at its old version), not "no tests" where the baseline had tests;
 6. untested → module coverage grew.
+Reading `git diff -U0` (`gate`): a line ends only at `\n`; `---`/`+++` are headers only before a file's first `@@` (inside a hunk `+++x` is an added line); a hunk belongs to the new path, a deleted file's to its old one (`--- a/`); the tab git appends to a path with a space is dropped.
+Covered (2): a changed line is a baseline line a hunk replaces, a pure insertion counts the line it lands after; it is covered when the statements at or before it and at or after it both ran in the baseline (coverage lists only a statement's first line); a file the baseline did not measure fails whole. Test files are exempt, the suite checks them: a folder `tests`, `test`, `tests_*`, `tests-*`, `*_tests` or `*-tests`, a `test_*` name or `conftest.py` (`pkg/x_test.py` is not one).
+Markers (3): any case, any spaces around `:`; `pragma no cover` and `pragma:nocover` count too, coverage.py excludes a line for them.
 Fails: `GateFailure` with the reason (an attempt).
 Module: `run`, `gate`, `kinds`, `workspace`
 Proved: `lean/Spec/Gate` (6 theorems: changed lines covered, suppression markers, test files), checked against `gate` by `tests/test_spec_oracle.py`.
@@ -375,4 +378,4 @@ Module: `ui`, `port`
 
 ## Known gaps
 
-Open: L1–L7 from the Lean check of step 19 «Gate» (`PLAN.md`, section «Lean: шаг 19 Gate»). Earlier findings are fixed or decided (#6, the hunt during a boost, stays as is).
+None open. The Lean check of step 19 «Gate» (L1–L7) is fixed; earlier findings are fixed or decided (#6, the hunt during a boost, stays as is).

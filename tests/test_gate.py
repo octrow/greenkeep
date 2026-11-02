@@ -76,5 +76,5 @@ def test_line_is_covered_uses_enclosing_and_next_statement():
 
 
 def test_suppressions_catch_noqa_and_friends():
-    diff = "+++ b/a.py\n+import os  # noqa: F401\n+x = 1\n-y  # noqa\n+# ruff: noqa\n"
+    diff = "--- a/a.py\n+++ b/a.py\n@@ -1 +1,3 @@\n-y  # noqa\n+import os  # noqa: F401\n+x = 1\n+# ruff: noqa\n"
     assert suppressions(diff) == ["import os  # noqa: F401", "# ruff: noqa"]

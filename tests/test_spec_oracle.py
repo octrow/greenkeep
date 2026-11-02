@@ -5,13 +5,12 @@ git appends to a path with a space, `,1` counts left out), so a disagreement is 
 can meet.
 """
 
-import re
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
-from hypothesis import event, given, settings
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from greenkeep.gate import coverage_violations, is_test_path, suppressions
@@ -41,7 +40,7 @@ NAMES = ["x.py", "y.py", "test_x.py", "conftest.py", "a b.py", "tests.py", "x_te
 PIECES = [
     "x", "y = 1", " ", "\tx", "\x0c", "\x1c", "#", "+", "++ b/", "z.py", "-", "@@", ":",
     "noqa", "NoQA", "type:", "type: ignore", " ignore", "ruff", "pylint:", " disable",
-    "pragma: no cover", "pragma no cover", "PRAGMA: NO COVER",
+    "pragma: no cover", "pragma no cover", "pragma:nocover", "PRAGMA: NO COVER",
 ]  # fmt: skip
 
 paths = st.builds(
@@ -171,114 +170,11 @@ def model_violations(oracle, diff: str, cov: dict) -> list[str]:
     return sorted(out)  # the model lists per hunk; the code merges a file's lines into a set
 
 
-# Known findings (map mode: the code stays as it is; PLAN.md, section «Lean: шаг 19», L1–L4). Each mask accepts a
-# disagreement only when the code equals the model on the input as the code reads it.
-PY_ONLY_BREAKS = (
-    "\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029\r"  # str.splitlines() ends a line there, git does not
-)
-
-
-def _as_python_splits(diff: str) -> str:
-    return "".join("\n" if c in PY_ONLY_BREAKS else c for c in diff)
-
-
-KEPT = "\x01"  # the tab the code keeps in a path; the model drops a final tab, keeps this
-
-
-FINDING_A = "#L1 splitlines() breaks a diff line at a form feed: a marker or a header escapes"
-FINDING_B = (
-    "#L2 the tab git appends to a path with a space stays in it: never measured, never a test"
-)
-FINDING_C = "#L3 an added line starting with ++ is read as a +++ header: skipped, or a new file"
-FINDING_D = "#L4 a deleted file's lines go to the file before it, or nowhere when it comes first"
-
-
-def _spoofs(diff: str) -> list[int]:
-    """Indexes of added lines whose text starts with `++`: they read `+++` inside a hunk."""
-    hits, in_hunk = [], False
-    for i, ln in enumerate(diff.split("\n")):
-        if ln.startswith("diff --git "):
-            in_hunk = False
-        elif ln.startswith("@@ "):
-            in_hunk = True
-        elif in_hunk and ln.startswith("+++"):
-            hits.append(i)
-    return hits
-
-
-def _suppression_reading(diff: str) -> tuple[str, list[str]]:
-    """The diff as `suppressions` reads it, and the known findings that make it differ."""
-    names = []
-    if any(c in diff for c in PY_ONLY_BREAKS):
-        diff, names = _as_python_splits(diff), [FINDING_A]
-    if spoofs := _spoofs(diff):
-        lines = diff.split("\n")
-        diff = "\n".join(ln for i, ln in enumerate(lines) if i not in spoofs)
-        names.append(FINDING_C)
-    return diff, names
-
-
-def _coverage_reading(diff: str, cov: dict) -> tuple[str, dict, list[str], list[str]]:
-    """The diff and coverage as `coverage_violations` reads them, the findings involved, and the
-    files the code makes up from a spoofed header (it lists a file even with no hunk after it)."""
-    names, phantoms = [], []
-    if any(c in diff for c in PY_ONLY_BREAKS):
-        diff, names = _as_python_splits(diff), [FINDING_A]
-    if spoofs := _spoofs(diff):
-        lines = diff.split("\n")
-        for i in spoofs:
-            if m := re.match(r"^\+\+\+ b/(.+)$", lines[i]):
-                lines[i] = f"diff --git a/{m[1]} b/{m[1]}\n{lines[i]}"
-                names.append(FINDING_C)
-                phantoms.append(m[1])
-        diff = "\n".join(lines)
-    if "+++ /dev/null\n" in diff:
-        diff, names = _deleted_as_code_reads(diff), [*names, FINDING_D]
-    if "\t\n" in diff:  # the code keeps the tab: give the model a path char it keeps too
-        diff = re.sub(r"^((?:---|\+\+\+) [ab]/.*)\t$", "\\1" + KEPT, diff, flags=re.MULTILINE)
-        names.append(FINDING_B)
-    return diff, cov, names, phantoms
-
-
-def _deleted_as_code_reads(diff: str) -> str:
-    """A deleted file's `--- a/P` pointed at the file the code still has open (or /dev/null)."""
-    lines, current = diff.split("\n"), None
-    for i, ln in enumerate(lines):
-        if m := re.match(r"^\+\+\+ b/(.+)$", ln):
-            current = m[1]
-        elif ln == "+++ /dev/null" and lines[i - 1].startswith("--- a/"):
-            lines[i - 1] = f"--- a/{current}" if current else "--- /dev/null"
-    return "\n".join(lines)
-
-
-def known_suppression_finding(oracle, diff, code) -> str | None:
-    seen, names = _suppression_reading(diff)
-    return " + ".join(names) if names and code == model_suppressions(oracle, seen) else None
-
-
-def known_coverage_finding(oracle, diff, cov, code) -> str | None:
-    seen, seen_cov, names, phantoms = _coverage_reading(diff, cov)
-    if FINDING_B in names:  # only a path's final tab, the one git appended
-        code = [re.sub(r"\t( \(not measured\)|:\d+)$", KEPT + r"\1", c) for c in code]
-    code = sorted(code)
-    model = set(model_violations(oracle, seen, seen_cov))
-    model |= {
-        f"{p} (not measured)"
-        for p in phantoms
-        if p not in seen_cov["files"] and ask(oracle, "T", _codes(p)) == [0]
-    }
-    return " + ".join(names) if names and code == sorted(model) else None
-
-
 @settings(max_examples=500)
 @given(d=diffs())
 def test_suppressions_match_model(oracle, d):
     diff, _ = d
-    code, model = suppressions(diff), model_suppressions(oracle, diff)
-    if code != model:
-        name = known_suppression_finding(oracle, diff, code)
-        assert name, f"new disagreement: code {code}, model {model}"
-        event(name)
+    assert suppressions(diff) == model_suppressions(oracle, diff)
 
 
 @settings(max_examples=500)
@@ -288,11 +184,7 @@ def test_coverage_violations_match_model(oracle, data):
     cov = data.draw(coverage(ps))
     code = coverage_violations(diff, cov)
     assert len(set(code)) == len(code)
-    model = model_violations(oracle, diff, cov)
-    if sorted(code) != model:
-        name = known_coverage_finding(oracle, diff, cov, code)
-        assert name, f"new disagreement: code {sorted(code)}, model {model}"
-        event(name)
+    assert sorted(code) == model_violations(oracle, diff, cov)
 
 
 @settings(max_examples=300)
@@ -301,8 +193,8 @@ def test_is_test_path_matches_model(oracle, path):
     assert is_test_path(path) == (ask(oracle, "T", _codes(path)) == [1])
 
 
-# Pinned counterexamples, one per finding, re-minimised by hand into realistic diffs. Strict xfail:
-# when the code is fixed the pin passes, the xfail fails, and the pin and its mask go together.
+# Counterexamples the model found (PLAN.md, «Lean: шаг 19 Gate», L1–L4, L6), re-minimised by hand into
+# realistic diffs: each one broke the code before its fix.
 COV_A_B = {"files": {"src/a b.py": {"executed_lines": [1, 2, 3], "missing_lines": []}}}
 COV_SRC = {
     "files": {
@@ -324,29 +216,30 @@ PINS = {
 }
 
 
-@pytest.mark.xfail(strict=True, reason=FINDING_A)
 def test_pin_a_form_feed_hides_noqa(oracle):
     assert suppressions(PINS["A"]) == model_suppressions(oracle, PINS["A"])
 
 
-@pytest.mark.xfail(strict=True, reason=FINDING_B)
 def test_pin_b_path_with_space_never_measured(oracle):
     code = coverage_violations(PINS["B"], COV_A_B)
     assert sorted(code) == model_violations(oracle, PINS["B"], COV_A_B)
 
 
-@pytest.mark.xfail(strict=True, reason=FINDING_C)
 def test_pin_c_added_header_line_moves_later_hunks_to_a_test_file(oracle):
     code = coverage_violations(PINS["C"], COV_SRC)
     assert sorted(code) == model_violations(oracle, PINS["C"], COV_SRC)
 
 
-@pytest.mark.xfail(strict=True, reason=FINDING_C)
 def test_pin_c_added_line_starting_with_plus_plus_hides_noqa(oracle):
     assert suppressions(PINS["C2"]) == model_suppressions(oracle, PINS["C2"])
 
 
-@pytest.mark.xfail(strict=True, reason=FINDING_D)
 def test_pin_d_deleted_uncovered_file_passes(oracle):
     code = coverage_violations(PINS["D"], COV_SRC)
     assert sorted(code) == model_violations(oracle, PINS["D"], COV_SRC)
+
+
+@pytest.mark.parametrize("marker", ["# pragma no cover", "#pragma:nocover", "# PRAGMA NO COVER"])
+def test_pin_l6_coverage_py_spellings_of_no_cover_are_suppressions(oracle, marker):
+    diff = f"diff --git a/src/a.py b/src/a.py\n--- a/src/a.py\n+++ b/src/a.py\n@@ -2 +2 @@\n-x = 1\n+x = 1  {marker}\n"
+    assert suppressions(diff) == model_suppressions(oracle, diff) == [f"x = 1  {marker}"]

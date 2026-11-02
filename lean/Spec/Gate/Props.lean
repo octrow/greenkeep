@@ -52,7 +52,7 @@ theorem map_marker_caught (m pre post : Str) (hm : m ∈ mapMarkers) :
   rcases hm with rfl | rfl | rfl | rfl | rfl
   · exact marker_hit "noqa".toList _ pre (by simp [markers]) (by simp [pat, matchPrefix]; try simp [isSpace])
   · exact marker_hit "type:~ignore".toList _ pre (by simp [markers]) (by simp [pat, matchPrefix]; try simp [isSpace])
-  · exact marker_hit "pragma: no cover".toList _ pre (by simp [markers]) (by simp [pat, matchPrefix]; try simp [isSpace])
+  · exact marker_hit "pragma:~no~cover".toList _ pre (by simp [markers]) (by simp [pat, matchPrefix]; try simp [isSpace])
   · exact marker_hit "ruff~:".toList _ pre (by simp [markers]) (by simp [pat, matchPrefix]; try simp [isSpace])
   · exact marker_hit "pylint:~disable".toList _ pre (by simp [markers]) (by simp [pat, matchPrefix]; try simp [isSpace])
 

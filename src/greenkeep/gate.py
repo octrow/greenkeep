@@ -6,7 +6,6 @@ import re
 from pathlib import PurePosixPath
 
 HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+\d+(?:,\d+)? @@")
-FILE = re.compile(r"^\+\+\+ b/(.+)$")
 
 
 def _test_dir(name: str) -> bool:
@@ -27,20 +26,49 @@ def is_test_path(path: str) -> bool:
     )
 
 
-def changed_old_lines(diff: str) -> dict[str, set[int]]:
-    """Baseline line numbers each hunk of a `git diff -U0` touches.
+def _header_path(side: str, rest: str) -> str | None:
+    """`a/P` or `b/P` → P without the tab git appends to a path with a space; `/dev/null` → None."""
+    if not rest.startswith(f"{side}/"):
+        return None
+    path = rest[2:]
+    return path.removesuffix("\t")
 
-    A pure insertion (`-N,0`) touches the line it lands after: if that line was never
-    executed, the new code sits in an untested spot too.
+
+def _parse(diff: str) -> tuple[list[tuple[str, set[int]]], list[str]]:
+    """(path, baseline lines) per hunk of a `git diff -U0`, and the added lines without their `+`.
+
+    git ends a diff line only at `\n`. `---`/`+++` are headers only before a file's first hunk
+    (inside one, `+++x` is an added line `++x`). A hunk belongs to the new path, or for a deleted
+    file (`+++ /dev/null`) to the old one. A pure insertion (`-N,0`) touches the line it lands
+    after: if that line was never executed, the new code sits in an untested spot too.
     """
+    hunks: list[tuple[str, set[int]]] = []
+    added: list[str] = []
+    in_hunk, old, new = False, None, None
+    for line in diff.split("\n"):
+        if line.startswith("diff --git "):
+            in_hunk, old, new = False, None, None
+        elif m := HUNK.match(line):
+            in_hunk = True
+            path = new if new is not None else old
+            if path is not None:
+                start, count = int(m.group(1)), int(m.group(2) or 1)
+                hunks.append((path, set(range(start, start + count)) if count else {max(start, 1)}))
+        elif in_hunk:
+            if line.startswith("+"):
+                added.append(line[1:])
+        elif line.startswith("--- "):
+            old = _header_path("a", line[4:])
+        elif line.startswith("+++ "):
+            new = _header_path("b", line[4:])
+    return hunks, added
+
+
+def changed_old_lines(diff: str) -> dict[str, set[int]]:
+    """Baseline line numbers each file's hunks touch."""
     out: dict[str, set[int]] = {}
-    current = None
-    for line in diff.splitlines():
-        if m := FILE.match(line):
-            current = out.setdefault(m.group(1), set())
-        elif (m := HUNK.match(line)) and current is not None:
-            start, count = int(m.group(1)), int(m.group(2) or 1)
-            current.update(range(start, start + count) if count else {max(start, 1)})
+    for path, lines in _parse(diff)[0]:
+        out.setdefault(path, set()).update(lines)
     return out
 
 
@@ -87,14 +115,12 @@ def coverage_violations(diff: str, baseline_cov: dict) -> list[str]:
 
 
 SUPPRESSION = re.compile(
-    r"noqa|ruff\s*:|type:\s*ignore|pylint:\s*disable|pragma:\s*no cover", re.IGNORECASE
+    # coverage.py's own exclusion also takes `pragma no cover` and `pragma:nocover`
+    r"noqa|ruff\s*:|type:\s*ignore|pylint:\s*disable|pragma:?\s*no\s*cover",
+    re.IGNORECASE,
 )
 
 
 def suppressions(diff: str) -> list[str]:
     """Added lines that silence a tool instead of fixing the code."""
-    return [
-        ln[1:].strip()
-        for ln in diff.splitlines()
-        if ln.startswith("+") and not ln.startswith("+++") and SUPPRESSION.search(ln)
-    ]
+    return [t.strip() for t in _parse(diff)[1] if SUPPRESSION.search(t)]
