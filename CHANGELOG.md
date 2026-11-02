@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.2.3 - 2026-11-02
+
+Docs and package metadata, no change in what a run does.
+
+- README: the old tail after License is merged into Usage (config, systemd timer, digest, pause, dashboard) and Status; the Russian README now has all of it.
+- The hero shows the real fix PR whisper-gpu#4 instead of a demo fix, and How it works opens with a diagram of the per-finding loop; both have Russian versions.
+- The package description matches the GitHub About line.
+
 ## 0.2.2 - 2026-11-01
 
 Code health, no change in what a run does.
