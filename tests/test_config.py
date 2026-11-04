@@ -93,3 +93,13 @@ def test_boost_until_without_an_offset_is_rejected(tmp_path):
     cfg.write_text('repos = ["octrow/a"]\nboost_until = 2026-10-30T03:00:00\n')
     with pytest.raises(ConfigError, match="boost_until"):
         load(cfg)
+
+
+def test_login_hours_are_whole_hours_within_one_week(tmp_path):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('repos = ["octrow/a"]\nlogin_hours = "Thu 21:00 - Fri 03:00"\n')
+    assert load(cfg).login_hours == ((3, 21), (4, 3))
+    for bad in ("Fri 03:00 - Thu 21:00", "Thu 21:30 - Fri 03:00", "Thu 25:00 - Fri 03:00"):
+        cfg.write_text(f'repos = ["octrow/a"]\nlogin_hours = "{bad}"\n')
+        with pytest.raises(ConfigError, match="login_hours"):
+            load(cfg)

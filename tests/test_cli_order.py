@@ -86,7 +86,9 @@ def test_a_boost_runs_again_on_a_day_already_done(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "_setup_logging", lambda: None)
     monkeypatch.setattr(cli, "_run_all", lambda *_: runs.append(1) or Digest())
     for boost in (False, True):
-        cfg = SimpleNamespace(repos=[], boosting=lambda _now, b=boost: b, budget_at=lambda _now: 3)
+        cfg = SimpleNamespace(
+            repos=[], boosting=lambda _now, b=boost: b, budget_at=lambda _now: 3, login_hours=None
+        )
         monkeypatch.setattr(cli, "load", lambda cfg=cfg: cfg)
         cli.main(["--push"])
     assert runs == [1]
@@ -135,7 +137,10 @@ def scheduled_main(
     monkeypatch.setattr(cli, "send", sent.append)
     monkeypatch.setattr(cli, "_setup_logging", lambda: None)
     cfg = SimpleNamespace(
-        repos=[Target("octrow/a")], boosting=lambda _now: False, budget_at=lambda _now: 3
+        repos=[Target("octrow/a")],
+        boosting=lambda _now: False,
+        budget_at=lambda _now: 3,
+        login_hours=None,
     )
     monkeypatch.setattr(cli, "load", load or (lambda: cfg))
     if run_all:

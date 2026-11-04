@@ -69,101 +69,31 @@ S3. Если повторится на других репо: в промпте 
 T1. Сделано: метка снята через `gh issue edit --remove-label`. При следующем ручном сбросе находки снимать её сразу.
 T2. Сделано: buy-smarter #29 закрыт вручную. `run.close_vanished` вне буста закрывает issue находки, которую видят только правила буста, со своим комментарием (`BOOST_ONLY_CLOSE`); находка остаётся в состоянии и в следующий буст получит новый issue. Тест: `test_issues_of_findings_no_longer_reported_are_closed`.
 
-### Эскалация вместо `needs-human` (план, 2026-11-04)
+### Эскалация вместо `needs-human` (план, 2026-11-04; пересмотрен 2026-11-05)
 
-Принцип (владелец, 2026-11-04): человек не вернётся проверять код. Всё, что сейчас уходит владельцу, получает сильного агента, ревью другим семейством моделей и автоматический финал: влито или закрыто с объяснением. Безопасность держат гейт и откат после merge, а не человек.
+Принцип (владелец, 2026-11-04): человек не вернётся проверять код. Финал без человека уже есть (E1, ADR-0004). Решение владельца 2026-11-05: «к чёрту второе мнение» — эскалация идёт на Opus 5.5 medium, без панели и без ревью другим вендором; сильные модели других вендоров (GLM-5.3, GPT-6.1 Sol, Gemini 4) не нужны.
 
-Что сейчас ждёт человека (сервер, 2026-11-04): 27 отложенных находок под `needs-human` (untested 15, outdated 5, ruff 2, ready 2, vuln 2, bug 1); красный baseline, в котором репо стоит целиком (tg-bot-template); Dependabot «left to the owner» (мажорные обновления: linux-coding 8, buy-smarter #33, olx #35, tlf #22); auto-pause после revert ждёт владельца (`reverts`). CI без минут (billing) агенту не решить, он остаётся строкой в дайджесте.
+Аккаунт (владелец, 2026-11-05, ADR-0005): Team-аккаунт — ТОЛЬКО с четверга 21:00 до пятницы 03:00 (Алматы), перед сбросом лимитов; остальное время весь greenkeep идёт на личный Pro через OmniRoute (`claude/<model>`). Конфиг: `login_hours = "Thu 21:00 - Fri 03:00"`.
 
 Лестница для находки, которая сгорела на обычном пути (Sonnet пишет, Opus ревьюит, 3 попытки):
-1. **Триаж** (панель, см. ниже, только чтение): по истории отказов решает, стоит ли находка работы. «Ложная или не стоит» (ревьюер: «уже покрыто», «не в стиле репо») → issue закрывается как won't-fix, находка `dismissed` до нового коммита в её файл. Иначе → шаг 2.
-2. **Агент** (первая доступная модель из `escalation_models`: GLM-5.3 → GPT-6.1 Sol medium → Gemini 4 → Opus 5.5 напрямую): Claude Code с Edit и Bash в одноразовом клоне, Bash только из allowlist (`uv run pytest`, `uv run ruff`, `git diff`), 30 мин. Получает историю отказов и сам гоняет тесты. Его дифф проходит тот же гейт без поблажек, плюс лимит размера дифа.
-3. **Ревью двумя семействами**: эскалированный дифф одобряют Opus (корректность, как сейчас) и панель на модели другого вендора через OmniRoute с закреплённым id (`codex/gpt-6-luna-high`, запасной `gemini/gemini-4-argon`). Модель одного семейства склонна соглашаться сама с собой; панель заменяет человека. Нет двух «да» → причины уходят агенту, ещё одна попытка (не больше 2).
-4. **Второй вендор-агент** (позже, если шаг 2 часто сгорает): `moonshot/kimi-k3.1-pro` или GPT-6 как агент через `omniroute run claude`.
-5. **Финал без человека**: не вышло → issue закрывается с резюме (что пробовали, почему отказ), метка `greenkeep-gave-up` вместо `needs-human`, находка `abandoned`. В работу она вернётся сама при новом коммите в её файл (как cool-down).
+1. **Агент**: Opus 5.5, effort medium, Claude Code с Edit и Bash в одноразовом клоне, Bash только из allowlist (`uv run pytest`, `uv run ruff`, `git diff`), таймаут. Получает историю отказов и сам гоняет тесты. Его дифф проходит тот же гейт и обычное ревью Opus без поблажек, плюс лимит размера дифа. Одна такая попытка на находку на один HEAD.
+2. **Финал без человека** (E1, сделано): не вышло → issue закрывается с причинами, метка `greenkeep-gave-up`, находка ждёт изменения своего файла.
 
-**Панель вместо человека** (владелец, 2026-11-04): один вызов, три линзы, собранные из скиллов `virtual-me` (dev-контекст), `virtual-rashid` (режим ревью) и `ponytail-review`. В промпт идут только правила суждения: без имён, цитат и рабочей переписки — greenkeep публичный, а данные `virtual-rashid` не покидают ноутбук. Каждая линза выносит вердикт; одно «нет» = отказ с причиной этой линзы. Черновик (на E1 уходит в `llm.py` как `PANEL_SYSTEM`):
-
-```text
-You stand in for the owner of a personal Python repository, who will never look at this
-change. Judge it through three lenses; each gives approve or reject with one-line reason.
-
-OWNER (would I keep this in my repo?)
-- The change does what the finding asks and nothing else: no drive-by edits, no new
-  dependency, no new config, no rename, no reformatting of untouched code.
-- It follows the repo's own conventions: where its tests live and how they are named,
-  the fixtures and helpers the repo already uses, its tools (uv, ruff, pytest).
-- Tests stay fast: no single new test over 30 s, no network, no real hardware.
-- If code can decide something deterministically, it must not be left to an LLM.
-- Reject if it reads like generated filler: comments restating code, asserts that
-  only prove the code ran.
-
-CTO (is it worth it, is it honest?)
-- What value does it bring to this repo now? "Coverage went up" alone is not value;
-  a test must pin behaviour someone relies on.
-- Check the claim by logic: does the diff really fix the finding, or hide it?
-- No silent failures: an error swallowed, a fallback that hides a fault, a default
-  that changes behaviour quietly - reject.
-- Safe by default: new behaviour off, nothing that changes how every caller works
-  unless the finding is exactly that.
-- Reject a mix: one change, one concern. Anything else is a separate finding.
-
-LEAN (does every added line need to exist?)
-- Reject on: an abstraction with one implementation, a parameter or option nobody
-  passes, a wrapper around one call, hand-rolled code the stdlib or an installed
-  dependency already provides, speculative handling of cases the finding never raised.
-- Note but do not reject: a shorter form of the same logic ("shrink").
-- One smoke test or assert-based check is the minimum, never bloat.
-
-Reply with JSON only:
-{"owner": {"approve": bool, "reason": str},
- "cto": {"approve": bool, "reason": str},
- "lean": {"approve": bool, "reason": str, "shrink": [str]}}
-```
-
-Для триажа тот же промпт с вопросом не «влить ли этот дифф», а «стоит ли эта находка ещё одной попытки» по истории отказов: OWNER — не противоречит ли она стилю репо, CTO — есть ли ценность и честна ли находка, LEAN — нужен ли этот код или тест вообще.
-
-Страховка без человека: после merge эскалированного изменения следующий прогон смотрит CI на main. Если main покраснел → детерминированный revert PR, находка `abandoned`. Лимиты: не больше 2 эскалаций за прогон, одна на находку на один sha файла.
+Страховка без человека: после merge эскалированного изменения следующий прогон смотрит CI на main. Если main покраснел → детерминированный revert PR, находка снова запаркована. Лимит: не больше 2 эскалаций за прогон.
 
 | # | Что | Серьёзность | Усилие | Статус |
 |---|---|---|---|---|
-| E0 | Сильные модели на сервере: ключ OmniRoute ✅; подключения GLM-5.3, GPT-6.1 Sol, Gemini 4 недоступны (см. ниже) | HIGH | владелец, дашборд OmniRoute | открыт |
-| E1 | ADR-0004 «нет человека в цикле» + финал (`greenkeep-gave-up`, закрытие issue с причинами, возврат в работу при новом коммите в файл). Убирает `needs-human` | HIGH | 2 ч | ✅ |
-| E2 | Триаж и панель + агент в Claude Code с Edit и Bash в клоне на сильной модели из `escalation_models` (переход к следующей при недоступности): allowlist, таймаут, лимит дифа, история отказов в промпте | HIGH | 4 ч | открыт |
-| E3 | Ревью двумя семействами для эскалированных диффов | HIGH | 2 ч | открыт |
-| E4 | Наблюдение за main после merge + автоматический revert; auto-pause снимается без владельца (после триажа revert или через 3 дня) | HIGH | 3 ч | открыт |
+| E0 | Модели на сервере: ключ OmniRoute (✅), `claude/` (личный Pro) проверен с инструментами: Sonnet 5 с, Opus 6 с | — | — | ✅ |
+| E0a | `login_hours`: Team только Thu 21:00 – Fri 03:00, иначе `claude/<model>` через OmniRoute (ADR-0005) | HIGH | 1 ч | ✅ |
+| E1 | ADR-0004 + финал (`greenkeep-gave-up`, закрытие issue с причинами, возврат при новом коммите в файл) | HIGH | 2 ч | ✅ |
+| E2 | Агент Opus 5.5 medium с Edit и Bash в клоне: allowlist, таймаут, лимит дифа, история отказов в промпте | HIGH | 3 ч | открыт |
+| E4 | Наблюдение за main после merge + автоматический revert; auto-pause снимается без владельца | HIGH | 3 ч | открыт |
 | E5 | Тот же агент для Dependabot-мажоров («left to the owner») и красного baseline (tg-bot-template) | MEDIUM | 3 ч | открыт |
-| E6 | Прогон по бэклогу: 27 отложенных → `open`, эскалация; замерить влито / закрыто / стоимость | MEDIUM | 1 ночь | открыт |
+| E6 | Прогон по бэклогу: отложенные → `open`, эскалация; замерить влито / сдались / расход | MEDIUM | 1 ночь | открыт |
 
-E0. Сделано (2026-11-05): владелец взял ключ chat-watch, он лежит в `oci-main:~/.config/greenkeep/env` как `OMNIROUTE_API_KEY` (файл 600). `/v1/models` → 200, 4937 моделей; id есть все: `codex/gpt-6-luna-high`, `gemini/gemini-4-argon`, `moonshot/kimi-k3.1-pro`, `cc/claude-opus-5-5`. Пробный вызов через claude-cli (`omniroute run claude`, `omniroute` есть в PATH сервиса через nvm): GPT-6 Luna — ответ за 9 с, модель назвала себя верно; Gemini 4 Argon — `UsageLimitError` дважды подряд (лимит подключения gemini на сервере); Kimi k3.1 pro — `claude-code:unrecognized_model`. Владелец (2026-11-05): Luna недостаточно умна; там, где greenkeep уже не справился, нужны сильнейшие модели: GLM-5.3, Gemini 4 Carbon, GPT-6.1 Sol (medium) и т. п. Проверка напрямую через HTTP API OmniRoute (без Claude Code), сервер, 2026-11-05:
-
-| Модель | id | Ответ OmniRoute | Кто чинит |
-|---|---|---|---|
-| GPT-6.1 Sol medium | `cxa/gpt-6.1-sol-medium` (и `cxa/gpt-6-sol-*`) | 503 `Codex app-server transport is not configured (missing url or token)` | владелец: подключение `cxa` в дашборде |
-| GLM-5.3 | `zai/glm-5.3*` | 402 `credits exhausted — please reconnect in the dashboard` | владелец: пополнить или переподключить `zai` |
-| GLM-5.3 | `cu/glm-5p3-high` | 502 `Cursor returned an empty turn (often usage/quota exhausted)` | квота Cursor |
-| Gemini 4 Argon | `gemini/gemini-4-argon` | 429 `All credentials … are cooling down` | ждать сброса |
-| Gemini 4 Carbon | — | id нет ни у одного провайдера | нет в каталоге OmniRoute |
-| GPT-6.1 Sol | `github/gpt-6.1-sol` | 400 `The requested model is not supported` | план Copilot его не включает |
-| GPT-6 Luna high | `codex/gpt-6-luna-high` | работает | — |
-
-`[claude-code:unrecognized_model]` в выводе `omniroute run claude` — только предупреждение Claude Code (обнаружение моделей через шлюз): после него запрос всё равно уходит, настоящая ошибка идёт следом. Платные роутеры (`openrouter/…`) не проверялись: это деньги, не подписка.
-
-Решение для E2/E3: модель агента — не одна, а упорядоченный список в конфиге (`escalation_models`, порядок владельца: GLM-5.3 → GPT-6.1 Sol medium → Gemini 4 → Opus 5.5 напрямую). Недоступная модель (лимит, кредиты, 4xx/5xx шлюза — это не вердикт об изменении) пропускается без счёта попытки, берётся следующая. Панель берёт первую доступную модель из того же списка, но другого семейства, чем агент.
-E1. Сделано: `github.give_up` ставит метку `greenkeep-gave-up` и закрывает issue с однострочной причиной каждой попытки этого прогона; `run.close_parked` закрывает старые открытые `needs-human` в следующем прогоне; `run.revive_parked` возвращает находку в `open` (attempts 0), если коммит изменил её файл после `parked_head`. `PARKED_TEST_DAYS` удалён. Дайджест: «Gave up» отдельно от «Needs you». Тесты в `tests/test_run_e2e.py`. ADR: `docs/adr/0004-no-human-in-the-loop.md`.
-
-Столкновение с ADR-0003 (решается в ADR-0004 на шаге E1):
-- «No triage step» запрещал триаж *каждой находки до работы*: он решал то же, что фильтр и гейт. Триаж здесь — после трёх отказов, по их истории, и решения фильтра он не дублирует. ADR-0004 называет это исключением.
-- «Calls go to claude -p directly, not through OmniRoute»: причины — combo подменяет модель, а платит неизвестный аккаунт. Второй ревьюер идёт через OmniRoute только с закреплённым id провайдера (не combo), и в логе виден ответивший провайдер. Claude-роли остаются прямыми.
-- «Changing a model is a benchmark»: на шаге E0 второго ревьюера проверяем на истории — его вердикты на влитых и отклонённых диффах из лога.
-
-Вопросы владельцу (рекомендация первой):
-- Q1. Второй ревьюер: `codex/gpt-6-luna-high` (подписка ChatGPT, сильный в коде); запасной `gemini/gemini-4-argon`.
-- Q1a. Панель — на модели второго вендора (одна модель на «корректность» и «вкус» дала бы одно семейство дважды).
-- Q2. Muse: не брать. `muse-spark-web` — веб-провайдер, для ночной автоматики ненадёжен.
-- Q3. Финал: закрывать issue с резюме; не создавать issues вовсе — запасной вариант.
-- Q4. Auto-pause после revert: снимать автоматически после триажа revert агентом.
-- Q5. Карта логики, CONTEXT.md (`needs-human`, Auto-pause) и `docs/logic-map*` меняются в коммите каждого шага.
+Отменено (владелец, 2026-11-05): триаж, панель из трёх линз (`virtual-me`, `virtual-rashid`, `ponytail`), ревью другим вендором (E3), цепочка `escalation_models`. Их текст и проверка моделей GLM-5.3 / GPT-6.1 Sol / Gemini 4 на сервере: `git show 373ba8f:PLAN.md`.
+E0a. Сделано: `config.login_hours`, `llm.on_login`; вне часов вызов идёт через `omniroute run claude` с `claude/<model>`. Без ключа в конфиге всё как раньше — прямой `claude -p`. Тесты: `tests/test_llm.py`, `tests/test_config.py`. На сервере: ключ в `config.toml` и `git pull` — после ночного прогона.
+E1. Сделано: `github.give_up`, `run.close_parked`, `run.revive_parked`; `PARKED_TEST_DAYS` удалён; дайджест «Gave up» отдельно от «Needs you». ADR: `docs/adr/0004-no-human-in-the-loop.md`.
 
 ## Закрыто
 

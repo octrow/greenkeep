@@ -13,6 +13,7 @@ from datetime import date, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from . import llm
 from .config import DEFAULT_BUDGET, PAUSE_FILE, Config, ConfigError, Target, load, pause, paused
 from .core import DEFAULT_MODEL, DEFAULT_REVIEW_MODEL, Options
 from .digest import Digest, send
@@ -146,6 +147,8 @@ def main(argv: list[str] | None = None) -> int:
         targets, budget = _targets(a)
     except ConfigError as exc:
         return _config_broken(exc, a.push, state, started)
+    if cfg := _config():
+        llm.LOGIN_HOURS = cfg.login_hours
     # a boost: the reviewer's model also plans each hard change before the patcher writes it
     planner = a.review_model if _boosting() else ""
     opts = Options(a.push, budget, a.model, a.keep, a.review_model, planner)

@@ -13,6 +13,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from claude_cli import ClaudeCliError, NotLoggedInError, UsageLimitError, run_claude
@@ -38,7 +39,25 @@ NO_ANSWER = re.compile(
     re.IGNORECASE,
 )
 
+# `login_hours` from the config: the weekly hours the Claude Code login pays, as
+# ((weekday, hour), (weekday, hour)); outside them OmniRoute's `claude` connection pays, the
+# `claude/` prefix pinning it (a bare id goes to a free combo). None: the login always pays.
+# ponytail: a module setting the CLI fills once; pass it down if a second caller appears
+LOGIN_HOURS: tuple[tuple[int, int], tuple[int, int]] | None = None
+VIA_OMNIROUTE = "claude/"
+
 log = logging.getLogger("greenkeep")
+
+
+def _now() -> datetime:
+    return datetime.now()  # the service's TZ: the owner's clock
+
+
+def on_login(now: datetime) -> bool:
+    if LOGIN_HOURS is None:
+        return True
+    start, end = LOGIN_HOURS
+    return start <= (now.weekday(), now.hour) < end
 
 
 def unavailable(exc: Exception) -> bool:
@@ -54,18 +73,18 @@ def unavailable(exc: Exception) -> bool:
 def _claude(prompt: str, model: str, effort: str, root: Path, timeout: int):
     """One read-only Claude Code call in the clone; its duration goes to the log."""
     start = time.monotonic()
+    login = on_login(_now())
     try:
-        # direct: the local Claude Code login pays (the owner picks it with clauth)
         return run_claude(
             prompt,
-            model=model,
+            model=model if login else VIA_OMNIROUTE + model,
             effort=effort,
             tools=READ_TOOLS,
             cwd=root,
             backend="cli",
             timeout=timeout,
             setting_sources=SETTING_SOURCES,
-            direct=True,
+            direct=login,
         )
     finally:
         log.debug("  %s (%s) took %.0fs", model, effort, time.monotonic() - start)

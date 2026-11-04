@@ -55,6 +55,13 @@ class Target:
         return None if self.path else f"https://github.com/{self.spec}.git"
 
 
+WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+LOGIN_HOURS = re.compile(
+    r"(mon|tue|wed|thu|fri|sat|sun) (\d{1,2}):00 - (mon|tue|wed|thu|fri|sat|sun) (\d{1,2}):00"
+)
+LAST_HOUR = 23
+
+
 @dataclass(frozen=True)
 class Config:
     repos: list[Target]
@@ -62,6 +69,7 @@ class Config:
     weekend_budget: int = DEFAULT_WEEKEND_BUDGET
     boost_until: datetime | None = None  # the owner spends more of the subscription until then
     boost_budget: int = DEFAULT_BOOST_BUDGET
+    login_hours: tuple[tuple[int, int], tuple[int, int]] | None = None
 
     def budget_on(self, day: date) -> int:
         return self.weekend_budget if day.weekday() >= SATURDAY else self.budget
@@ -84,6 +92,7 @@ def load(path: Path = CONFIG_FILE) -> Config:
         int(data.get("weekend_budget", DEFAULT_WEEKEND_BUDGET)),
         _boost_until(data, path),
         int(data.get("boost_budget", DEFAULT_BOOST_BUDGET)),
+        _login_hours(data, path),
     )
 
 
@@ -116,6 +125,20 @@ def _focus(data: dict, path: Path, repos: list[str]) -> list[str]:
     if stray := sorted(set(focus) - set(repos)):
         raise ConfigError(f"{path}: focus entries not in `repos`: {', '.join(stray)}")
     return focus
+
+
+def _login_hours(data: dict, path: Path) -> tuple[tuple[int, int], tuple[int, int]] | None:
+    """`"Thu 21:00 - Fri 03:00"` -> ((3, 21), (4, 3)): whole hours within one week."""
+    text = data.get("login_hours")
+    if text is None:
+        return None
+    m = LOGIN_HOURS.fullmatch(str(text).strip().lower())
+    span = m and ((WEEKDAYS.index(m[1]), int(m[2])), (WEEKDAYS.index(m[3]), int(m[4])))
+    if not span or not span[0] < span[1] or max(span[0][1], span[1][1]) > LAST_HOUR:
+        raise ConfigError(
+            f'{path}: `login_hours` must be whole hours within one week, like "Thu 21:00 - Fri 03:00"'
+        )
+    return span
 
 
 def _boost_until(data: dict, path: Path) -> datetime | None:

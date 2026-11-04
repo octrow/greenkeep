@@ -96,7 +96,7 @@ Dry run: an in-memory state, so it starts with no merges, attempts, cool-downs, 
 It still spends the subscription (patcher, planner, review, hunt), sweeps old clones, clones and syncs, calls PyPI, pip-audit and `gh pr list`, and writes the shared log.
 
 `--model` (default `claude-sonnet-5-5`) writes patches, README and description text, and hunts; `--review-model` (default `claude-opus-5-5`) reviews, doubts hunt claims and, in a boost, plans.
-Every Claude call is `claude -p` direct (no OmniRoute), read-only tools `Read,Grep,Glob`, no user settings: the account Claude Code is logged in to pays.
+Every Claude call is `claude -p`, read-only tools `Read,Grep,Glob`, no user settings. Without `login_hours` in the config, or inside them (local time, whole hours within one week), it is direct and the account Claude Code is logged in to pays; outside them it goes through `omniroute run claude` with the model as `claude/<model>`, so OmniRoute's `claude` connection pays (`llm.on_login`).
 
 Module: `cli`, `ui`, `config`
 

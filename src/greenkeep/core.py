@@ -12,9 +12,9 @@ from .workspace import TestRun, Workspace, ruff_json
 # pinned models, not combos: a combo answers with a different model from run to run.
 # Benchmark 2026-10-15: opus = sonnet > grok-4.7 as patcher; sonnet writes, opus reviews.
 # Both run on Claude Code (claude -p): the reviewer reads the repo with tools.
-# Called directly, not through OmniRoute: the account Claude Code is logged in to pays, so a
-# bare id is that model (through OmniRoute a bare `claude-sonnet-*` went to a free combo, and
-# `claude/...` to whichever account OmniRoute holds, not the owner's chosen one).
+# Called directly by default: the account Claude Code is logged in to pays, so a bare id is
+# that model. Outside the config's `login_hours` it goes through OmniRoute as `claude/<id>`,
+# pinned to its `claude` connection (a bare `claude-sonnet-*` there went to a free combo).
 DEFAULT_MODEL = "claude-sonnet-5-5"
 DEFAULT_REVIEW_MODEL = "claude-opus-5-5"
 

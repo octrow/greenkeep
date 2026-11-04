@@ -88,7 +88,7 @@ uv tool install git+https://github.com/octrow/greenkeep
 Ещё понадобятся:
 
 - git и [GitHub CLI](https://cli.github.com/) с выполненным `gh auth login` (только для `--push`);
-- [Claude Code](https://docs.claude.com/en/docs/claude-code) с выполненным входом, вызывается через [claude-subprocess](https://github.com/octrow/claude-cli) как обычный `claude -p`, так что платит аккаунт, под которым вошёл Claude Code. Оба работают прямо в клоне, только на чтение: Sonnet пишет патчи, Opus их проверяет.
+- [Claude Code](https://docs.claude.com/en/docs/claude-code) с выполненным входом, вызывается через [claude-subprocess](https://github.com/octrow/claude-cli) как обычный `claude -p`, так что платит аккаунт, под которым вошёл Claude Code (а вне `login_hours` — подключение `claude/` в OmniRoute). Оба работают прямо в клоне, только на чтение: Sonnet пишет патчи, Opus их проверяет.
 
 ## Использование
 
@@ -119,6 +119,9 @@ boost_until = 2026-10-30T03:00:00+05:00  # optional: until then, a run every hou
 boost_budget = 15                        # and this budget; every repo bug-hunts and lints
                                          # for complexity, SIM, PERF, UP and RUF too
                                          # and Opus plans each hard change before Sonnet writes it
+login_hours = "Thu 21:00 - Fri 03:00"  # optional: the Claude Code login pays only then;
+                                       # outside them calls go through OmniRoute's `claude/`
+                                       # connection (needs omniroute and OMNIROUTE_API_KEY)
 repos = [
   "~/dev/my-repo",
   "owner/name-without-local-checkout",
