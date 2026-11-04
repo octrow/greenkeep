@@ -77,7 +77,7 @@ T2. Сделано: buy-smarter #29 закрыт вручную. `run.close_vani
 
 Лестница для находки, которая сгорела на обычном пути (Sonnet пишет, Opus ревьюит, 3 попытки):
 1. **Триаж** (панель, см. ниже, только чтение): по истории отказов решает, стоит ли находка работы. «Ложная или не стоит» (ревьюер: «уже покрыто», «не в стиле репо») → issue закрывается как won't-fix, находка `dismissed` до нового коммита в её файл. Иначе → шаг 2.
-2. **Агент** (Opus 5.5 напрямую, на Team-аккаунте, effort max): Claude Code с Edit и Bash в одноразовом клоне, Bash только из allowlist (`uv run pytest`, `uv run ruff`, `git diff`), 30 мин. Получает историю отказов и сам гоняет тесты. Его дифф проходит тот же гейт без поблажек, плюс лимит размера дифа.
+2. **Агент** (первая доступная модель из `escalation_models`: GLM-5.3 → GPT-6.1 Sol medium → Gemini 4 → Opus 5.5 напрямую): Claude Code с Edit и Bash в одноразовом клоне, Bash только из allowlist (`uv run pytest`, `uv run ruff`, `git diff`), 30 мин. Получает историю отказов и сам гоняет тесты. Его дифф проходит тот же гейт без поблажек, плюс лимит размера дифа.
 3. **Ревью двумя семействами**: эскалированный дифф одобряют Opus (корректность, как сейчас) и панель на модели другого вендора через OmniRoute с закреплённым id (`codex/gpt-6-luna-high`, запасной `gemini/gemini-4-argon`). Модель одного семейства склонна соглашаться сама с собой; панель заменяет человека. Нет двух «да» → причины уходят агенту, ещё одна попытка (не больше 2).
 4. **Второй вендор-агент** (позже, если шаг 2 часто сгорает): `moonshot/kimi-k3.1-pro` или GPT-6 как агент через `omniroute run claude`.
 5. **Финал без человека**: не вышло → issue закрывается с резюме (что пробовали, почему отказ), метка `greenkeep-gave-up` вместо `needs-human`, находка `abandoned`. В работу она вернётся сама при новом коммите в её файл (как cool-down).
@@ -127,15 +127,29 @@ Reply with JSON only:
 
 | # | Что | Серьёзность | Усилие | Статус |
 |---|---|---|---|---|
-| E0 | Модели на сервере: ключ OmniRoute для greenkeep, закреплённые id, пробный вызов каждой | — | 30 мин | ✅ |
+| E0 | Сильные модели на сервере: ключ OmniRoute ✅; подключения GLM-5.3, GPT-6.1 Sol, Gemini 4 недоступны (см. ниже) | HIGH | владелец, дашборд OmniRoute | открыт |
 | E1 | ADR-0004 «нет человека в цикле» + финал (`greenkeep-gave-up`, закрытие issue с причинами, возврат в работу при новом коммите в файл). Убирает `needs-human` | HIGH | 2 ч | ✅ |
-| E2 | Триаж и панель (перенесены из E1: без агента их вердикт ни на что не влияет) + агент Opus с Edit и Bash в клоне: allowlist, таймаут, лимит дифа, история отказов в промпте | HIGH | 4 ч | открыт |
+| E2 | Триаж и панель + агент в Claude Code с Edit и Bash в клоне на сильной модели из `escalation_models` (переход к следующей при недоступности): allowlist, таймаут, лимит дифа, история отказов в промпте | HIGH | 4 ч | открыт |
 | E3 | Ревью двумя семействами для эскалированных диффов | HIGH | 2 ч | открыт |
 | E4 | Наблюдение за main после merge + автоматический revert; auto-pause снимается без владельца (после триажа revert или через 3 дня) | HIGH | 3 ч | открыт |
 | E5 | Тот же агент для Dependabot-мажоров («left to the owner») и красного baseline (tg-bot-template) | MEDIUM | 3 ч | открыт |
 | E6 | Прогон по бэклогу: 27 отложенных → `open`, эскалация; замерить влито / закрыто / стоимость | MEDIUM | 1 ночь | открыт |
 
-E0. Сделано (2026-11-05): владелец взял ключ chat-watch, он лежит в `oci-main:~/.config/greenkeep/env` как `OMNIROUTE_API_KEY` (файл 600). `/v1/models` → 200, 4937 моделей; id есть все: `codex/gpt-6-luna-high`, `gemini/gemini-4-argon`, `moonshot/kimi-k3.1-pro`, `cc/claude-opus-5-5`. Пробный вызов через claude-cli (`omniroute run claude`, `omniroute` есть в PATH сервиса через nvm): GPT-6 Luna — ответ за 9 с, модель назвала себя верно; Gemini 4 Argon — `UsageLimitError` дважды подряд (лимит подключения gemini на сервере); Kimi k3.1 pro — `claude-code:unrecognized_model`. Итог: панель на `codex/gpt-6-luna-high`; запасная модель на E3 — Gemini, если лимит отпустит, иначе `cc/claude-opus-5-5` не подходит (то же семейство).
+E0. Сделано (2026-11-05): владелец взял ключ chat-watch, он лежит в `oci-main:~/.config/greenkeep/env` как `OMNIROUTE_API_KEY` (файл 600). `/v1/models` → 200, 4937 моделей; id есть все: `codex/gpt-6-luna-high`, `gemini/gemini-4-argon`, `moonshot/kimi-k3.1-pro`, `cc/claude-opus-5-5`. Пробный вызов через claude-cli (`omniroute run claude`, `omniroute` есть в PATH сервиса через nvm): GPT-6 Luna — ответ за 9 с, модель назвала себя верно; Gemini 4 Argon — `UsageLimitError` дважды подряд (лимит подключения gemini на сервере); Kimi k3.1 pro — `claude-code:unrecognized_model`. Владелец (2026-11-05): Luna недостаточно умна; там, где greenkeep уже не справился, нужны сильнейшие модели: GLM-5.3, Gemini 4 Carbon, GPT-6.1 Sol (medium) и т. п. Проверка напрямую через HTTP API OmniRoute (без Claude Code), сервер, 2026-11-05:
+
+| Модель | id | Ответ OmniRoute | Кто чинит |
+|---|---|---|---|
+| GPT-6.1 Sol medium | `cxa/gpt-6.1-sol-medium` (и `cxa/gpt-6-sol-*`) | 503 `Codex app-server transport is not configured (missing url or token)` | владелец: подключение `cxa` в дашборде |
+| GLM-5.3 | `zai/glm-5.3*` | 402 `credits exhausted — please reconnect in the dashboard` | владелец: пополнить или переподключить `zai` |
+| GLM-5.3 | `cu/glm-5p3-high` | 502 `Cursor returned an empty turn (often usage/quota exhausted)` | квота Cursor |
+| Gemini 4 Argon | `gemini/gemini-4-argon` | 429 `All credentials … are cooling down` | ждать сброса |
+| Gemini 4 Carbon | — | id нет ни у одного провайдера | нет в каталоге OmniRoute |
+| GPT-6.1 Sol | `github/gpt-6.1-sol` | 400 `The requested model is not supported` | план Copilot его не включает |
+| GPT-6 Luna high | `codex/gpt-6-luna-high` | работает | — |
+
+`[claude-code:unrecognized_model]` в выводе `omniroute run claude` — только предупреждение Claude Code (обнаружение моделей через шлюз): после него запрос всё равно уходит, настоящая ошибка идёт следом. Платные роутеры (`openrouter/…`) не проверялись: это деньги, не подписка.
+
+Решение для E2/E3: модель агента — не одна, а упорядоченный список в конфиге (`escalation_models`, порядок владельца: GLM-5.3 → GPT-6.1 Sol medium → Gemini 4 → Opus 5.5 напрямую). Недоступная модель (лимит, кредиты, 4xx/5xx шлюза — это не вердикт об изменении) пропускается без счёта попытки, берётся следующая. Панель берёт первую доступную модель из того же списка, но другого семейства, чем агент.
 E1. Сделано: `github.give_up` ставит метку `greenkeep-gave-up` и закрывает issue с однострочной причиной каждой попытки этого прогона; `run.close_parked` закрывает старые открытые `needs-human` в следующем прогоне; `run.revive_parked` возвращает находку в `open` (attempts 0), если коммит изменил её файл после `parked_head`. `PARKED_TEST_DAYS` удалён. Дайджест: «Gave up» отдельно от «Needs you». Тесты в `tests/test_run_e2e.py`. ADR: `docs/adr/0004-no-human-in-the-loop.md`.
 
 Столкновение с ADR-0003 (решается в ADR-0004 на шаге E1):
