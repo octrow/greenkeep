@@ -367,7 +367,8 @@ Branches:
 - push → Telegram if `GREENKEEP_TG_BOT_TOKEN`/`CHAT_ID` are set, else a desktop notification with the first line only; scheduled, not `limited`, and at least one repo cloned (or no repos) → mark `run` = the day the run started;
 - dry run → the log only.
 A run that cloned no repo (network down after boot or sleep) leaves the day open: the next hourly run tries again.
-Module: `digest`, `cli`, `state`
+Before the digest, a scheduled run with `backup` in the config writes state.db's SQL dump (`state.sql`) into that checkout, commits it if it changed and pushes; a git failure → problem line "state backup failed", the run is otherwise unaffected.
+Module: `digest`, `cli`, `state`, `backup`
 
 ### Output
 

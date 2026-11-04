@@ -13,14 +13,14 @@ from datetime import date, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from . import llm
+from . import backup, llm
 from .config import DEFAULT_BUDGET, PAUSE_FILE, Config, ConfigError, Target, load, paused
 from .core import DEFAULT_MODEL, DEFAULT_REVIEW_MODEL, Options
 from .digest import Digest, send
 from .llm import unavailable
 from .run import run_repo
 from .state import State
-from .workspace import sweep
+from .workspace import WorkspaceError, sweep
 
 log = logging.getLogger("greenkeep")
 
@@ -121,6 +121,14 @@ def _run_all(targets: list[Target], opts: Options, state: State) -> Digest:
     return digest
 
 
+def _backup(state: State, checkout: Path, digest: Digest) -> None:
+    try:
+        backup.save(state, checkout)
+    except (WorkspaceError, OSError) as exc:
+        log.warning("state backup failed: %s", exc)
+        digest.problems.append(f"state backup failed: {str(exc).splitlines()[0][:PROBLEM_CHARS]}")
+
+
 def main(argv: list[str] | None = None) -> int:
     a = _parse_args(argv)
     _setup_logging()
@@ -146,6 +154,8 @@ def main(argv: list[str] | None = None) -> int:
     planner = a.review_model if _boosting() else ""
     opts = Options(a.push, budget, a.model, a.keep, a.review_model, planner)
     digest = _run_all(targets, opts, state)
+    if scheduled and cfg and cfg.backup:
+        _backup(state, cfg.backup, digest)
     _report(digest, opts, state)
     if scheduled and _day_done(digest, targets):
         state.record_run(started)

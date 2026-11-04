@@ -87,7 +87,11 @@ def test_a_boost_runs_again_on_a_day_already_done(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "_run_all", lambda *_: runs.append(1) or Digest())
     for boost in (False, True):
         cfg = SimpleNamespace(
-            repos=[], boosting=lambda _now, b=boost: b, budget_at=lambda _now: 3, login_hours=None
+            repos=[],
+            boosting=lambda _now, b=boost: b,
+            budget_at=lambda _now: 3,
+            login_hours=None,
+            backup=None,
         )
         monkeypatch.setattr(cli, "load", lambda cfg=cfg: cfg)
         cli.main(["--push"])
@@ -127,7 +131,7 @@ def test_named_repos_without_a_config_get_the_default_budget(monkeypatch):
 
 
 def scheduled_main(
-    monkeypatch, tmp_path, sent: list[str], run_all=None, load=None
+    monkeypatch, tmp_path, sent: list[str], run_all=None, load=None, backup=None
 ) -> tuple[State, int]:
     """One scheduled `greenkeep --push` on a state.db in tmp_path (it persists between calls)."""
     state = State(tmp_path / "state.db")
@@ -141,6 +145,7 @@ def scheduled_main(
         boosting=lambda _now: False,
         budget_at=lambda _now: 3,
         login_hours=None,
+        backup=backup,
     )
     monkeypatch.setattr(cli, "load", load or (lambda: cfg))
     if run_all:
@@ -164,3 +169,17 @@ def test_a_broken_config_is_told_once_a_day(monkeypatch, tmp_path):
     codes = [scheduled_main(monkeypatch, tmp_path, sent, load=broken)[1] for _ in range(2)]
     assert codes == [1, 1]
     assert len(sent) == 1 and "repos: expected a list" in sent[0]
+
+
+def test_a_scheduled_run_backs_the_state_up_and_reports_a_failed_backup(monkeypatch, tmp_path):
+    saved, sent = [], []
+
+    def save(state, checkout):
+        saved.append(checkout)
+        raise cli.WorkspaceError("git push exit 128: no network")
+
+    monkeypatch.setattr(cli.backup, "save", save)
+    scheduled_main(
+        monkeypatch, tmp_path, sent, run_all=lambda *_: Digest(reached=1), backup=tmp_path
+    )
+    assert saved == [tmp_path] and "state backup failed: git push exit 128" in sent[0]

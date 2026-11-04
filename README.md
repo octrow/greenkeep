@@ -122,6 +122,9 @@ boost_budget = 15                        # and this budget; every repo bug-hunts
 login_hours = "Thu 21:00 - Fri 03:00"  # optional: the Claude Code login pays only then;
                                        # outside them calls go through OmniRoute's `claude/`
                                        # connection (needs omniroute and OMNIROUTE_API_KEY)
+backup = "~/greenkeep-state"  # optional: a checkout of a private repo; after each scheduled
+                              # run state.db's SQL dump is committed and pushed there.
+                              # Restore: sqlite3 ~/.local/share/greenkeep/state.db < state.sql
 repos = [
   "~/dev/my-repo",
   "owner/name-without-local-checkout",

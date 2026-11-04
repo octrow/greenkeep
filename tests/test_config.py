@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
@@ -103,3 +104,11 @@ def test_login_hours_are_whole_hours_within_one_week(tmp_path):
         cfg.write_text(f'repos = ["octrow/a"]\nlogin_hours = "{bad}"\n')
         with pytest.raises(ConfigError, match="login_hours"):
             load(cfg)
+
+
+def test_backup_names_a_local_checkout(tmp_path):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('repos = ["octrow/a"]\nbackup = "~/greenkeep-state"\n')
+    assert load(cfg).backup == Path.home() / "greenkeep-state"
+    cfg.write_text('repos = ["octrow/a"]\n')
+    assert load(cfg).backup is None

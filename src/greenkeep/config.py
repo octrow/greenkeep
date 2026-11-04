@@ -70,6 +70,7 @@ class Config:
     boost_until: datetime | None = None  # the owner spends more of the subscription until then
     boost_budget: int = DEFAULT_BOOST_BUDGET
     login_hours: tuple[tuple[int, int], tuple[int, int]] | None = None
+    backup: Path | None = None  # a git checkout the state's dump is pushed from
 
     def budget_on(self, day: date) -> int:
         return self.weekend_budget if day.weekday() >= SATURDAY else self.budget
@@ -93,6 +94,7 @@ def load(path: Path = CONFIG_FILE) -> Config:
         _boost_until(data, path),
         int(data.get("boost_budget", DEFAULT_BOOST_BUDGET)),
         _login_hours(data, path),
+        Path(data["backup"]).expanduser() if isinstance(data.get("backup"), str) else None,
     )
 
 
