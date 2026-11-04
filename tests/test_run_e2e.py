@@ -532,7 +532,7 @@ def test_issues_of_findings_no_longer_reported_are_closed(monkeypatch):
     state = run.State(Path(":memory:"))
     issues = {
         "ruff:F401:a.py:1": 1,  # the owner fixed it: closed
-        "ruff:C901:a.py:2": 2,  # a boost rule, still there outside the boost: kept
+        "ruff:C901:a.py:2": 2,  # a boost rule outside a boost: closed until the next boost
         "bug:a.py:3:x": 3,  # bugs never show up in a baseline: kept
         "untested:b.py": 4,  # covered now: closed
         "vuln:pillow:GHSA-1": 5,  # superseded by a newer advisory: closed
@@ -548,12 +548,18 @@ def test_issues_of_findings_no_longer_reported_are_closed(monkeypatch):
     boost_lint = [Finding("ruff", "C901", "a.py", 2, "m", "ruff:C901:a.py:2")]
     monkeypatch.setattr(run, "lint", lambda ws, *p: boost_lint if ws.extra_rules else [])
     closed = []
-    monkeypatch.setattr(github, "close_issue", lambda ws, n, why: closed.append(n) or True)
+    reasons = {}
+    monkeypatch.setattr(
+        github,
+        "close_issue",
+        lambda ws, n, why: closed.append(n) or reasons.update({n: why}) or True,
+    )
     ws = workspace.Workspace("demo", Path("."), Path("."))
     tests = workspace.TestRun(True, {"totals": {"percent_covered": 50.0}}, "")
     job = SimpleNamespace(ws=ws, state=state, base=run.Baseline(tests, frozenset(), current))
     run.close_vanished(job)
-    assert sorted(closed) == [1, 4, 5]
+    assert sorted(closed) == [1, 2, 4, 5]
+    assert "boost" in reasons[2] and "boost" not in reasons[1]
     assert state.open_issues("demo") and state.issue("demo", "ruff:F401:a.py:1") is None
 
 

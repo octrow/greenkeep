@@ -260,7 +260,7 @@ Module: `run`, `kinds`, `state`
 
 Decides: the public record for the finding.
 Branches: push and no issue in state → `gh issue create` with label `greenkeep`; else reuse; dry run → none.
-Closing (push, right after the baseline, before the cool-down filter): an open or parked finding with an issue that the baseline no longer reports, nor a lint with the boost rules → `gh issue close` with a comment, the issue is cleared in state. Kept: `bug:` (never in a baseline); `untested:` when coverage was not measured; `vuln:`/`outdated:` unless the same package has a newer finding (a failed pip-audit or PyPI call reports nothing). Otherwise the merged PR's "Closes #N" closes it.
+Closing (push, right after the baseline, before the cool-down filter): an open or parked finding with an issue that the baseline no longer reports → `gh issue close` with a comment, the issue is cleared in state. Outside a boost, a finding only the boost rules report (the repo's config does not select them) is closed too, with its own comment: it is not worked until the next boost; the finding stays in state and gets a new issue then. Kept: `bug:` (never in a baseline); `untested:` when coverage was not measured; `vuln:`/`outdated:` unless the same package has a newer finding (a failed pip-audit or PyPI call reports nothing). Otherwise the merged PR's "Closes #N" closes it.
 Then a parked `untested:` finding whose issue has waited over 14 days (`PARKED_TEST_DAYS`) → `gh issue close` with a comment, the issue is cleared, the finding stays parked: the `needs-human` backlog was two-thirds parked tests.
 Module: `run`, `github`, `state`
 

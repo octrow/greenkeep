@@ -39,6 +39,10 @@ log = logging.getLogger("greenkeep")
 
 MAX_FINDINGS_PER_REPO = 10
 MAX_PARKED_IN_A_ROW = 2
+BOOST_ONLY_CLOSE = (
+    "Only greenkeep's boost rules find this, and this repo's ruff config does not select "
+    "them; greenkeep works it only during a boost. Closing until then."
+)
 PARKED_TEST_DAYS = 14  # a parked test finding's issue is closed after this
 FEEDBACK_CHARS = 1500
 PYTEST_TOTALS = re.compile(
@@ -84,14 +88,21 @@ def close_vanished(job: Job) -> None:
     """Close the issues of findings the baseline no longer reports: the owner fixed the
     code, the line changed, or a newer advisory or release replaced the finding."""
     current = {f.fingerprint for f in job.base.findings}
-    # outside a boost its rules are not linted: their findings are still there
-    current |= {a.fingerprint for a in lint(replace(job.ws, extra_rules=BOOST_RULES))}
+    # outside a boost its rules are not linted and their findings are not worked: an issue
+    # for one would stay open until the next boost, so it is closed; the finding stays open
+    boosted = {a.fingerprint for a in lint(replace(job.ws, extra_rules=BOOST_RULES))} - current
     packages = {fp.rsplit(":", 1)[0] for fp in current}
     for fp, issue in job.state.open_issues(job.ws.name):
-        if fp in current or not _vanished(job, fp, packages):
+        if fp in current:
             continue
-        if github.close_issue(job.ws, issue, "greenkeep no longer finds this, closing."):
-            log.info("  closed issue #%d: %s no longer found", issue, fp)
+        if fp in boosted:
+            why = BOOST_ONLY_CLOSE
+        elif _vanished(job, fp, packages):
+            why = "greenkeep no longer finds this, closing."
+        else:
+            continue
+        if github.close_issue(job.ws, issue, why):
+            log.info("  closed issue #%d: %s", issue, fp)
             job.state.set(job.ws.name, fp, issue=None)
 
 
