@@ -26,6 +26,7 @@ GATE_NOTE = (
 )
 FAILURES = (GateFailure, WorkspaceError, ClaudeCliError, OSError, UnicodeError)
 OUTPUT_CHARS = 4000  # the end of the red run: the tracebacks and pytest's summary
+HEAL_TITLE = "fix: make the test suite green again"
 COUNTS = re.compile(r"(\d+) (passed|failed|errors?)\b")
 
 
@@ -44,15 +45,25 @@ def room(digest: Digest) -> bool:
 def _fix(ws: Workspace, f: Finding, before: TestRun, review_model: str) -> list[str]:
     """The agent changes the clone; the change is gated and reviewed. Its paths, or
     GateFailure."""
-    lint_before = frozenset(f.fingerprint for f in lint(ws))
+    lint_before = frozenset(found.fingerprint for found in lint(ws))
     reply = llm.agent(
         llm.agent_prompt(f, GATE_NOTE, [before.output[-OUTPUT_CHARS:]]), AGENT_MODEL, ws.root
     )
     ws.git("clean", "-fdxq", "--", *CACHES)
-    paths = ws.changed()
-    if not paths:
+    if not ws.changed():
         said = (reply.text.strip().splitlines() or ["no reason given"])[-1]
         raise GateFailure(f"the agent changed nothing: {said}")
+    paths = _check_change(ws, lint_before)
+    _check_suite(ws, before)
+    verdict = llm.review(f, ws.git("diff", "HEAD"), review_model, ws.root)
+    if not verdict.approve:
+        raise GateFailure(f"reviewer ({verdict.model}) rejected the change: {verdict.reason}")
+    return paths
+
+
+def _check_change(ws: Workspace, lint_before: frozenset[str]) -> list[str]:
+    """No suppression and no new lint; the changed paths."""
+    paths = ws.changed()
     if silenced := suppressions(ws.git("diff", "-U0", "HEAD")):
         raise GateFailure(f"the change silences tools instead of fixing code: {silenced}")
     py = [p for p in paths if p.endswith(".py") and (ws.root / p).is_file()]
@@ -61,16 +72,17 @@ def _fix(ws: Workspace, f: Finding, before: TestRun, review_model: str) -> list[
             "the change adds lint findings: "
             + "; ".join(f"{a.path}:{a.line} {a.rule} {a.message}" for a in new)
         )
+    return paths
+
+
+def _check_suite(ws: Workspace, before: TestRun) -> None:
+    """Green, and every test that ran before passes: none deleted, skipped or renamed away."""
     after = run_tests(ws)
     if not after.ok:
         raise GateFailure(f"test suite failed: {summary(after.output)}")
     passing, should = counts(after.output)[0], sum(counts(before.output))
-    if passing < should:  # a deleted, skipped or renamed-away test
+    if passing < should:
         raise GateFailure(f"{passing} tests pass, {should} should: {summary(after.output)}")
-    verdict = llm.review(f, ws.git("diff", "HEAD"), review_model, ws.root)
-    if not verdict.approve:
-        raise GateFailure(f"reviewer ({verdict.model}) rejected the change: {verdict.reason}")
-    return paths
 
 
 def _tried(ws: Workspace, exc: Exception, what: str) -> None:
@@ -100,23 +112,27 @@ def heal(ws: Workspace, tests: TestRun, opts: Options, state: State, digest: Dig
         paths = _fix(ws, f, tests, opts.review_model)
     except FAILURES as exc:
         _tried(ws, exc, "the red suite")
-        state.set_mark(key, head)
+        paths = []
+    state.set_mark(key, head)  # one try per commit
+    if not paths:
         return False
-    state.set_mark(key, head)
-    branch = f"greenkeep/heal-{head[:10]}"
-    ws.git("checkout", "-q", "-B", branch)
     ws.git("add", "--", *paths)
     body = (
         f"The suite was red on a clean clone of {ws.base_branch} at {head[:10]}: "
         f"{summary(tests.output)}.\nFixed by `{AGENT_MODEL}` (agent), reviewed by "
         f"`{opts.review_model}`.\nGate: {GATE_NOTE}"
     )
-    ws.git("commit", "-q", "-m", "fix: make the test suite green again", "-m", body, "-m", TRAILER)
-    pr = (
-        github.publish(ws, branch, "fix: make the test suite green again", body) if opts.push else 0
-    )
+    pr = _land(ws, opts, f"greenkeep/heal-{head[:10]}", body)
     digest.merged.append(f"{ws.name}: {f.title} (agent" + (f", PR #{pr})" if pr else ")"))
     return True
+
+
+def _land(ws: Workspace, opts: Options, branch: str, body: str) -> int:
+    """Commit what is staged onto `branch`; push mode publishes and merges it. The PR, or 0
+    in a dry run."""
+    ws.git("checkout", "-q", "-B", branch)
+    ws.git("commit", "-q", "-m", HEAL_TITLE, "-m", body, "-m", TRAILER)
+    return github.publish(ws, branch, HEAL_TITLE, body) if opts.push else 0
 
 
 def adapt(ws: Workspace, opts: Options, digest: Digest, pr: dict, tests: TestRun) -> str:
