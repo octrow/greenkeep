@@ -199,7 +199,7 @@ Module: `run`, `workspace`
 
 Решает: полный список проблем репо.
 Вход: клон, базовые тесты. Выход: `Baseline` (тесты, отпечатки lint, упорядоченные находки).
-В push сначала `gh label create greenkeep / needs-human --force` (падает, если origin не на GitHub).
+В push сначала `gh label create greenkeep / greenkeep-gave-up --force` (падает, если origin не на GitHub).
 Источники:
 - ruff JSON по конфигу репо (+ правила буста); отпечаток `ruff:<code>:<path>:<хэш текста строки>`, без номера строки; одинаковые строки файла получают `#1`, `#2`… по порядку строк, первая — простой отпечаток; последняя строка диапазона ruff сохраняется (`end_line`);
 - `untested`: модули < 50% покрытия с ≥ 5 операторов, если покрытие что-то измерило или тестов нет; тестовый код целью не бывает (`gate.is_test_path`: папка `tests`/`test` или её вариант вроде `tests_e2e`, `integration_tests`, файл `test_*.py`, `conftest.py`);
@@ -255,7 +255,9 @@ Module: `run`, `kinds`, `state`
 Решает: публичную запись о находке.
 Ветки: push и issue нет в состоянии → `gh issue create` с меткой `greenkeep`; иначе тот же; dry run → нет.
 Закрытие (push, сразу после baseline, до фильтра cool-down): открытая или запаркованная находка с issue, которой больше нет в baseline → `gh issue close` с комментарием, issue стирается из состояния. Вне буста закрывается и находка, которую видят только правила буста (конфиг репо их не выбирает), со своим комментарием: до следующего буста её не берут; находка остаётся в состоянии и тогда получит новый issue. Не закрываются: `bug:` (в baseline их не бывает); `untested:`, если покрытие не измерено; `vuln:`/`outdated:`, пока у того же пакета нет новой находки (упавший pip-audit или PyPI не находит ничего). Иначе issue закрывает «Closes #N» смёрженного PR.
-Затем запаркованная находка `untested:`, чей issue ждёт дольше 14 дней (`PARKED_TEST_DAYS`) → `gh issue close` с комментарием, issue стирается, находка остаётся запаркованной: две трети бэклога `needs-human` были запаркованными тестами.
+Затем запаркованная находка, чей issue всё ещё открыт (запаркована до ADR 0004 или закрытие не удалось) → метка `greenkeep-gave-up`, `gh issue close` с комментарием, issue стирается, находка остаётся запаркованной (`close_parked`).
+
+До закрытия (push и dry run): запаркованная находка, которую baseline всё ещё сообщает и чей файл коммит изменил после HEAD парковки (`git diff --quiet <parked_head> HEAD -- <path>` выходит с 1) → статус `open`, attempts 0 (`revive_parked`). Находке, запаркованной до того, как HEAD стали хранить, ставится сегодняшний HEAD. HEAD, которого нет в клоне (выход 128) → остаётся запаркованной.
 Module: `run`, `github`, `state`
 
 ### 18. Изменение
@@ -315,7 +317,7 @@ Module: `run`, `github`, `state`
 - Claude недоступен (`llm.unavailable`: `UsageLimitError`, `NotLoggedInError` или ошибка Claude с 5xx API, перегрузкой или сбоем соединения) → не считается, наверх (шаг 24);
 - прочие ошибки Claude (таймаут, 4xx API вроде «prompt is too long», нечитаемый ответ) → считаются как плохое изменение;
 - засчитано: attempts + 1, следующая попытка сразу; виды зависимостей паркуются сразу (`retries = False`); остальные на 3-й;
-- запаркована → «Needs you» в дайджесте, комментарий в issue с одной строкой причины, метка `needs-human`;
+- запаркована → «Gave up» в дайджесте, HEAD сохраняется в `parked_head`, issue получает метку `greenkeep-gave-up` и закрывается с однострочными причинами этого прогона, issue стирается из состояния;
 - таймаут → засчитан, находка до следующего прогона, дальше следующий кандидат;
 - 2 парковки в этом репо за этот прогон → cool-down 7 дней (шаг 7), находок больше нет; Dependabot всё равно идёт.
 Module: `run`, `state`, `github`
@@ -346,7 +348,7 @@ Module: `cli`, `run`, `reverts`
 ### 25. Дайджест
 
 Решает: что услышит владелец и считается ли день сделанным.
-Текст: счётчики, Merged (свои и Dependabot), Needs you (парковки + заметки владельцу), Problems (и одна строка с репо, где GitHub не запустил CI из-за billing), Quiet (чистые, ждут бюджет, в cool-down), остаток бюджета.
+Текст: счётчики, Merged (свои и Dependabot), Gave up (парковки), Needs you (заметки владельцу), Problems (и одна строка с репо, где GitHub не запустил CI из-за billing), Quiet (чистые, ждут бюджет, в cool-down), остаток бюджета.
 Ветки:
 - push → Telegram при `GREENKEEP_TG_BOT_TOKEN`/`CHAT_ID`, иначе уведомление на рабочем столе только с первой строкой; плановый, не `limited` и хотя бы одно репо склонировано (или репо нет) → метка `run` = день начала прогона;
 - dry run → только лог.
@@ -355,8 +357,8 @@ Module: `digest`, `cli`, `state`
 
 ### Результат
 
-GitHub: issue плана, squash-слитые fix PR, слитые PR Dependabot, метки `needs-human`.
-`~/.local/share/greenkeep/state.db`: строки `finding` (статус open/merged/parked/reverted, попытки, issue, PR, sha) и `mark` (run, cool-down, hunt, told, dependabot).
+GitHub: issue плана, squash-слитые fix PR, слитые PR Dependabot, метки `greenkeep-gave-up` на закрытых issues.
+`~/.local/share/greenkeep/state.db`: строки `finding` (статус open/merged/parked/reverted, попытки, issue, PR, sha, parked_head) и `mark` (run, cool-down, hunt, told, dependabot).
 `~/.local/state/greenkeep/greenkeep.log`: история INFO и полные провалы и планы в DEBUG, 5 МБ × 4 файла.
 Module: `state`, `digest`, `cli`
 

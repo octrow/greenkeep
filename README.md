@@ -61,7 +61,7 @@ What it did not manage: 20 findings were parked after three attempts, 16 of them
 2. Find: findings come from deterministic tools only: pip-audit (vulnerable dependencies), ruff (security, bug and pyflakes rules first), coverage (poorly tested modules), outdated dependencies and readiness checks. An opt-in bug hunt adds model-suspected bugs, each fixed test first.
 3. Patch: for each finding the LLM gets the finding and its code and returns SEARCH/REPLACE edits. For an untested module it writes characterization tests that pin down what the code does today.
 4. Gate: the change is kept only if the full suite passes, every changed line was covered before the change (for a new test file: module coverage grew), and ruff reports nothing new. Then Opus reviews it inside the clone, reading the repo and not just the diff.
-5. Merge or park: a passing change is committed (and with `--push`, opened as a PR and merged on green). A finding gets three attempts; after that it is parked and labelled `needs-human`.
+5. Merge or park: a passing change is committed (and with `--push`, opened as a PR and merged on green). A finding gets three attempts; after that it is parked: its issue is closed with what was tried (label `greenkeep-gave-up`), and it gets three new attempts once a commit changes its file. Nobody is expected to come back to it ([ADR 0004](docs/adr/0004-no-human-in-the-loop.md)).
 
 Why deterministic findings and not a free-roaming coding agent: [ADR 0001](docs/adr/0001-deterministic-findings-llm-patches.md). Terms used here: [CONTEXT.md](CONTEXT.md).
 

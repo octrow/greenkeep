@@ -35,7 +35,7 @@ PROJECT = Path(__file__).resolve().parents[2]  # the greenkeep checkout uv runs 
 STATUSES = {
     "All": None,
     "Merged": "merged",
-    "Needs you": "parked",
+    "Gave up": "parked",
     "In progress": "open",
     "Reverted": "reverted",
 }

@@ -31,6 +31,7 @@ from .workspace import (
     discard,
     remote_head,
     run_tests,
+    sh,
     sync,
     tool_head,
 )
@@ -43,7 +44,6 @@ BOOST_ONLY_CLOSE = (
     "Only greenkeep's boost rules find this, and this repo's ruff config does not select "
     "them; greenkeep works it only during a boost. Closing until then."
 )
-PARKED_TEST_DAYS = 14  # a parked test finding's issue is closed after this
 FEEDBACK_CHARS = 1500
 PYTEST_TOTALS = re.compile(
     r"^=*\s*(\d+ (?:failed|passed|errors?)\b[^\n]*? in [\d.]+s)", re.MULTILINE
@@ -106,18 +106,29 @@ def close_vanished(job: Job) -> None:
             job.state.set(job.ws.name, fp, issue=None)
 
 
-def close_stale_tests(job: Job) -> None:
-    """Close the issues of test findings parked over PARKED_TEST_DAYS ago: they pile up in
-    `needs-human` and few owners write those tests by hand. The finding stays parked."""
-    for fp, issue in job.state.stale_parked(job.ws.name, "untested:", PARKED_TEST_DAYS):
-        if github.close_issue(
-            job.ws,
-            issue,
-            f"greenkeep could not write this test and it "
-            f"has waited {PARKED_TEST_DAYS} days, closing.",
-        ):
+def close_parked(job: Job) -> None:
+    """Close the issues still open for parked findings: those parked before ADR 0004, and
+    those whose closing failed (offline). The finding stays parked."""
+    for fp, issue in job.state.parked_issues(job.ws.name):
+        if github.give_up(job.ws, issue, ["parked earlier; nobody comes back to it"]):
             log.info("  closed parked issue #%d: %s", issue, fp)
             job.state.set(job.ws.name, fp, issue=None)
+
+
+def revive_parked(job: Job) -> None:
+    """A parked finding the baseline still reports gets three new attempts once a commit
+    changes its file: the code it failed on is gone."""
+    head = job.ws.git("rev-parse", "HEAD").strip()
+    parked = job.state.parked_heads(job.ws.name, head)
+    for f in job.base.findings:
+        since = parked.get(f.fingerprint)
+        if not since or since == head:
+            continue
+        # exit 1: the file differs; 128: `since` is not in this clone, nothing to compare
+        diff = ["git", "diff", "--quiet", since, head, "--", f.path]
+        if sh(diff, job.ws.root, check=False).returncode == 1:
+            log.info("  %s changed since it was parked, trying again: %s", f.path, f.title)
+            job.state.revive(job.ws.name, f.fingerprint)
 
 
 def _vanished(job: Job, fp: str, packages: set[str]) -> bool:
@@ -251,8 +262,9 @@ def _review(job: Job, f: Finding, change: Change) -> Change:
     return replace(change, reviewer=verdict.model)
 
 
-def _record_failure(job: Job, f: Finding, reason: str) -> None:
-    retries = kind_of(f).retries
+def _record_failure(job: Job, f: Finding, reasons: list[str]) -> None:
+    """`reasons`: this run's failures of the finding, the latest last."""
+    reason, retries = reasons[-1], kind_of(f).retries
     job.state.add_attempt(job.ws.name, f.fingerprint, last=not retries)
     n = job.state.attempts(job.ws.name, f.fingerprint)
     log.info(
@@ -263,8 +275,9 @@ def _record_failure(job: Job, f: Finding, reason: str) -> None:
         return
     issue = job.state.issue(job.ws.name, f.fingerprint)
     job.digest.parked.append(f"{job.ws.name}: {f.title}" + (f" (issue #{issue})" if issue else ""))
-    if issue:
-        github.park_issue(job.ws, issue, reason.splitlines()[0])
+    job.state.set(job.ws.name, f.fingerprint, parked_head=job.ws.git("rev-parse", "HEAD").strip())
+    if issue and github.give_up(job.ws, issue, reasons):
+        job.state.set(job.ws.name, f.fingerprint, issue=None)
 
 
 def _land(job: Job, fix: Fix) -> None:
@@ -288,7 +301,7 @@ def work(job: Job, f: Finding) -> bool:
     """Up to the remaining attempts on one finding; True once its fix is merged."""
     job.state.set(job.ws.name, f.fingerprint, title=f.title, url=github.web_url(job.ws.origin))
     issue = _ensure_issue(job, f)
-    feedback = ""
+    feedback, reasons = "", []
     while job.state.is_workable(job.ws.name, f.fingerprint):
         try:
             change, paths = _attempt(job, f, feedback)
@@ -298,7 +311,8 @@ def work(job: Job, f: Finding) -> bool:
             if llm.unavailable(exc):
                 raise
             feedback = clip(redact(str(exc), job.ws.secrets()))
-            _record_failure(job, f, feedback)
+            reasons.append(feedback)
+            _record_failure(job, f, reasons)
             if _timed_out(exc):
                 return False  # up to 10 minutes each: the next attempt waits for tomorrow
     return False
@@ -431,6 +445,7 @@ def _tend(
     if opts.push:
         github.ensure_labels(ws)
     base = baseline(ws, tests)
+    revive_parked(Job(ws, base, opts, state, digest))
     _upkeep(Job(ws, base, opts, state, digest))
     if cooling:  # security fixes and Dependabot do not wait out a cool-down
         base = replace(base, findings=[f for f in base.findings if kind_of(f).exempt_from_budget])
@@ -445,5 +460,5 @@ def _upkeep(job: Job) -> None:
         job.digest.owner += [f"{job.ws.name}: {note}" for note in ready.owner_notes(job.ws.root)]
         return
     close_vanished(job)
-    close_stale_tests(job)
+    close_parked(job)
     _tell_owner(job.ws, job.state, job.digest)

@@ -127,13 +127,16 @@ Reply with JSON only:
 
 | # | Что | Серьёзность | Усилие | Статус |
 |---|---|---|---|---|
-| E0 | Модели на сервере: ключ OmniRoute для greenkeep (сейчас `/v1/models` → 401), закреплённые id и пробный вызов каждой. На ноутбуке есть `codex/gpt-6-luna-*`, `gemini/gemini-4-argon`, `moonshot/kimi-k3.1-pro`, `cursor/claude-opus-5-5-*`, `muse-spark-web`; GPT-6 Astra и Gemini 4 Carbon в OmniRoute нет | — | 30 мин | открыт |
-| E1 | ADR-0004 «нет человека в цикле» + триаж + финал (`greenkeep-gave-up`, `abandoned`, возврат при новом коммите). Уже этот шаг убирает `needs-human` | HIGH | 2 ч | открыт |
-| E2 | Агент Opus с Edit и Bash в клоне: allowlist, таймаут, лимит дифа, история отказов в промпте | HIGH | 3 ч | открыт |
+| E0 | Модели на сервере: ключ OmniRoute для greenkeep (сейчас `/v1/models` → 401), закреплённые id и пробный вызов каждой. На ноутбуке есть `codex/gpt-6-luna-*`, `gemini/gemini-4-argon`, `moonshot/kimi-k3.1-pro`, `cursor/claude-opus-5-5-*`, `muse-spark-web`; GPT-6 Astra и Gemini 4 Carbon в OmniRoute нет | — | владелец: ключ; дальше 30 мин | открыт |
+| E1 | ADR-0004 «нет человека в цикле» + финал (`greenkeep-gave-up`, закрытие issue с причинами, возврат в работу при новом коммите в файл). Убирает `needs-human` | HIGH | 2 ч | ✅ |
+| E2 | Триаж и панель (перенесены из E1: без агента их вердикт ни на что не влияет) + агент Opus с Edit и Bash в клоне: allowlist, таймаут, лимит дифа, история отказов в промпте | HIGH | 4 ч | открыт |
 | E3 | Ревью двумя семействами для эскалированных диффов | HIGH | 2 ч | открыт |
 | E4 | Наблюдение за main после merge + автоматический revert; auto-pause снимается без владельца (после триажа revert или через 3 дня) | HIGH | 3 ч | открыт |
 | E5 | Тот же агент для Dependabot-мажоров («left to the owner») и красного baseline (tg-bot-template) | MEDIUM | 3 ч | открыт |
 | E6 | Прогон по бэклогу: 27 отложенных → `open`, эскалация; замерить влито / закрыто / стоимость | MEDIUM | 1 ночь | открыт |
+
+E0. Ключ выпускает владелец (нужен доступ админа OmniRoute на сервере): создать ключ для greenkeep и положить `OMNIROUTE_API_KEY=...` в `oci-main:~/.config/greenkeep/env`. CLI есть: `/opt/omniroute/node/bin/omniroute`, сервер слушает `127.0.0.1:20128`, без ключа отвечает 401. Ключи уже есть у chat-watch и repo-scout, общий брать не стоит.
+E1. Сделано: `github.give_up` ставит метку `greenkeep-gave-up` и закрывает issue с однострочной причиной каждой попытки этого прогона; `run.close_parked` закрывает старые открытые `needs-human` в следующем прогоне; `run.revive_parked` возвращает находку в `open` (attempts 0), если коммит изменил её файл после `parked_head`. `PARKED_TEST_DAYS` удалён. Дайджест: «Gave up» отдельно от «Needs you». Тесты в `tests/test_run_e2e.py`. ADR: `docs/adr/0004-no-human-in-the-loop.md`.
 
 Столкновение с ADR-0003 (решается в ADR-0004 на шаге E1):
 - «No triage step» запрещал триаж *каждой находки до работы*: он решал то же, что фильтр и гейт. Триаж здесь — после трёх отказов, по их истории, и решения фильтра он не дублирует. ADR-0004 называет это исключением.

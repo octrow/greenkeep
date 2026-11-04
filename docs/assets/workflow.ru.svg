@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 312" width="1200" height="312" role="img" aria-labelledby="t d">
   <title id="t">Как находка становится влитым PR</title>
-  <desc id="d">Пять шагов на находку: Поиск через pip-audit, ruff и coverage; Патч: Sonnet пишет один патч на одну находку; Гейт: тесты зелёные, строки покрыты, нового lint нет; Ревью: Opus читает репозиторий, а не только diff; Влить: plan issue, PR, squash merge. Отклонённый патч пробуется снова, после трёх попыток находка откладывается с меткой needs-human.</desc>
+  <desc id="d">Пять шагов на находку: Поиск через pip-audit, ruff и coverage; Патч: Sonnet пишет один патч на одну находку; Гейт: тесты зелёные, строки покрыты, нового lint нет; Ревью: Opus читает репозиторий, а не только diff; Влить: plan issue, PR, squash merge. Отклонённый патч пробуется снова, после трёх попыток находка откладывается, а её issue закрывается до изменения файла.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 z" fill="#4d6b5c"/>
@@ -51,7 +51,7 @@
     <g id="park">
       <path d="M831 198 V236 H369 V202" fill="none" stroke="#d29922" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow-park)"/>
       <path d="M600 198 V236" fill="none" stroke="#d29922" stroke-width="2" stroke-dasharray="6 6"/>
-      <text x="600" y="276" font-size="20" fill="#d29922" text-anchor="middle">отклонён → новая попытка; после трёх находка откладывается с меткой needs-human</text>
+      <text x="600" y="276" font-size="20" fill="#d29922" text-anchor="middle">отклонён → новая попытка; после трёх находка ждёт изменения своего файла</text>
     </g>
   </g>
 </svg>

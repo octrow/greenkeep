@@ -9,13 +9,13 @@ from pathlib import Path
 
 MAX_ATTEMPTS = 3
 COLUMNS = frozenset(
-    {"status", "attempts", "issue", "pr", "sha", "title", "url"}
+    {"status", "attempts", "issue", "pr", "sha", "title", "url", "parked_head"}
 )  # what set() may write
 DEFAULT_DB = Path.home() / ".local/share/greenkeep/state.db"
 SCHEMA = """CREATE TABLE IF NOT EXISTS finding (
     repo TEXT, fp TEXT, status TEXT DEFAULT 'open', attempts INT DEFAULT 0,
     issue INT, pr INT, updated TEXT DEFAULT CURRENT_TIMESTAMP, sha TEXT, title TEXT, url TEXT,
-    merged_at TEXT, PRIMARY KEY (repo, fp))"""
+    merged_at TEXT, parked_head TEXT, PRIMARY KEY (repo, fp))"""
 # per-repo and per-run marks: a repo's cool-down end, the day the last run finished
 MARKS = "CREATE TABLE IF NOT EXISTS mark (key TEXT PRIMARY KEY, value TEXT)"
 COOL_DOWN = timedelta(days=7)
@@ -25,7 +25,7 @@ BUDGET_FREE = ("vuln:",)
 # columns added after the first release, for databases created before them
 MIGRATIONS = {
     column: f"ALTER TABLE finding ADD COLUMN {column} TEXT"
-    for column in ("sha", "title", "url", "merged_at")
+    for column in ("sha", "title", "url", "merged_at", "parked_head")
 }
 # before merged_at, `updated` was the merge time, and any later write moved it
 BACKFILL_MERGED_AT = "UPDATE finding SET merged_at=updated WHERE status='merged'"
@@ -102,15 +102,29 @@ class State:
             (repo,),
         ).fetchall()
 
-    def stale_parked(self, repo: str, prefix: str, days: int) -> list[tuple[str, int]]:
-        """(fingerprint, issue) of findings with this prefix parked over `days` ago whose
-        issue is still open."""
+    def parked_issues(self, repo: str) -> list[tuple[str, int]]:
+        """(fingerprint, issue) of parked findings whose issue is still open."""
         return self.db.execute(
-            "SELECT fp, issue FROM finding WHERE repo=? AND fp LIKE ? AND "
-            "status='parked' AND issue IS NOT NULL AND "
-            "updated < datetime('now', ?)",
-            (repo, prefix + "%", f"-{days} days"),
+            "SELECT fp, issue FROM finding WHERE repo=? AND status='parked' AND issue IS NOT NULL",
+            (repo,),
         ).fetchall()
+
+    def parked_heads(self, repo: str, head: str) -> dict[str, str]:
+        """Parked fingerprint -> the repo HEAD it was parked at; one parked before heads were
+        kept is stamped with `head`, so a change from now on brings it back."""
+        self.db.execute(
+            "UPDATE finding SET parked_head=? WHERE repo=? AND status='parked' "
+            "AND parked_head IS NULL",
+            (head, repo),
+        )
+        self.db.commit()
+        rows = self.db.execute(
+            "SELECT fp, parked_head FROM finding WHERE repo=? AND status='parked'", (repo,)
+        )
+        return dict(rows.fetchall())
+
+    def revive(self, repo: str, fp: str) -> None:
+        self.set(repo, fp, status="open", attempts=0, parked_head=None)
 
     def merges(self, repo: str) -> list[tuple[str, int | None, str | None]]:
         """(fingerprint, PR, merge commit) of every live greenkeep merge in the repo."""

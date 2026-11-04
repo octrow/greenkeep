@@ -563,20 +563,52 @@ def test_issues_of_findings_no_longer_reported_are_closed(monkeypatch):
     assert state.open_issues("demo") and state.issue("demo", "ruff:F401:a.py:1") is None
 
 
-def test_parked_test_issues_close_after_a_while(monkeypatch):
+def test_issues_of_parked_findings_are_closed_as_given_up(monkeypatch):
     state = run.State(Path(":memory:"))
     for fp, issue, status in (
-        ("untested:old.py", 1, "parked"),  # parked long ago: closed
-        ("untested:new.py", 2, "parked"),  # parked yesterday: kept
-        ("ruff:F401:a.py:1", 3, "parked"),  # not a test: kept
-        ("untested:open.py", 4, "open"),
-    ):  # still being worked: kept
+        ("untested:old.py", 1, "parked"),  # parked before ADR 0004 left it open: closed
+        ("ruff:F401:a.py:1", 3, "parked"),  # any kind: closed
+        ("untested:open.py", 4, "open"),  # still being worked: kept
+    ):
         state.set("demo", fp, issue=issue, status=status)
-    state.db.execute("UPDATE finding SET updated=datetime('now', '-30 days') WHERE issue!=2")
     closed = []
-    monkeypatch.setattr(github, "close_issue", lambda ws, n, why: closed.append(n) or True)
+    monkeypatch.setattr(github, "give_up", lambda ws, n, why: closed.append(n) or True)
     job = SimpleNamespace(ws=workspace.Workspace("demo", Path("."), Path(".")), state=state)
-    run.close_stale_tests(job)
-    assert closed == [1]
+    run.close_parked(job)
+    assert sorted(closed) == [1, 3]
     assert state.issue("demo", "untested:old.py") is None
-    assert state.status("demo", "untested:old.py") == "parked"  # never tried again
+    assert state.status("demo", "untested:old.py") == "parked"
+
+
+def test_the_last_failed_attempt_closes_the_issue_with_every_reason(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
+    state = run.State(Path(":memory:"))
+    f = Finding("untested", "coverage", "demo.py", 1, "m", "untested:demo.py", title="t")
+    state.set("demo", f.fingerprint, issue=7, attempts=run.MAX_ATTEMPTS - 1)
+    given = {}
+    monkeypatch.setattr(github, "give_up", lambda ws, n, why: given.update({n: why}) or True)
+    ws = workspace.Workspace("demo", src, tmp_path)
+    job = SimpleNamespace(ws=ws, state=state, digest=Digest())
+    run._record_failure(job, f, ["no SEARCH/REPLACE blocks", "test suite failed: 1 failed"])
+    assert given == {7: ["no SEARCH/REPLACE blocks", "test suite failed: 1 failed"]}
+    assert (
+        state.status("demo", f.fingerprint) == "parked"
+        and state.issue("demo", f.fingerprint) is None
+    )
+
+
+def test_a_parked_finding_is_tried_again_once_its_file_changes(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG, "other.py": "x = 1\n"})
+    state = run.State(Path(":memory:"))
+    f = Finding("untested", "coverage", "demo.py", 1, "m", "untested:demo.py")
+    state.set("demo", f.fingerprint, status="parked", attempts=3)
+    ws = workspace.Workspace("demo", src, tmp_path)
+    tests = workspace.TestRun(True, {}, "")
+    job = SimpleNamespace(ws=ws, state=state, base=run.Baseline(tests, frozenset(), [f]))
+    run.revive_parked(job)  # parked before its head was kept: counted from now on
+    for name, revived in (("other.py", False), ("demo.py", True)):
+        (src / name).write_text((src / name).read_text() + "\n# changed\n")
+        git(src, "commit", "-qam", f"change {name}")
+        run.revive_parked(job)
+        assert state.is_workable("demo", f.fingerprint) is revived
+    assert state.attempts("demo", f.fingerprint) == 0

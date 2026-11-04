@@ -9,8 +9,9 @@ from datetime import UTC, datetime, timedelta
 from .workspace import Workspace, WorkspaceError, sh
 
 LABEL = "greenkeep"
-PARKED_LABEL = "needs-human"
-LABELS = {LABEL: "0e8a16", PARKED_LABEL: "d93f0b"}
+# nobody comes back to a parked finding (ADR 0004): its issue is closed under this label
+GAVE_UP_LABEL = "greenkeep-gave-up"
+LABELS = {LABEL: "0e8a16", GAVE_UP_LABEL: "d93f0b"}
 NUMBER = re.compile(r"/(\d+)\s*$")
 CHECKS_TIMEOUT = 1800
 MERGE_STATE_POLLS = 10  # GitHub works mergeability out within seconds of `pr create`
@@ -48,18 +49,17 @@ def open_issue(ws: Workspace, title: str, body: str) -> int:
     return _number(_gh(ws, "issue", "create", "--title", title, "--body", body, "--label", LABEL))
 
 
-def park_issue(ws: Workspace, issue: int, reason: str) -> None:
-    """Only the one-line reason goes public: test output may echo secrets from .env."""
-    _gh(
+def give_up(ws: Workspace, issue: int, reasons: list[str]) -> bool:
+    """Close the issue of a parked finding with what was tried. Only one-line reasons go
+    public: test output may echo secrets from .env."""
+    tried = "\n".join(f"{i}. `{r.splitlines()[0][:200]}`" for i, r in enumerate(reasons, 1))
+    _gh(ws, "issue", "edit", str(issue), "--add-label", GAVE_UP_LABEL)
+    return close_issue(
         ws,
-        "issue",
-        "comment",
-        str(issue),
-        "--body",
-        f"greenkeep gave up after its attempts. Last failure: `{reason[:200]}`\n\n"
-        "Full output is in the local greenkeep log.",
+        issue,
+        f"greenkeep gave up on this.\n\n{tried}\n\n"
+        "Full output is in the greenkeep log. It tries again once this file changes.",
     )
-    _gh(ws, "issue", "edit", str(issue), "--add-label", PARKED_LABEL)
 
 
 def close_issue(ws: Workspace, issue: int, reason: str) -> bool:

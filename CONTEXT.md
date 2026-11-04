@@ -67,7 +67,7 @@ One try of the patcher (a fixed model, prompt and temperature 0) to produce a fi
 _Avoid_: retry, run
 
 **Parked finding**:
-A finding whose attempts are exhausted; it is labelled `needs-human` and greenkeep never retries it on its own.
+A finding whose attempts are exhausted; its issue is closed with the reasons (label `greenkeep-gave-up`), and it gets three new attempts once a commit changes its file. Nobody is expected to pick it up (ADR 0004).
 _Avoid_: failed finding, skipped, blocked
 
 **Daily budget**:

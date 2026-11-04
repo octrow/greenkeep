@@ -40,7 +40,8 @@ class Digest:
         ]
         for title, items in (
             ("Merged", self.merged),
-            ("Needs you", [*self.parked, *self.owner]),
+            ("Gave up", self.parked),
+            ("Needs you", self.owner),
             ("Problems", problems),
         ):
             if items:

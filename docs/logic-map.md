@@ -205,7 +205,7 @@ Module: `run`, `workspace`
 
 Decides: the full list of problems in the repo.
 In: clone, baseline. Out: `Baseline` (tests, lint fingerprints, ordered findings).
-Push mode first: `gh label create greenkeep / needs-human --force` (fails on a non-GitHub origin).
+Push mode first: `gh label create greenkeep / greenkeep-gave-up --force` (fails on a non-GitHub origin).
 Sources:
 - ruff JSON with the repo's own config (+ boost rules); fingerprint `ruff:<code>:<path>:<digest of the line text>`, no line number; identical lines in a file get `#1`, `#2`… in line order, the first keeps the plain one; the last line of ruff's range is kept (`end_line`);
 - `untested`: modules < 50% covered with ≥ 5 statements, if coverage measured anything or there are no tests; test code is never a target (`gate.is_test_path`: a `tests`/`test` folder or a variant like `tests_e2e`, `integration_tests`, a `test_*.py` file, `conftest.py`);
@@ -261,7 +261,9 @@ Module: `run`, `kinds`, `state`
 Decides: the public record for the finding.
 Branches: push and no issue in state → `gh issue create` with label `greenkeep`; else reuse; dry run → none.
 Closing (push, right after the baseline, before the cool-down filter): an open or parked finding with an issue that the baseline no longer reports → `gh issue close` with a comment, the issue is cleared in state. Outside a boost, a finding only the boost rules report (the repo's config does not select them) is closed too, with its own comment: it is not worked until the next boost; the finding stays in state and gets a new issue then. Kept: `bug:` (never in a baseline); `untested:` when coverage was not measured; `vuln:`/`outdated:` unless the same package has a newer finding (a failed pip-audit or PyPI call reports nothing). Otherwise the merged PR's "Closes #N" closes it.
-Then a parked `untested:` finding whose issue has waited over 14 days (`PARKED_TEST_DAYS`) → `gh issue close` with a comment, the issue is cleared, the finding stays parked: the `needs-human` backlog was two-thirds parked tests.
+Then a parked finding whose issue is still open (parked before ADR 0004, or its closing failed) → label `greenkeep-gave-up`, `gh issue close` with a comment, the issue is cleared, the finding stays parked (`close_parked`).
+
+Before closing (push and dry run): a parked finding the baseline still reports, whose file a commit changed since the HEAD it was parked at (`git diff --quiet <parked_head> HEAD -- <path>` exits 1) → status `open`, attempts 0 (`revive_parked`). A finding parked before heads were kept is stamped with today's HEAD. A head missing from the clone (exit 128) → stays parked.
 Module: `run`, `github`, `state`
 
 ### 18. Produce
@@ -321,7 +323,7 @@ Branches:
 - Claude unavailable (`llm.unavailable`: `UsageLimitError`, `NotLoggedInError`, or a Claude error with an API 5xx, overload or connection failure) → not counted, raised (step 24);
 - any other Claude error (timeout, API 4xx such as "prompt is too long", unreadable reply) → counted like a bad change;
 - counted: attempts + 1, next attempt at once; dependency kinds park at once (`retries = False`); others park at 3;
-- parked → digest "Needs you", issue comment with the one-line reason, label `needs-human`;
+- parked → digest "Gave up", HEAD kept as `parked_head`, issue labelled `greenkeep-gave-up` and closed with this run's one-line reasons, issue cleared in state;
 - timeout → counted, then stop this finding for the run, try the next candidate;
 - 2 parked in this repo in this run → cool-down 7 days (step 7), no more findings; Dependabot still runs.
 Module: `run`, `state`, `github`
@@ -352,7 +354,7 @@ Module: `cli`, `run`, `reverts`
 ### 25. Digest
 
 Decides: what the owner hears and whether the day counts as done.
-Text: counts, Merged (own and Dependabot), Needs you (parked + owner notes), Problems (plus one line naming the repos whose CI GitHub did not start for billing), Quiet (clean, waiting, cooling), budget left.
+Text: counts, Merged (own and Dependabot), Gave up (parked), Needs you (owner notes), Problems (plus one line naming the repos whose CI GitHub did not start for billing), Quiet (clean, waiting, cooling), budget left.
 Branches:
 - push → Telegram if `GREENKEEP_TG_BOT_TOKEN`/`CHAT_ID` are set, else a desktop notification with the first line only; scheduled, not `limited`, and at least one repo cloned (or no repos) → mark `run` = the day the run started;
 - dry run → the log only.
@@ -361,8 +363,8 @@ Module: `digest`, `cli`, `state`
 
 ### Output
 
-GitHub: plan issues, squash-merged fix PRs, merged Dependabot PRs, `needs-human` labels.
-`~/.local/share/greenkeep/state.db`: `finding` rows (status open/merged/parked/reverted, attempts, issue, PR, sha) and `mark` rows (run, cool-down, hunt, told, dependabot).
+GitHub: plan issues, squash-merged fix PRs, merged Dependabot PRs, `greenkeep-gave-up` labels on closed issues.
+`~/.local/share/greenkeep/state.db`: `finding` rows (status open/merged/parked/reverted, attempts, issue, PR, sha, parked_head) and `mark` rows (run, cool-down, hunt, told, dependabot).
 `~/.local/state/greenkeep/greenkeep.log`: INFO story plus DEBUG full failures and plans, 5 MB × 4 files.
 Module: `state`, `digest`, `cli`
 
