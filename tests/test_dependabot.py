@@ -18,23 +18,25 @@ GROUPED = (
 )
 
 
-def test_minor_bump_in_the_title_is_safe():
-    assert dependabot.safe_bump("Bump requests from 2.31.0 to 2.32.0", "")
+def test_minor_bump_in_the_title_is_same_major():
+    assert dependabot.upgrade("Bump requests from 2.31.0 to 2.32.0", "") == "same"
 
 
 def test_every_pair_of_a_grouped_body_counts_but_collapsed_release_notes_do_not():
-    assert dependabot.safe_bump("Bump the pip group with 2 updates", GROUPED)
-    assert not dependabot.safe_bump("Bump the pip group", GROUPED + "Updates `x` from 1.9 to 2.0")
+    assert dependabot.upgrade("Bump the pip group with 2 updates", GROUPED) == "same"
+    grouped_major = GROUPED + "Updates `x` from 1.9 to 2.0"
+    assert dependabot.upgrade("Bump the pip group", grouped_major) == "major"
 
 
-def test_a_major_bump_or_no_pair_at_all_is_left_to_the_owner():
-    assert not dependabot.safe_bump("Bump django from 4.2.1 to 5.0.0", "")
-    assert not dependabot.safe_bump("Bump the pip group with 3 updates", "")
+def test_a_major_bump_is_major_and_no_pair_at_all_is_unknown():
+    assert dependabot.upgrade("Bump django from 4.2.1 to 5.0.0", "") == "major"
+    assert dependabot.upgrade("Bump the pip group with 3 updates", "") == ""
+    assert dependabot.upgrade("Bump python from 3.12-slim to 3.13-slim", "") == ""
 
 
 def test_a_0x_minor_bump_is_a_major_one():
-    assert not dependabot.safe_bump("Bump pydantic-ai from 0.6.1 to 0.7.0", "")
-    assert dependabot.safe_bump("Bump pydantic-ai from 0.6.1 to 0.6.3", "")
+    assert dependabot.upgrade("Bump pydantic-ai from 0.6.1 to 0.7.0", "") == "major"
+    assert dependabot.upgrade("Bump pydantic-ai from 0.6.1 to 0.6.3", "") == "same"
 
 
 def test_actions_only_and_their_checks():
@@ -59,6 +61,7 @@ def pr(
         "title": title,
         "body": "",
         "headRefOid": f"sha{n}",
+        "headRefName": f"dependabot/pip/x-{n}",
         "mergeable": mergeable,
         "files": [{"path": p} for p in files],
         "statusCheckRollup": [{"conclusion": c} for c in checks],
@@ -68,20 +71,36 @@ def pr(
 class Fake:
     """`gh`, git and the suite, recorded; `green` decides every suite run."""
 
-    def __init__(self, monkeypatch, tmp_path: Path, prs: list[dict], green: bool = True) -> None:
-        self.prs, self.green = prs, green
-        self.tested, self.merged, self.git = [], [], []
+    def __init__(
+        self,
+        monkeypatch,
+        tmp_path: Path,
+        prs: list[dict],
+        green: bool = True,
+        covered: float = 80.0,
+        adapted: str = "",
+    ) -> None:
+        self.prs, self.green, self.covered = prs, green, covered
+        self.tested, self.merged, self.git, self.adapted = [], [], [], []
         self.ws = Workspace("demo", tmp_path, tmp_path, "main", "https://github.com/o/demo")
         monkeypatch.setattr(self.ws, "git", lambda *a, **kw: self.git.append(a) or "")
         monkeypatch.setattr(github, "_gh", lambda ws, *a: json.dumps(self.prs))
         monkeypatch.setattr(github, "merge", lambda ws, n, head="": self.merged.append(n))
+
+        def adapt(ws, opts, digest, pr, tests):
+            digest.escalated.append(pr["number"])  # like the real one: it takes a slot
+            self.adapted.append(pr["number"])
+            return adapted
+
+        monkeypatch.setattr(dependabot.repair, "adapt", adapt)
         monkeypatch.setattr(dependabot, "sync", lambda ws: None)
         monkeypatch.setattr(dependabot, "run_tests", self._run_tests)
         self.state, self.digest = State(Path(":memory:")), Digest()
 
     def _run_tests(self, ws: Workspace) -> SimpleNamespace:
         self.tested.append(self.git[-1])
-        return SimpleNamespace(ok=self.green, output="1 failed")
+        cov = {"totals": {"percent_covered": self.covered}}
+        return SimpleNamespace(ok=self.green, output="1 failed", cov=cov)
 
     def run(self, push: bool = True) -> None:
         dependabot.merge_safe(self.ws, Options(push, 3, None, False, None), self.state, self.digest)
@@ -89,7 +108,7 @@ class Fake:
 
 @pytest.fixture
 def fake(monkeypatch, tmp_path):
-    return lambda prs, green=True: Fake(monkeypatch, tmp_path, prs, green)
+    return lambda prs, **kw: Fake(monkeypatch, tmp_path, prs, **kw)
 
 
 def test_a_green_dependency_pr_is_merged_and_goes_to_the_digest(fake):
@@ -100,26 +119,51 @@ def test_a_green_dependency_pr_is_merged_and_goes_to_the_digest(fake):
     assert ("checkout", "-q", "-f", "main") in f.git[-3:]  # back on the base branch
 
 
-def test_a_red_pr_is_not_retested_until_its_head_changes(fake):
+def test_a_red_pr_gets_the_agent_once_and_is_not_retested_until_its_head_changes(fake):
     f = fake([pr(7)], green=False)
     f.run()
     f.run()
-    assert len(f.tested) == 1 and f.merged == []
+    assert len(f.tested) == 1 and f.merged == [] and f.adapted == [7]
     f.prs[0]["headRefOid"] = "new"
     f.run()
     assert len(f.tested) == 2
 
 
-def test_majors_and_conflicts_are_skipped_and_at_most_three_are_tested(fake):
+def test_conflicts_and_non_versions_are_skipped_and_at_most_three_are_tested(fake):
     f = fake(
         [
-            pr(1, "Bump django from 4.2 to 5.0"),
+            pr(1, "Bump python from 3.12-slim to 3.13-slim"),
             pr(2, mergeable="CONFLICTING"),
             *(pr(n) for n in range(3, 8)),
         ]
     )
     f.run()
     assert f.merged == [3, 4, 5]
+
+
+def test_a_green_major_is_merged_only_on_a_well_covered_suite(fake):
+    f = fake([pr(1, "Bump django from 4.2 to 5.0")])
+    f.run()
+    assert f.merged == [1]
+    f = fake([pr(1, "Bump django from 4.2 to 5.0")], covered=40.0)
+    f.run()
+    f.run()
+    assert f.merged == [] and len(f.tested) == 1 and f.adapted == []
+
+
+def test_a_red_pr_the_agent_adapts_is_merged_at_the_agents_commit(fake):
+    f = fake([pr(1, "Bump django from 4.2 to 5.0")], green=False, adapted="agent-sha")
+    f.run()
+    assert f.adapted == [1] and f.merged == [1]
+    assert f.digest.merged == [
+        "demo: Bump django from 4.2 to 5.0 (Dependabot #1, adapted by the agent)"
+    ]
+
+
+def test_red_prs_get_the_agent_at_most_up_to_the_run_cap(fake):
+    f = fake([pr(n) for n in (1, 2, 3)], green=False)
+    f.run()
+    assert f.adapted == [1, 2]
 
 
 def test_an_actions_pr_merges_on_its_checks_without_a_suite_run(fake):

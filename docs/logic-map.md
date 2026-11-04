@@ -27,7 +27,7 @@ systemd timer (hourly) / CLI / dashboard button
   ├─ 7  Cool-down .......... resting after two parked findings? → security and Dependabot only
   ├─ 8  Clone .............. fresh clone; boost adds extra ruff rules
   ├─ 9  Revert check ....... a greenkeep merge reverted, or CI on main red after it? → revert, cool-down
-  ├─ 10 Baseline tests ..... is the suite green in a clean clone, and what does it cover?
+  ├─ 10 Baseline tests ..... is the suite green in a clean clone, and what does it cover? red → agent
   ├─ 11 Findings ........... ruff, coverage, pip-audit, outdated, readiness
   ├─ 12 Owner notes ........ what only the owner can settle (license, README)
   ├─ 13 Work order ......... security, lint bugs, tests, upgrades, readiness, style
@@ -42,7 +42,7 @@ systemd timer (hourly) / CLI / dashboard button
   ├─ 21 Land ............... commit, push, PR, squash-merge
   ├─ 22 Failure ............ count the attempt, park, agent, give up, cool the repo down
   │   after the repo's own work:
-  ├─ 23 Dependabot ......... merge its same-major PRs on a green local suite
+  ├─ 23 Dependabot ......... merge its PRs on a green local suite; red → agent
   │
   ├─ 24 Run-level stops .... Claude unavailable, a broken repo
   └─ 25 Digest ............. Telegram text; mark the day done
@@ -200,10 +200,11 @@ Branches:
 - no `pyproject.toml` → `WorkspaceError` (revival is not built);
 - `uv sync --all-extras --all-packages`; a test root with its own pyproject syncs there too;
 - suite crashed (`Fatal Python error`, a flaky segfault in Qt tests) → run once more; the log keeps the crash header and the repo's own frames, not library frames;
-- suite red or hangs 30 min → problem line "baseline tests are red", the repo stops here (no Dependabot either);
+- suite red or hangs 30 min, not a crash, this HEAD not tried before (mark `heal:<repo>`) and an agent slot left (`MAX_ESCALATIONS`, shared with step 22) → the agent (step 22's model, tools and cleanup) gets the end of the red output. Gate (`repair`): a change exists, no suppressions, no new lint in the changed files, full suite green with at least as many passing tests as passed plus failed before (no deleted or skipped test), the reviewer approves. Passed → commit "fix: make the test suite green again" on `greenkeep/heal-<head>`, publish and merge (push), "Merged" line, the repo stops here and the next run works it green. Failed (not unavailable) → HEAD marked, fall through;
+- suite still red → problem line "baseline tests are red", the repo stops here (no Dependabot either);
 - exit 5 (no tests) → green; coverage still reports never-imported modules at 0% (`--source=.`), which yields `untested` findings.
 Coverage: `coverage run --source=. --omit=tests/*,.venv/*`, pytest-cov and xdist options dropped from the repo's addopts.
-Module: `run`, `workspace`
+Module: `run`, `workspace`, `repair`
 
 ### 11. Findings
 
@@ -339,12 +340,15 @@ Decides: which open Dependabot PRs greenkeep merges for the owner.
 Runs after the repo's own work, only on a green baseline, only for GitHub origins.
 Branches per PR:
 - conflicting, or red on this head before (mark `dependabot:<repo>:<n>`) → skip;
-- any `from X to Y` outside `<details>` not same-major (same-minor for 0.x), or none → left to the owner;
+- no `from X to Y` outside `<details>`, or one that is not a version (a sha, a docker tag) → skip;
 - only `.github/` files → merge on CI's own green checks; no checks → wait;
-- else, up to 3 per run → check out the PR head, sync, full suite; green → merge with `--match-head-commit`; red → mark the head.
+- else, up to 3 per run → check out the PR head, sync, full suite:
+  - a major (any pair leaves its major line; the minor line for 0.x) or a red suite, with total coverage under 60% (`OUTDATED_MIN_COVERAGE`) → mark the head;
+  - green → merge with `--match-head-commit`;
+  - red, an agent slot left → `repair.adapt`: the agent adapts the code at the PR head under step 10's gate; passed → its commit is pushed (no force) onto the PR's own branch and the PR merged at that commit, "adapted by the agent" in the digest; failed or no slot → mark the head.
 A refused merge waits up to 30 min for required checks; a failure leaves no mark, so the PR is tested again next run.
-Dry run: logs "would merge", no suite run. No budget, no finding, no issue.
-Module: `dependabot`, `deps`, `github`
+Dry run: logs "would merge", no suite run, no agent. No budget, no finding, no issue.
+Module: `dependabot`, `deps`, `github`, `repair`
 
 ### 24. Run-level stops
 

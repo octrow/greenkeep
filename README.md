@@ -55,9 +55,9 @@ What it did not manage: 20 findings were parked after three attempts, 16 of them
 
 ## How it works
 
-<p align="center"><img src="docs/assets/workflow.svg" width="100%" alt="Per finding: Find (pip-audit, ruff, coverage), Patch (Sonnet, one patch for one finding), Gate (suite green, lines covered, no new lint), Review (Opus reads the repo), Merge (plan issue, PR, squash merge). Rejected patches are retried; after 3 attempts the finding is parked as needs-human"></p>
+<p align="center"><img src="docs/assets/workflow.svg" width="100%" alt="Per finding: Find (pip-audit, ruff, coverage), Patch (Sonnet, one patch for one finding), Gate (suite green, lines covered, no new lint), Review (Opus reads the repo), Merge (plan issue, PR, squash merge). Rejected patches are retried; after 3 attempts an Opus agent gets one try, then greenkeep gives up until the file changes"></p>
 
-1. Clone: each repo you pass is cloned into `~/.cache/greenkeep`; your checkout is never touched. If its tests are red before greenkeep changes anything, the repo is skipped.
+1. Clone: each repo you pass is cloned into `~/.cache/greenkeep`; your checkout is never touched. If its tests are red before greenkeep changes anything, an Opus agent gets one try per commit to make them green (no test deleted or skipped, reviewed like any fix); otherwise the repo is skipped.
 2. Find: findings come from deterministic tools only: pip-audit (vulnerable dependencies), ruff (security, bug and pyflakes rules first), coverage (poorly tested modules), outdated dependencies and readiness checks. An opt-in bug hunt adds model-suspected bugs, each fixed test first.
 3. Patch: for each finding the LLM gets the finding and its code and returns SEARCH/REPLACE edits. For an untested module it writes characterization tests that pin down what the code does today.
 4. Gate: the change is kept only if the full suite passes, every changed line was covered before the change (for a new test file: module coverage grew), and ruff reports nothing new. Then Opus reviews it inside the clone, reading the repo and not just the diff.
@@ -164,7 +164,7 @@ If the port belongs to another app it moves to the next free one; if a greenkeep
 
 ## How it differs
 
-- Dependabot, Renovate: they bump dependencies, with a PR per bump. greenkeep only bumps a dependency for a known vulnerability or a same-major update, and only merges it on a green suite; most of its work is code findings and tests. Both can run on the same repo.
+- Dependabot, Renovate: they bump dependencies, with a PR per bump. greenkeep only bumps a dependency for a known vulnerability or a same-major update, and only merges it on a green suite; most of its work is code findings and tests. Both can run on the same repo: greenkeep then merges Dependabot's PRs on a green local suite (a major needs 60% coverage; a red one gets one try by the agent on its own branch).
 - ruff `--fix`, pre-commit.ci autofix: they apply only the fixes ruff can make mechanically. greenkeep uses ruff's safe fix when there is one and calls the LLM only for findings ruff can't fix, like `PLW1510` above; both kinds go through the same gate and get their own PR.
 - Coding agents (Copilot coding agent, OpenHands, Sweep): an agent decides what to change and how much. Here a deterministic tool picks the problem, the patch is limited to one finding, and nothing merges unless tests already covered every line it touched. The agents can do more; greenkeep aims to be boring and repeatable.
 - [patchwork](https://github.com/patched-codes/patchwork): closest in spirit (AutoFix flows). It doesn't own the schedule, the daily budget, the coverage gate or the issue → PR → merge loop, and greenkeep is built around those.

@@ -18,6 +18,16 @@ from .workspace import TestRun, Workspace, ruff_json
 DEFAULT_MODEL = "claude-sonnet-5-5"
 DEFAULT_REVIEW_MODEL = "claude-opus-5-5"
 AGENT_MODEL = "claude-opus-5-5"  # escalation, at medium effort (owner, 2026-11-05)
+MAX_ESCALATIONS = 2  # agent runs per greenkeep run: up to 30 minutes each
+# what the agent's own pytest, ruff and `uv run` leave behind, ignored by the repo or not;
+# `git clean` never touches a tracked file, so a repo's own uv.lock stays
+CACHES = (
+    ":(glob)**/__pycache__/**",
+    ":(glob)**/.pytest_cache/**",
+    ":(glob)**/.ruff_cache/**",
+    "uv.lock",
+)
+TRAILER = "Co-Authored-By: greenkeep <greenkeep@users.noreply.github.com>"
 
 
 class GateFailure(Exception):

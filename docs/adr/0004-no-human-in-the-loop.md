@@ -10,6 +10,7 @@ Safety stays where it was: the gate and the reviewer decide. What changes is who
 
 - Escalation (2026-11-05): before giving up, a parked finding gets one try by an agent, Opus 5.5 at medium effort with Edit and a short Bash allowlist in the clone, under the same gate and review. The triage, the panel of three lenses and the review by another vendor were dropped by the owner; ADR 0003 stands as it is.
 - Revert instead of auto-pause (2026-11-05): an auto-pause waited for the owner to look and delete PAUSE, which nobody does. Now a reverted greenkeep merge, or one after which CI on the base branch went red (greenkeep then opens and merges a plain `git revert` PR itself), marks the finding `reverted`, never tried again, and puts that repo into cool-down. Other repos go on. PAUSE stays for the owner's own use.
+- Repairs without a finding (2026-11-05): a suite red on a clean clone, and a Dependabot PR red here, used to wait for the owner. The same agent gets one try per commit. Its gate has no finding to measure against, so it checks what a repair must not do: the suite goes green with every test that failed now passing (nothing deleted or skipped), no new lint, no suppressions, and the reviewer approves. A Dependabot major also needs 60% total coverage, like greenkeep's own upgrades; the agent's commit goes onto Dependabot's branch, so the PR merges as one. The two share the run's cap of 2 agent runs with escalations.
 
 ## Considered Options
 

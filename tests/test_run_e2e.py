@@ -167,12 +167,12 @@ def test_fixable_lint_in_generated_tests_is_fixed_without_an_attempt(tmp_path, m
 
 def test_summary_picks_pytest_closing_line():
     out = "____ test_x ____\nassert 1 == 2\n==== 1 failed, 3 passed in 0.1s ====\n"
-    assert run._summary(out) == "1 failed, 3 passed in 0.1s"
+    assert workspace.summary(out) == "1 failed, 3 passed in 0.1s"
 
 
 def test_summary_ignores_failed_inside_assertion_text():
     out = "E   assert {'failed': 1} == {}\nsome noise failed here\n1 failed, 2 passed in 3.40s\n"
-    assert run._summary(out) == "1 failed, 2 passed in 3.40s"
+    assert workspace.summary(out) == "1 failed, 2 passed in 3.40s"
 
 
 def test_reviewer_rejection_is_fed_back_and_recorded(tmp_path, monkeypatch):
@@ -678,3 +678,42 @@ def test_a_run_escalates_at_most_twice(tmp_path, monkeypatch):
     opts = run.Options(push=False, budget=3, model="x", keep=True)
     run.run_repo(Target(str(src)), opts, state, digest)
     assert not prompts and state.status("demo", "untested:demo.py") == "parked"
+
+
+RED = {
+    "demo.py": "import os\n\n\ndef add(a, b):\n    return a - b\n\n\ndef one():\n    return 1\n",
+    "tests/test_demo.py": (
+        "from demo import add, one\n\n\ndef test_add():\n    assert add(1, 2) == 3\n\n\n"
+        "def test_one():\n    assert one() == 1\n"
+    ),
+}
+
+
+def red_run(src: Path, state: run.State) -> Digest:
+    digest = Digest()
+    run.run_repo(Target(str(src)), run.Options(False, 3, "x", True), state, digest)
+    return digest
+
+
+def test_a_red_suite_gets_the_agent_and_its_fix_is_merged(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, RED)
+    fake = fake_llm(monkeypatch, ["no"])
+    prompts = fake_agent(monkeypatch, {"demo.py": RED["demo.py"].replace("a - b", "a + b")})
+    digest = red_run(src, run.State(Path(":memory:")))
+    assert len(prompts) == 1 and "1 failed, 1 passed" in prompts[0] and fake.reviews == 1
+    assert digest.merged == ["demo: the test suite is green again (agent)"] and not digest.problems
+    clone = next(workspace.CACHE.glob("run-demo-*/demo"))
+    assert "a + b" in git(clone, "show", "HEAD:demo.py")
+
+
+def test_an_agent_that_drops_the_failing_test_is_rejected_once_per_commit(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, RED)
+    fake = fake_llm(monkeypatch, ["no"])
+    only_one = "from demo import one\n\n\ndef test_one():\n    assert one() == 1\n"
+    prompts = fake_agent(monkeypatch, {"tests/test_demo.py": only_one})
+    state = run.State(Path(":memory:"))
+    digest = red_run(src, state)
+    assert fake.reviews == 0 and digest.merged == []
+    assert digest.problems == ["demo: baseline tests are red in a clean clone"]
+    red_run(src, state)
+    assert len(prompts) == 1  # the same commit gets no second try

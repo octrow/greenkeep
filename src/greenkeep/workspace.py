@@ -8,6 +8,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -213,6 +214,20 @@ class TestRun:
     output: str
     no_tests: bool = False  # pytest collected nothing (exit 5)
     crashed: bool = False  # the interpreter died (faulthandler's header in the output)
+
+
+PYTEST_TOTALS = re.compile(
+    r"^=*\s*(\d+ (?:failed|passed|errors?)\b[^\n]*? in [\d.]+s)", re.MULTILINE
+)
+
+
+def summary(output: str) -> str:
+    """pytest's closing `N failed, M passed` line: the one-line reason for logs and issues."""
+    found = PYTEST_TOTALS.findall(output)
+    if found:
+        return found[-1]
+    lines = output.strip().splitlines()
+    return lines[-1] if lines else "no output"
 
 
 def kept_addopts(addopts: str | list[str]) -> list[str]:

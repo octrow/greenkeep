@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import re
 import tomllib
 from dataclasses import dataclass, replace
 from datetime import date
@@ -12,9 +11,20 @@ from textwrap import shorten
 
 from claude_cli import ClaudeCliError
 
-from . import dependabot, deps, github, hunt, llm, ready, reverts
+from . import dependabot, deps, github, hunt, llm, ready, repair, reverts
 from .config import Target
-from .core import AGENT_MODEL, Baseline, Change, GateFailure, Job, Options, lint
+from .core import (
+    AGENT_MODEL,
+    CACHES,
+    MAX_ESCALATIONS,
+    TRAILER,
+    Baseline,
+    Change,
+    GateFailure,
+    Job,
+    Options,
+    lint,
+)
 from .digest import Digest
 from .edits import EditError
 from .findings import Finding, added_lint, is_vendored, untested_findings
@@ -32,6 +42,7 @@ from .workspace import (
     remote_head,
     run_tests,
     sh,
+    summary,
     sync,
     tool_head,
 )
@@ -45,20 +56,7 @@ BOOST_ONLY_CLOSE = (
     "them; greenkeep works it only during a boost. Closing until then."
 )
 FEEDBACK_CHARS = 1500
-MAX_ESCALATIONS = 2  # agent runs per greenkeep run: up to 30 minutes each
-# what the agent's own pytest, ruff and `uv run` leave behind, ignored by the repo or not;
-# `git clean` never touches a tracked file, so a repo's own uv.lock stays
-CACHES = (
-    ":(glob)**/__pycache__/**",
-    ":(glob)**/.pytest_cache/**",
-    ":(glob)**/.ruff_cache/**",
-    "uv.lock",
-)
-PYTEST_TOTALS = re.compile(
-    r"^=*\s*(\d+ (?:failed|passed|errors?)\b[^\n]*? in [\d.]+s)", re.MULTILINE
-)
 SUBJECT_MAX = 72
-TRAILER = "Co-Authored-By: greenkeep <greenkeep@users.noreply.github.com>"
 
 # anything that sinks one attempt; it is counted, so a poison finding parks instead of
 # failing every run. Claude not answering at all is not counted (`llm.unavailable`)
@@ -177,19 +175,10 @@ def _lint_changed(job: Job, paths: list[str]) -> list[Finding]:
 def _check_tests(job: Job, f: Finding) -> None:
     after = run_tests(job.ws)
     if not after.ok:
-        raise GateFailure(f"test suite failed: {_summary(after.output)}\n{after.output}")
+        raise GateFailure(f"test suite failed: {summary(after.output)}\n{after.output}")
     if after.no_tests and not job.base.tests.no_tests:
         raise GateFailure("pytest collected no tests, but the baseline had some")
     kind_of(f).check_after(job, f, after)
-
-
-def _summary(output: str) -> str:
-    """pytest's closing `N failed, M passed` line: the one-line reason for logs and issues."""
-    found = PYTEST_TOTALS.findall(output)
-    if found:
-        return found[-1]
-    lines = output.strip().splitlines()
-    return lines[-1] if lines else "no output"
 
 
 def gate(job: Job, f: Finding) -> list[str]:
@@ -486,6 +475,8 @@ def _tend(
     sync(ws)
     tests = baseline_tests(ws)
     if not tests.ok:
+        if repair.heal(ws, tests, opts, state, digest):
+            return  # merged: the next run works the repo on a green suite
         log.warning("%s: baseline tests are red, skipping\n%s", ws.name, tests.output)
         digest.problems.append(f"{ws.name}: baseline tests are red in a clean clone")
         return

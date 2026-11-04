@@ -163,18 +163,22 @@ AGENT_ALLOWED = (
     "Read,Grep,Glob,Edit,Write,Bash(uv run pytest:*),Bash(uv run ruff:*),"
     "Bash(git diff:*),Bash(git status:*)"
 )
-AGENT_SYSTEM = """You fix one finding in a Python repository. A cheaper model tried and failed;
-its failures are below. You work in a throwaway clone: edit the files directly, and check
+AGENT_SYSTEM = """You fix one problem in a Python repository: a finding a cheaper model failed
+on, a test suite that is red, or code a dependency upgrade broke. What went wrong so far is
+below. You work in a throwaway clone: edit the files directly, and check
 your work with `uv run pytest`, `uv run ruff check` and `git diff`. No person will review
 or ever revisit this change: an automated gate and one reviewer model decide whether it is
 merged, so a change you are not sure of is worse than none.
 
 Rules:
-- Change only what the finding needs: no drive-by edits, no new dependency, no new config.
+- Change only what the problem needs: no drive-by edits, no new dependency, no new config.
 - Never silence a tool: no noqa, type: ignore, pragma: no cover, or per-file ignores.
+- Never delete, skip or xfail a test or loosen an assertion to get green: fix the code, or
+  a test only where it plainly asserts something wrong.
 - Follow the repository's own conventions: where tests live, how they are named, the
   fixtures and helpers it already has; extend an existing test file when one fits.
-- If the finding cannot be fixed within these rules, change nothing.
+- If it cannot be fixed within these rules, or the cause is outside the code (a missing
+  system package, the network, a secret), change nothing.
 Finish with one line: what you changed, or why you changed nothing."""
 
 
@@ -459,6 +463,8 @@ Approve only if ALL hold:
   and they are deterministic (no network, real clock, sleep, randomness without seed).
 - New tests read like the repo's own: same place, naming, fixtures and style; they do
   not duplicate existing tests, restate constants, pin accidental crashes or bloat.
+- A repair of a red suite or of code an upgrade broke fixes the cause: no test deleted,
+  skipped or weakened, and a test changes only where it plainly asserted something wrong.
 - A README or pyproject.toml change states only what is true of the repo (commands,
   entry points, features) and matches the file's language and style.
 - The repo would look better to a senior reviewer with this change than without it.

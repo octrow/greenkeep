@@ -345,7 +345,9 @@ class Dependency(Kind):
     gate_note = "only uv.lock changed; full test suite green on the upgraded lock."
     # ponytail: a network error in `uv lock` parks it too; tell them apart if that bites
     retries = False
-    escalates = False  # an upgrade that needs code changes is PLAN.md E5
+    # lockfile-only by its gate; code adapted to an upgrade comes only on Dependabot's
+    # branch (repair.adapt)
+    escalates = False
 
     def produce(self, job: Job, f: Finding, feedback: str) -> Change:
         deps.upgrade(job.ws, f.rule)
