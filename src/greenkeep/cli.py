@@ -9,9 +9,10 @@ from __future__ import annotations
 import argparse
 import logging
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from time import monotonic
 
 from . import backup, llm
 from .config import DEFAULT_BUDGET, PAUSE_FILE, Config, ConfigError, Target, load, paused
@@ -28,6 +29,10 @@ LOG_FILE = Path.home() / ".local/state/greenkeep/greenkeep.log"
 LOG_BYTES = 5_000_000
 LOG_BACKUPS = 3
 PROBLEM_CHARS = 200
+# systemd kills the run at 4 h (TimeoutStartSec): a killed run leaves the day open and the
+# next hourly run starts it all over again; one more repo after this fits in the last hour
+RUN_DEADLINE = timedelta(hours=3)
+UNREACHED = "unreached"  # the mark naming the repos the last run did not get to
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -101,12 +106,25 @@ def _config() -> Config | None:
 
 
 def _run_all(targets: list[Target], opts: Options, state: State) -> Digest:
-    digest = Digest()
-    # Focus repos first, then least recently merged: activity spreads over the repos
-    # instead of piling up. ponytail: Focus can take the whole budget and starve the rest
-    # (security still bypasses it); reserve a slot for the others if that starts to show.
-    # A spent budget still visits every repo: security findings do not wait for it.
-    for t in sorted(targets, key=lambda t: (not t.focus, state.last_merge(t.name))):
+    digest, start = Digest(), monotonic()
+    # Focus repos first, then the ones the last run did not reach, then least recently
+    # merged: activity spreads over the repos instead of piling up. ponytail: Focus can take
+    # the whole budget and starve the rest (security still bypasses it); reserve a slot for
+    # the others if that starts to show. A spent budget still visits every repo: security
+    # findings do not wait for it.
+    missed = set(state.mark(UNREACHED).split(","))
+    order = sorted(
+        targets, key=lambda t: (not t.focus, t.name not in missed, state.last_merge(t.name))
+    )
+    unreached = []
+    for i, t in enumerate(order):
+        if monotonic() - start > RUN_DEADLINE.total_seconds():
+            unreached = [u.name for u in order[i:]]
+            hours = RUN_DEADLINE.total_seconds() // 3600
+            digest.problems.append(
+                f"run stopped after {hours:.0f} h, not reached: {', '.join(unreached)}"
+            )
+            break
         try:
             run_repo(t, opts, state, digest)
         except Exception as exc:  # one broken repo must not cost the others their run
@@ -118,6 +136,8 @@ def _run_all(targets: list[Target], opts: Options, state: State) -> Digest:
                 break
             log.exception("%s: run failed", t.name)
             digest.problems.append(f"{t.name}: {first}")
+    state.set_mark(UNREACHED, ",".join(unreached))
+    digest.minutes = round((monotonic() - start) / 60)
     return digest
 
 

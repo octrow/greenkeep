@@ -22,7 +22,7 @@ systemd timer (hourly) / CLI / dashboard button
   ├─ 3  Sweep .............. which leftover clones are older than a day?
   ├─ 4  Targets ............ which repos, which budget, is a boost on?
   ├─ 5  Options ............ which models write, review and plan?
-  ├─ 6  Repo order ......... Focus first, then the least recently merged
+  ├─ 6  Repo order ......... Focus first, then last run's unreached, then the least recently merged
   │   per repo:
   ├─ 7  Cool-down .......... resting after two parked findings? → security and Dependabot only
   ├─ 8  Clone .............. fresh clone; boost adds extra ruff rules
@@ -151,7 +151,7 @@ Module: `cli`, `core`
 ### 6. Repo order
 
 Decides: which repos get the budget first.
-Order: Focus repos first, then by `last_merge` ascending (never merged first).
+Order: Focus repos first, then the repos the last run did not reach (mark `unreached`), then by `last_merge` ascending (never merged first).
 A spent budget still visits every repo: security findings and Dependabot merges do not need it.
 A cooling repo still gets security fixes and Dependabot merges (step 7).
 Module: `cli`, `state`
@@ -355,14 +355,15 @@ Module: `dependabot`, `deps`, `github`, `repair`
 Decides: what one repo's exception does to the rest of the run.
 Branches:
 - Claude unavailable (step 22) → digest line "Claude unavailable at <repo>, run stopped: <reason>", `limited`, stop; the digest is sent, the day is not marked, the next hourly run tries again (and sends its digest too);
-- anything else → log the traceback, first line to "Problems", next repo.
+- anything else → log the traceback, first line to "Problems", next repo;
+- 3 h into the run (`RUN_DEADLINE`; systemd kills it at 4 h, and a killed run would start over every hour) → no further repo starts: problem line "run stopped after 3 h, not reached: <repos>", mark `unreached` (they go first next run), the day is still marked done.
 The clone is deleted after each repo unless `--keep`.
 Module: `cli`, `run`
 
 ### 25. Digest
 
 Decides: what the owner hears and whether the day counts as done.
-Text: counts, Merged (own and Dependabot), Gave up (parked), Needs you (owner notes), Problems (plus one line naming the repos whose CI GitHub did not start for billing), Quiet (clean, waiting, cooling), budget left.
+Text: counts and how long the run took (`took N min`), Merged (own and Dependabot), Gave up (parked), Needs you (owner notes), Problems (plus one line naming the repos whose CI GitHub did not start for billing), Quiet (clean, waiting, cooling), budget left.
 Branches:
 - push → Telegram if `GREENKEEP_TG_BOT_TOKEN`/`CHAT_ID` are set, else a desktop notification with the first line only; scheduled, not `limited`, and at least one repo cloned (or no repos) → mark `run` = the day the run started;
 - dry run → the log only.

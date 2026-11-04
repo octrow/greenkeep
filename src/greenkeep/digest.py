@@ -28,6 +28,7 @@ class Digest:
     cooling: int = 0
     reached: int = 0  # repos cloned: none means no network, so the day is not done
     limited: bool = False  # Claude did not answer (limit, login, outage): the day is not done
+    minutes: int = 0  # how long the run took: a run near RUN_DEADLINE needs repos in parallel
 
     def text(self, budget_left: int) -> str:
         # one account runs out of Actions minutes for all its private repos: one line
@@ -37,6 +38,7 @@ class Digest:
             (
                 f"greenkeep: {len(self.merged)} merged, {len(self.parked)} parked, "
                 f"{len(problems)} problems; budget left today: {budget_left}"
+                + (f"; took {self.minutes} min" if self.minutes else "")
             )
         ]
         for title, items in (

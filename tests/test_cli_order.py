@@ -23,6 +23,37 @@ def test_focus_repos_run_first_then_least_recently_merged(monkeypatch):
     assert seen == ["f", "b", "a"]
 
 
+def test_past_the_deadline_no_new_repo_starts_and_the_rest_go_first_next_run(monkeypatch):
+    # first run: start, a, b (past the deadline), end; second run: start, b, c, a, end
+    late = cli.RUN_DEADLINE.total_seconds() + 1
+    seen, clock = [], iter([0, 0, late, 0, 0, 0, 0, 0, 0])
+    monkeypatch.setattr(cli, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(cli, "run_repo", lambda t, *_: seen.append(t.name))
+    state = State(Path(":memory:"))
+    targets = [Target("octrow/a"), Target("octrow/b"), Target("octrow/c")]
+    digest = cli._run_all(targets, Options(False, 3, None, False, None), state)
+    assert seen == ["a"]
+    assert digest.problems == ["run stopped after 3 h, not reached: b, c"]
+    seen.clear()
+    cli._run_all(targets, Options(False, 3, None, False, None), state)
+    assert seen == ["b", "c", "a"]
+
+
+def test_the_digest_says_how_long_the_run_took(monkeypatch):
+    clock = iter([0, 0, 0, 3780])
+    monkeypatch.setattr(cli, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(cli, "run_repo", lambda *_: None)
+    digest = cli._run_all(
+        [Target("octrow/a"), Target("octrow/b")],
+        Options(False, 3, None, False, None),
+        State(Path(":memory:")),
+    )
+    assert digest.minutes == 63
+    assert digest.text(budget_left=1).startswith(
+        "greenkeep: 0 merged, 0 parked, 0 problems; budget left today: 1; took 63 min"
+    )
+
+
 def test_spent_budget_still_visits_every_repo_for_security(monkeypatch):
     seen = []
     monkeypatch.setattr(cli, "run_repo", lambda t, *_: seen.append(t.name))
