@@ -23,8 +23,8 @@ log = logging.getLogger("greenkeep")
 
 MAX_DEPENDABOT_PER_RUN = 3  # suite runs cost minutes; the rest wait for the next run
 FIELDS = "number,title,body,headRefOid,headRefName,mergeable,files,statusCheckRollup"
-# `from 2.31.0 to 2.32.0`, `from v3 to v4`, ``from `0.6.1` to `0.6.9` ``
-BUMP = re.compile(r"\bfrom `?v?(\d[^\s`]*)`? to `?v?(\d[^\s`]*)")
+# `from 2.31.0 to 2.32.0`, `from v3 to v4`, ``from `0.6.1` to `0.6.9` ``, `from >=1.0 to >=1.2.4`
+BUMP = re.compile(r"\bfrom `?(?:[<>=~^]=?)?v?(\d[^\s`]*)`? to `?(?:[<>=~^]=?)?v?(\d[^\s`]*)")
 TRAILING = ".,;:)"
 # release notes and commit lists: they quote upstream's own bumps, not this PR's
 DETAILS = re.compile(r"<details>.*?</details>", re.DOTALL | re.IGNORECASE)

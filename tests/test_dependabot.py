@@ -34,6 +34,13 @@ def test_a_major_bump_is_major_and_no_pair_at_all_is_unknown():
     assert dependabot.upgrade("Bump python from 3.12-slim to 3.13-slim", "") == ""
 
 
+def test_a_requirement_update_names_its_lower_bounds():
+    title = "chore(deps): update python-dotenv requirement from >=1.0 to >=1.2.4"
+    assert dependabot.upgrade(title, "") == "same"
+    title = "chore(deps): update openai requirement from >=1.30 to >=3.26.1"
+    assert dependabot.upgrade(title, "") == "major"
+
+
 def test_a_0x_minor_bump_is_a_major_one():
     assert dependabot.upgrade("Bump pydantic-ai from 0.6.1 to 0.7.0", "") == "major"
     assert dependabot.upgrade("Bump pydantic-ai from 0.6.1 to 0.6.3", "") == "same"
