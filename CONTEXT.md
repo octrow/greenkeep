@@ -85,16 +85,16 @@ The Telegram summary sent after each run: what merged, what was parked, what bro
 _Avoid_: report, notification
 
 **Pause**:
-The state in which runs exit immediately; set by the owner or by auto-pause.
+The state in which runs exit immediately; only the owner sets it.
 _Avoid_: stop, disable, kill switch
 
 **Cool-down**:
-Up to seven days during which greenkeep leaves one tended repo alone except for security fixes and Dependabot merges, set when a run stopped working that repo because its findings kept getting parked; it ends early once the repo or greenkeep itself changes. The digest mentions it once, when it starts.
+Up to seven days during which greenkeep leaves one tended repo alone except for security fixes and Dependabot merges, set when a run stopped working that repo because its findings kept getting parked, or after a revert of a greenkeep merge there; it ends early once the repo or greenkeep itself changes. The digest mentions it once, when it starts.
 _Avoid_: shelved, snooze, backoff
 
-**Auto-pause**:
-Pause set by greenkeep itself when its own merged fix PRs get reverted.
-_Avoid_: circuit breaker
+**Revert**:
+A greenkeep merge taken back: by someone, or by greenkeep itself with a plain `git revert` PR when CI on the base branch went red after it (and was not red before). The finding is never tried again and the repo goes into cool-down; nothing pauses. Replaced auto-pause (ADR 0004).
+_Avoid_: rollback, auto-pause, circuit breaker
 
 **Bug hunt**:
 The optional mode where an LLM searches one module for bugs itself (Hunter → Skeptic) once a tended repo has no other workable finding; each bug that survives is fixed as a test-first fix, and the test failing before the fix is the referee.

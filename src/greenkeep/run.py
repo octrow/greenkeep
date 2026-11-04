@@ -478,7 +478,11 @@ def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> Non
 def _tend(
     ws: Workspace, target: Target, cooling: bool, opts: Options, state: State, digest: Digest
 ) -> None:
-    reverts.check(ws, state, backfill=opts.push)  # raises AutoPause before any work
+    if reverted := reverts.check(ws, state, push=opts.push):
+        # the gate let something wrong through here: leave the repo alone for a while
+        until = state.cool_down(ws.name, remote_head(target), tool_head())
+        digest.problems += [f"{line}, cool-down until {until}" for line in reverted]
+        return
     sync(ws)
     tests = baseline_tests(ws)
     if not tests.ok:

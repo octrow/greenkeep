@@ -19,6 +19,8 @@ SCHEMA = """CREATE TABLE IF NOT EXISTS finding (
 # per-repo and per-run marks: a repo's cool-down end, the day the last run finished
 MARKS = "CREATE TABLE IF NOT EXISTS mark (key TEXT PRIMARY KEY, value TEXT)"
 COOL_DOWN = timedelta(days=7)
+# how long after a merge greenkeep keeps looking at CI on its commit
+CI_WATCH = timedelta(days=3)
 # fingerprint prefixes of the kinds with `exempt_from_budget` (security): they neither need
 # nor spend the budget. State cannot import kinds; a test keeps the two in step
 BUDGET_FREE = ("vuln:",)
@@ -130,6 +132,15 @@ class State:
         """(fingerprint, PR, merge commit) of every live greenkeep merge in the repo."""
         return self.db.execute(
             "SELECT fp, pr, sha FROM finding WHERE repo=? AND status='merged'", (repo,)
+        ).fetchall()
+
+    def watched(self, repo: str) -> list[tuple[str, int | None, str]]:
+        """(fingerprint, PR, merge commit) of the live merges whose CI on the base branch
+        is still worth a look: by CI_WATCH it has finished, or it never will."""
+        return self.db.execute(
+            "SELECT fp, pr, sha FROM finding WHERE repo=? AND status='merged' "
+            "AND sha IS NOT NULL AND sha != '' AND merged_at >= datetime('now', ?)",
+            (repo, f"-{CI_WATCH.days} days"),
         ).fetchall()
 
     def rows(self) -> list[dict]:

@@ -273,6 +273,22 @@ def test_repo_in_cool_down_still_gets_security_fixes_and_dependabot(tmp_path, mo
     assert digest.cooling == 1 and digest.clean == 0
 
 
+def test_a_reverted_merge_cools_the_repo_down_without_working_it(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
+    sha = git(src, "rev-parse", "HEAD").strip()
+    git(src, "commit", "-q", "--allow-empty", "-m", f"Revert\n\nThis reverts commit {sha}.")
+    git(src, "push", "-q", "origin", "main")
+    state, digest = run.State(Path(":memory:")), Digest()
+    state.set("demo", "fp", status="merged", pr=7, sha=sha)
+    monkeypatch.setattr(run, "work", lambda job, f: pytest.fail("a reverted repo is not worked"))
+    run.run_repo(Target(str(src)), run.Options(False, 3, "x", True), state, digest)
+    assert state.status("demo", "fp") == "reverted"
+    assert state.cool_down_of("demo").repo_head == git(src, "rev-parse", "HEAD").strip()
+    assert digest.problems == [
+        f"demo: greenkeep merge #7 was reverted, cool-down until {state.cool_down_of('demo').until}"
+    ]
+
+
 def test_a_new_commit_in_the_repo_lifts_its_cool_down(tmp_path, monkeypatch):
     src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
     state, digest = run.State(Path(":memory:")), Digest()

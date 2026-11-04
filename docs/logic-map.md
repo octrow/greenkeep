@@ -26,7 +26,7 @@ systemd timer (hourly) / CLI / dashboard button
   │   per repo:
   ├─ 7  Cool-down .......... resting after two parked findings? → security and Dependabot only
   ├─ 8  Clone .............. fresh clone; boost adds extra ruff rules
-  ├─ 9  Revert check ....... did the owner revert a greenkeep merge? → auto-pause
+  ├─ 9  Revert check ....... a greenkeep merge reverted, or CI on main red after it? → revert, cool-down
   ├─ 10 Baseline tests ..... is the suite green in a clean clone, and what does it cover?
   ├─ 11 Findings ........... ruff, coverage, pip-audit, outdated, readiness
   ├─ 12 Owner notes ........ what only the owner can settle (license, README)
@@ -44,7 +44,7 @@ systemd timer (hourly) / CLI / dashboard button
   │   after the repo's own work:
   ├─ 23 Dependabot ......... merge its same-major PRs on a green local suite
   │
-  ├─ 24 Run-level stops .... auto-pause, Claude unavailable, a broken repo
+  ├─ 24 Run-level stops .... Claude unavailable, a broken repo
   └─ 25 Digest ............. Telegram text; mark the day done
   │
 merged PRs on GitHub, issues, state.db, the digest
@@ -108,7 +108,7 @@ Decides: whether this run does anything at all.
 Branches:
 - `~/.config/greenkeep/PAUSE` exists → log "paused", exit 0, no digest;
 - absent → go on.
-The file is written by step 24 (auto-pause) and deleted by the owner or the dashboard.
+Only the owner writes the file; the owner or the dashboard deletes it. greenkeep never pauses itself (ADR 0004): a bad merge cools its repo down instead (step 9).
 Module: `cli`, `config`
 
 ### 2. Once a day
@@ -183,8 +183,12 @@ Module: `workspace`, `config`, `github`
 
 Decides: whether the gate let something wrong through.
 Branches:
-- a commit on the base branch says "This reverts commit <sha>" for a recorded greenkeep merge → mark it `reverted`, raise `AutoPause`;
-- a merge without a stored sha (push) → fetch it from GitHub first (backfill).
+- a commit on the base branch says "This reverts commit <sha>" for a recorded greenkeep merge → mark it `reverted`;
+- a merge from the last 3 days (`CI_WATCH`) whose commit has a failed check run, while the commit before it has none and GitHub did start CI (not billing) → push: `git revert` it on `greenkeep/revert-<sha>`, publish and merge that PR (no model), mark it `reverted`; dry run: a "would revert" line only;
+- a merge without a stored sha (push) → fetch it from GitHub first (backfill);
+- any of the above → one digest problem line each, cool-down of the repo from its remote HEAD (ends early on the next commit or a greenkeep update), the repo is not worked this run. A `reverted` finding is never tried again.
+CI still running, or red only because the commit before was red too → nothing; the next run looks again.
+Fails: the revert conflicts with later commits → `WorkspaceError`, a problem line (step 24); the next run tries again while the merge is in the 3 days.
 Dry run: the in-memory state has no merges, so the check never fires.
 Module: `reverts`, `state`, `github`
 
@@ -346,11 +350,10 @@ Module: `dependabot`, `deps`, `github`
 
 Decides: what one repo's exception does to the rest of the run.
 Branches:
-- `AutoPause` → write PAUSE (push), digest line, stop the run; the day is still marked done;
 - Claude unavailable (step 22) → digest line "Claude unavailable at <repo>, run stopped: <reason>", `limited`, stop; the digest is sent, the day is not marked, the next hourly run tries again (and sends its digest too);
 - anything else → log the traceback, first line to "Problems", next repo.
 The clone is deleted after each repo unless `--keep`.
-Module: `cli`, `run`, `reverts`
+Module: `cli`, `run`
 
 ### 25. Digest
 

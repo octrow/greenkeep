@@ -146,7 +146,7 @@ The unit runs `uv run` from a checkout in `~/dev/greenkeep`; for the installed t
 
 ### Digest, pause, dashboard
 
-Telegram digest: `GREENKEEP_TG_BOT_TOKEN` and `GREENKEEP_TG_CHAT_ID` in `~/.config/greenkeep/env` (without them: a desktop notification). Pause: `touch ~/.config/greenkeep/PAUSE`, delete the file to resume. A reverted greenkeep merge pauses every run the same way, and the file says which merge it was.
+Telegram digest: `GREENKEEP_TG_BOT_TOKEN` and `GREENKEEP_TG_CHAT_ID` in `~/.config/greenkeep/env` (without them: a desktop notification). Pause: `touch ~/.config/greenkeep/PAUSE`, delete the file to resume. A reverted greenkeep merge, or one after which CI on main went red (greenkeep reverts that one itself), puts its repo into a week's cool-down instead; the digest says which.
 
 Dashboard (findings, pause/resume, dry run with a live log, recent events):
 
@@ -173,7 +173,7 @@ If the port belongs to another app it moves to the next free one; if a greenkeep
 
 In daily use on the author's repos since 2026-10-16.
 
-Done: ruff, coverage and dependency findings (upgrades need 60% coverage), the gate, Sonnet patcher + Opus reviewer, issue → PR → merge, config, the hourly timer with one run a day, the digest (with a one-line `Quiet:` summary), pause, cool-down for repos that keep failing, the dashboard, auto-pause after a reverted merge, the opt-in bug hunt (Hunter → Skeptic, then a test-first fix whose test must fail without it), readiness checks (pyproject description/readme/urls, README install and usage sections, CI badge; a missing LICENSE or README is left to you, once, in the digest).
+Done: ruff, coverage and dependency findings (upgrades need 60% coverage), the gate, Sonnet patcher + Opus reviewer, issue → PR → merge, config, the hourly timer with one run a day, the digest (with a one-line `Quiet:` summary), pause, cool-down for repos that keep failing, the dashboard, a revert (and cool-down) when CI on main goes red after a merge, the opt-in bug hunt (Hunter → Skeptic, then a test-first fix whose test must fail without it), readiness checks (pyproject description/readme/urls, README install and usage sections, CI badge; a missing LICENSE or README is left to you, once, in the digest).
 
 Next, roughly in this order:
 

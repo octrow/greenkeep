@@ -4,13 +4,12 @@ The owner will not come back to review code or pick up what greenkeep gave up on
 
 So a parked finding no longer asks for anyone. Its issue is closed with the one-line reason of each attempt and labelled `greenkeep-gave-up`; the finding keeps the HEAD it was parked at and gets three new attempts once a commit changes its file. The code it failed on is then gone, and a new attempt is not paying for the same failure twice. Issues left open from before are closed the same way on the next run.
 
-Safety stays where it was: the gate and the reviewer decide, and an owner's revert pauses greenkeep (Auto-pause). What changes is only who is expected to act on a failure: nobody.
+Safety stays where it was: the gate and the reviewer decide. What changes is who is expected to act on a failure: nobody.
 
-## Next (PLAN.md, "Эскалация вместо needs-human")
+## Later steps (PLAN.md, "Эскалация вместо needs-human")
 
-Before giving up, a finding will get a stronger path: a triage of its failure history, an agent (Opus with Edit and Bash in the clone), and a second review by a panel prompt on another vendor's model through OmniRoute with a pinned provider id. Two points of ADR 0003 change with that step, and its own ADR records them:
-- ADR 0003 has no triage step because one before work would decide what the filter and gate already decide. This triage runs only after three failed attempts, on their reasons.
-- ADR 0003 calls Claude directly, not through OmniRoute, because a combo swaps models and its account is unknown. The panel runs through OmniRoute only with a pinned provider id, never a combo; the Claude roles stay direct.
+- Escalation (2026-11-05): before giving up, a parked finding gets one try by an agent, Opus 5.5 at medium effort with Edit and a short Bash allowlist in the clone, under the same gate and review. The triage, the panel of three lenses and the review by another vendor were dropped by the owner; ADR 0003 stands as it is.
+- Revert instead of auto-pause (2026-11-05): an auto-pause waited for the owner to look and delete PAUSE, which nobody does. Now a reverted greenkeep merge, or one after which CI on the base branch went red (greenkeep then opens and merges a plain `git revert` PR itself), marks the finding `reverted`, never tried again, and puts that repo into cool-down. Other repos go on. PAUSE stays for the owner's own use.
 
 ## Considered Options
 

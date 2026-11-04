@@ -14,11 +14,10 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from . import llm
-from .config import DEFAULT_BUDGET, PAUSE_FILE, Config, ConfigError, Target, load, pause, paused
+from .config import DEFAULT_BUDGET, PAUSE_FILE, Config, ConfigError, Target, load, paused
 from .core import DEFAULT_MODEL, DEFAULT_REVIEW_MODEL, Options
 from .digest import Digest, send
 from .llm import unavailable
-from .reverts import AutoPause
 from .run import run_repo
 from .state import State
 from .workspace import sweep
@@ -110,12 +109,6 @@ def _run_all(targets: list[Target], opts: Options, state: State) -> Digest:
     for t in sorted(targets, key=lambda t: (not t.focus, state.last_merge(t.name))):
         try:
             run_repo(t, opts, state, digest)
-        except AutoPause as stop:
-            log.warning("auto-pause: %s", stop)
-            if opts.push:
-                pause(f"auto-paused {datetime.now():%Y-%m-%d}: {stop}")
-            digest.problems.append(f"AUTO-PAUSED: {stop}. Check it, then delete {PAUSE_FILE}")
-            break
         except Exception as exc:  # one broken repo must not cost the others their run
             first = (str(exc).splitlines() or [type(exc).__name__])[0][:PROBLEM_CHARS]
             if unavailable(exc):  # every later repo would hit the same wall

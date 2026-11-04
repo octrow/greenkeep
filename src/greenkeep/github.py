@@ -72,12 +72,35 @@ def close_issue(ws: Workspace, issue: int, reason: str) -> bool:
     )
 
 
+def _repo(ws: Workspace) -> str:
+    # named, not `{owner}/{repo}`: gh resolves those to an `upstream` remote when there is one
+    return web_url(ws.origin).removeprefix("https://github.com/")
+
+
+def ci_red(ws: Workspace, sha: str) -> bool:
+    """Whether a check run on `sha` failed. False while they run, and when gh fails."""
+    repo = _repo(ws)
+    return bool(repo) and (
+        sh(
+            [
+                "gh",
+                "api",
+                f"repos/{repo}/commits/{sha}/check-runs",
+                "--jq",
+                'any(.check_runs[]; .conclusion == "failure")',
+            ],
+            ws.root,
+            check=False,
+        ).stdout.strip()
+        == "true"
+    )
+
+
 def ci_not_started(ws: Workspace, sha: str) -> bool:
     """Whether CI on `sha` failed because GitHub would not start it (billing), judged by the
     first failed check run: such a run failed every job the same way. False when gh fails,
     and when that run is older than BILLING_FRESH: minutes may have come back since."""
-    # named, not `{owner}/{repo}`: gh resolves those to an `upstream` remote when there is one
-    repo = web_url(ws.origin).removeprefix("https://github.com/")
+    repo = _repo(ws)
     if not repo:
         return False
     failed, _, completed = (
