@@ -20,7 +20,7 @@ from packaging.utils import canonicalize_name
 from . import deps, llm, ready
 from .core import Change, GateFailure, Job, lint
 from .edits import EditError, apply_edits, parse_edits, python_block
-from .findings import Finding, rank
+from .findings import Finding, added_lint, rank
 from .gate import coverage_violations, is_test_path, line_is_covered
 from .github import web_url
 from .workspace import (
@@ -149,11 +149,7 @@ class Lint(Kind):
             ruff_fix(job.ws, f.path, f.rule)
             # the fix may leave lint of its own (UP035 -> unsorted imports): fix only that,
             # never what was there before, so the PR still resolves one finding
-            new = {
-                a.rule
-                for a in lint(job.ws, f.path)
-                if a.fixable and a.fingerprint not in job.base.lint
-            }
+            new = {a.rule for a in added_lint(lint(job.ws, f.path), job.base.lint) if a.fixable}
             for rule in sorted(new):
                 ruff_fix(job.ws, f.path, rule)
             return Change([f.path], "ruff --fix", deterministic=True)

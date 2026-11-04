@@ -1,6 +1,6 @@
 import pytest
 
-from greenkeep.findings import is_vendored, rank, ruff_findings, untested_findings
+from greenkeep.findings import added_lint, is_vendored, rank, ruff_findings, untested_findings
 
 RUFF = [
     {
@@ -113,3 +113,27 @@ def test_identical_lines_get_a_fingerprint_each_and_the_first_keeps_its_own():
 def test_ruff_findings_keep_the_last_line_they_span():
     item = {**RUFF[0], "end_location": {"row": 4, "column": 1}}
     assert ruff_findings([item], root="/w", read_line=lambda p, n: "x")[0].end_line == 4
+
+
+def _furb(text: str, row: int = 90) -> list:
+    item = {
+        "code": "FURB157",
+        "message": "Verbose expression in `Decimal` constructor",
+        "filename": "/w/tests/t.py",
+        "location": {"row": row, "column": 1},
+    }
+    return ruff_findings([item], root="/w", read_line=lambda p, n: text)
+
+
+def test_rewritten_line_keeps_its_old_lint_finding():
+    # C408 fix: `amount=Decimal("2000"),` -> `"amount": Decimal("2000"),`; the FURB157 on it
+    # was there before, and fixing it too is a drive-by the reviewer rejects
+    base = frozenset(f.fingerprint for f in _furb('amount=Decimal("2000"),'))
+    after = _furb('"amount": Decimal("2000"),')
+    assert added_lint(after, base) == []
+
+
+def test_one_more_finding_of_a_rule_in_a_file_is_new():
+    base = frozenset(f.fingerprint for f in _furb('amount=Decimal("2000"),'))
+    after = [*_furb('"amount": Decimal("2000"),'), *_furb('x = Decimal("1")', row=95)]
+    assert [f.line for f in added_lint(after, base)] == [90, 95]

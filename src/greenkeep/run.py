@@ -17,7 +17,7 @@ from .config import Target
 from .core import Baseline, Change, GateFailure, Job, Options, lint
 from .digest import Digest
 from .edits import EditError
-from .findings import Finding, is_vendored, untested_findings
+from .findings import Finding, added_lint, is_vendored, untested_findings
 from .gate import suppressions
 from .kinds import kind_of
 from .state import MAX_ATTEMPTS, State
@@ -122,7 +122,7 @@ def _vanished(job: Job, fp: str, packages: set[str]) -> bool:
 def _check_no_new_lint(job: Job, paths: list[str]) -> None:
     if silenced := suppressions(job.ws.git("diff", "-U0", "HEAD")):
         raise GateFailure(f"the change silences tools instead of fixing code: {silenced}")
-    new = [a for a in _lint_changed(job, paths) if a.fingerprint not in job.base.lint]
+    new = added_lint(_lint_changed(job, paths), job.base.lint)
     if new:
         raise GateFailure(
             "the change adds lint findings: "

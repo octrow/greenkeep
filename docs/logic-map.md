@@ -286,7 +286,7 @@ Checks in order:
 1. something changed;
 2. kind scope: lint → only its file, changed lines covered before, ruff reports fewer copies of its line than the baseline did; untested → only test files, within the line budget; bug → its file + added test lines only, source lines covered, each new test fails on the unfixed code (exit 1); dependency → only `uv.lock`; ready → only its file and `[project]` field, the check passes;
 3. no added `noqa`, `type: ignore`, `pragma: no cover`, `ruff:`, `pylint: disable`;
-4. no ruff finding whose fingerprint was not in the baseline (boost rules included; a file the change adds gets the repo's own rules only);
+4. no new ruff finding: one whose fingerprint was not in the baseline, in a file that now has more findings of that rule than the baseline had (a rewritten line keeps the finding it already had; boost rules included; a file the change adds gets the repo's own rules only). Step 18's "new fixable lint" after `ruff --fix` counts the same way;
 5. full suite green (`uv run`; a dependency kind runs `uv sync --all-extras --all-packages` after `uv lock`, or `uv run` would keep a package only an extra needs at its old version), not "no tests" where the baseline had tests;
 6. untested → module coverage grew.
 Reading `git diff -U0` (`gate`): a line ends only at `\n`; `---`/`+++` are headers only before a file's first `@@` (inside a hunk `+++x` is an added line); a hunk belongs to the new path, a deleted file's to its old one (`--- a/`); the tab git appends to a path with a space is dropped.

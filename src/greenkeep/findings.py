@@ -48,6 +48,25 @@ def _digest(text: str) -> str:
     return hashlib.sha1(text.encode()).hexdigest()[:10]
 
 
+def _rule_in_file(fp: str) -> str:
+    """`ruff:FURB157:tests/t.py:<digest>#1` -> `ruff:FURB157:tests/t.py`."""
+    return fp.split("#", 1)[0].rsplit(":", 1)[0]
+
+
+def added_lint(found: list[Finding], base: frozenset[str]) -> list[Finding]:
+    """The findings a change added. A fingerprint hashes its line's text, so rewriting a line
+    that already had a finding (`a=Decimal("1")` -> `"a": Decimal("1")`) gives it a new one;
+    it counts as added only when the file now has more of that rule than before."""
+    before = Counter(_rule_in_file(fp) for fp in base)
+    after = Counter(_rule_in_file(f.fingerprint) for f in found)
+    return [
+        f
+        for f in found
+        if f.fingerprint not in base
+        and after[_rule_in_file(f.fingerprint)] > before[_rule_in_file(f.fingerprint)]
+    ]
+
+
 def ruff_findings(
     items: list[dict], *, root: str, read_line: Callable[[str, int], str]
 ) -> list[Finding]:
