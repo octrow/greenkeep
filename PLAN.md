@@ -127,7 +127,7 @@ Reply with JSON only:
 
 | # | Что | Серьёзность | Усилие | Статус |
 |---|---|---|---|---|
-| E0 | Модели на сервере: ключ OmniRoute для greenkeep (сейчас `/v1/models` → 401), закреплённые id и пробный вызов каждой. На ноутбуке есть `codex/gpt-6-luna-*`, `gemini/gemini-4-argon`, `moonshot/kimi-k3.1-pro`, `cursor/claude-opus-5-5-*`, `muse-spark-web`; GPT-6 Astra и Gemini 4 Carbon в OmniRoute нет | — | владелец: ключ; дальше 30 мин | открыт |
+| E0 | Модели на сервере: ключ OmniRoute для greenkeep, закреплённые id, пробный вызов каждой | — | 30 мин | ✅ |
 | E1 | ADR-0004 «нет человека в цикле» + финал (`greenkeep-gave-up`, закрытие issue с причинами, возврат в работу при новом коммите в файл). Убирает `needs-human` | HIGH | 2 ч | ✅ |
 | E2 | Триаж и панель (перенесены из E1: без агента их вердикт ни на что не влияет) + агент Opus с Edit и Bash в клоне: allowlist, таймаут, лимит дифа, история отказов в промпте | HIGH | 4 ч | открыт |
 | E3 | Ревью двумя семействами для эскалированных диффов | HIGH | 2 ч | открыт |
@@ -135,7 +135,7 @@ Reply with JSON only:
 | E5 | Тот же агент для Dependabot-мажоров («left to the owner») и красного baseline (tg-bot-template) | MEDIUM | 3 ч | открыт |
 | E6 | Прогон по бэклогу: 27 отложенных → `open`, эскалация; замерить влито / закрыто / стоимость | MEDIUM | 1 ночь | открыт |
 
-E0. Ключ выпускает владелец (нужен доступ админа OmniRoute на сервере): создать ключ для greenkeep и положить `OMNIROUTE_API_KEY=...` в `oci-main:~/.config/greenkeep/env`. CLI есть: `/opt/omniroute/node/bin/omniroute`, сервер слушает `127.0.0.1:20128`, без ключа отвечает 401. Ключи уже есть у chat-watch и repo-scout, общий брать не стоит.
+E0. Сделано (2026-11-05): владелец взял ключ chat-watch, он лежит в `oci-main:~/.config/greenkeep/env` как `OMNIROUTE_API_KEY` (файл 600). `/v1/models` → 200, 4937 моделей; id есть все: `codex/gpt-6-luna-high`, `gemini/gemini-4-argon`, `moonshot/kimi-k3.1-pro`, `cc/claude-opus-5-5`. Пробный вызов через claude-cli (`omniroute run claude`, `omniroute` есть в PATH сервиса через nvm): GPT-6 Luna — ответ за 9 с, модель назвала себя верно; Gemini 4 Argon — `UsageLimitError` дважды подряд (лимит подключения gemini на сервере); Kimi k3.1 pro — `claude-code:unrecognized_model`. Итог: панель на `codex/gpt-6-luna-high`; запасная модель на E3 — Gemini, если лимит отпустит, иначе `cc/claude-opus-5-5` не подходит (то же семейство).
 E1. Сделано: `github.give_up` ставит метку `greenkeep-gave-up` и закрывает issue с однострочной причиной каждой попытки этого прогона; `run.close_parked` закрывает старые открытые `needs-human` в следующем прогоне; `run.revive_parked` возвращает находку в `open` (attempts 0), если коммит изменил её файл после `parked_head`. `PARKED_TEST_DAYS` удалён. Дайджест: «Gave up» отдельно от «Needs you». Тесты в `tests/test_run_e2e.py`. ADR: `docs/adr/0004-no-human-in-the-loop.md`.
 
 Столкновение с ADR-0003 (решается в ADR-0004 на шаге E1):
