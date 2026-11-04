@@ -76,11 +76,52 @@ T2. Сделано: buy-smarter #29 закрыт вручную. `run.close_vani
 Что сейчас ждёт человека (сервер, 2026-11-04): 27 отложенных находок под `needs-human` (untested 15, outdated 5, ruff 2, ready 2, vuln 2, bug 1); красный baseline, в котором репо стоит целиком (tg-bot-template); Dependabot «left to the owner» (мажорные обновления: linux-coding 8, buy-smarter #33, olx #35, tlf #22); auto-pause после revert ждёт владельца (`reverts`). CI без минут (billing) агенту не решить, он остаётся строкой в дайджесте.
 
 Лестница для находки, которая сгорела на обычном пути (Sonnet пишет, Opus ревьюит, 3 попытки):
-1. **Триаж** (Opus, effort high, только чтение): по истории отказов решает, стоит ли находка работы. «Ложная или не стоит» (ревьюер: «уже покрыто», «не в стиле репо») → issue закрывается как won't-fix, находка `dismissed` до нового коммита в её файл. Иначе → шаг 2.
+1. **Триаж** (панель, см. ниже, только чтение): по истории отказов решает, стоит ли находка работы. «Ложная или не стоит» (ревьюер: «уже покрыто», «не в стиле репо») → issue закрывается как won't-fix, находка `dismissed` до нового коммита в её файл. Иначе → шаг 2.
 2. **Агент** (Opus 5.5 напрямую, на Team-аккаунте, effort max): Claude Code с Edit и Bash в одноразовом клоне, Bash только из allowlist (`uv run pytest`, `uv run ruff`, `git diff`), 30 мин. Получает историю отказов и сам гоняет тесты. Его дифф проходит тот же гейт без поблажек, плюс лимит размера дифа.
-3. **Ревью двумя семействами**: эскалированный дифф одобряют Opus и модель другого вендора через OmniRoute с закреплённым id (`codex/gpt-6-luna-high`, запасной `gemini/gemini-4-argon`). Модель одного семейства склонна соглашаться сама с собой; второе мнение заменяет человека. Нет двух «да» → причины уходят агенту, ещё одна попытка (не больше 2).
+3. **Ревью двумя семействами**: эскалированный дифф одобряют Opus (корректность, как сейчас) и панель на модели другого вендора через OmniRoute с закреплённым id (`codex/gpt-6-luna-high`, запасной `gemini/gemini-4-argon`). Модель одного семейства склонна соглашаться сама с собой; панель заменяет человека. Нет двух «да» → причины уходят агенту, ещё одна попытка (не больше 2).
 4. **Второй вендор-агент** (позже, если шаг 2 часто сгорает): `moonshot/kimi-k3.1-pro` или GPT-6 как агент через `omniroute run claude`.
 5. **Финал без человека**: не вышло → issue закрывается с резюме (что пробовали, почему отказ), метка `greenkeep-gave-up` вместо `needs-human`, находка `abandoned`. В работу она вернётся сама при новом коммите в её файл (как cool-down).
+
+**Панель вместо человека** (владелец, 2026-11-04): один вызов, три линзы, собранные из скиллов `virtual-me` (dev-контекст), `virtual-rashid` (режим ревью) и `ponytail-review`. В промпт идут только правила суждения: без имён, цитат и рабочей переписки — greenkeep публичный, а данные `virtual-rashid` не покидают ноутбук. Каждая линза выносит вердикт; одно «нет» = отказ с причиной этой линзы. Черновик (на E1 уходит в `llm.py` как `PANEL_SYSTEM`):
+
+```text
+You stand in for the owner of a personal Python repository, who will never look at this
+change. Judge it through three lenses; each gives approve or reject with one-line reason.
+
+OWNER (would I keep this in my repo?)
+- The change does what the finding asks and nothing else: no drive-by edits, no new
+  dependency, no new config, no rename, no reformatting of untouched code.
+- It follows the repo's own conventions: where its tests live and how they are named,
+  the fixtures and helpers the repo already uses, its tools (uv, ruff, pytest).
+- Tests stay fast: no single new test over 30 s, no network, no real hardware.
+- If code can decide something deterministically, it must not be left to an LLM.
+- Reject if it reads like generated filler: comments restating code, asserts that
+  only prove the code ran.
+
+CTO (is it worth it, is it honest?)
+- What value does it bring to this repo now? "Coverage went up" alone is not value;
+  a test must pin behaviour someone relies on.
+- Check the claim by logic: does the diff really fix the finding, or hide it?
+- No silent failures: an error swallowed, a fallback that hides a fault, a default
+  that changes behaviour quietly - reject.
+- Safe by default: new behaviour off, nothing that changes how every caller works
+  unless the finding is exactly that.
+- Reject a mix: one change, one concern. Anything else is a separate finding.
+
+LEAN (does every added line need to exist?)
+- Reject on: an abstraction with one implementation, a parameter or option nobody
+  passes, a wrapper around one call, hand-rolled code the stdlib or an installed
+  dependency already provides, speculative handling of cases the finding never raised.
+- Note but do not reject: a shorter form of the same logic ("shrink").
+- One smoke test or assert-based check is the minimum, never bloat.
+
+Reply with JSON only:
+{"owner": {"approve": bool, "reason": str},
+ "cto": {"approve": bool, "reason": str},
+ "lean": {"approve": bool, "reason": str, "shrink": [str]}}
+```
+
+Для триажа тот же промпт с вопросом не «влить ли этот дифф», а «стоит ли эта находка ещё одной попытки» по истории отказов: OWNER — не противоречит ли она стилю репо, CTO — есть ли ценность и честна ли находка, LEAN — нужен ли этот код или тест вообще.
 
 Страховка без человека: после merge эскалированного изменения следующий прогон смотрит CI на main. Если main покраснел → детерминированный revert PR, находка `abandoned`. Лимиты: не больше 2 эскалаций за прогон, одна на находку на один sha файла.
 
@@ -101,6 +142,7 @@ T2. Сделано: buy-smarter #29 закрыт вручную. `run.close_vani
 
 Вопросы владельцу (рекомендация первой):
 - Q1. Второй ревьюер: `codex/gpt-6-luna-high` (подписка ChatGPT, сильный в коде); запасной `gemini/gemini-4-argon`.
+- Q1a. Панель — на модели второго вендора (одна модель на «корректность» и «вкус» дала бы одно семейство дважды).
 - Q2. Muse: не брать. `muse-spark-web` — веб-провайдер, для ночной автоматики ненадёжен.
 - Q3. Финал: закрывать issue с резюме; не создавать issues вовсе — запасной вариант.
 - Q4. Auto-pause после revert: снимать автоматически после триажа revert агентом.
