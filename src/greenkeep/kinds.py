@@ -103,6 +103,7 @@ class Kind(ABC):
     gate_note = ""
     exempt_from_budget = False
     retries = True  # False: the same input gives the same failure, a retry only costs time
+    escalates = True  # parked: the agent gets one more try before greenkeep gives up
 
     @abstractmethod
     def priority(self, f: Finding) -> int:
@@ -344,6 +345,7 @@ class Dependency(Kind):
     gate_note = "only uv.lock changed; full test suite green on the upgraded lock."
     # ponytail: a network error in `uv lock` parks it too; tell them apart if that bites
     retries = False
+    escalates = False  # an upgrade that needs code changes is PLAN.md E5
 
     def produce(self, job: Job, f: Finding, feedback: str) -> Change:
         deps.upgrade(job.ws, f.rule)

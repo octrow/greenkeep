@@ -70,8 +70,17 @@ def unavailable(exc: Exception) -> bool:
     )
 
 
-def _claude(prompt: str, model: str, effort: str, root: Path, timeout: int):
-    """One read-only Claude Code call in the clone; its duration goes to the log."""
+def _claude(
+    prompt: str,
+    model: str,
+    effort: str,
+    root: Path,
+    timeout: int,
+    tools: str = READ_TOOLS,
+    allowed: str | None = None,
+):
+    """One Claude Code call in the clone, read-only unless `tools` says otherwise; its
+    duration goes to the log."""
     start = time.monotonic()
     login = on_login(_now())
     try:
@@ -79,7 +88,8 @@ def _claude(prompt: str, model: str, effort: str, root: Path, timeout: int):
             prompt,
             model=model if login else VIA_OMNIROUTE + model,
             effort=effort,
-            tools=READ_TOOLS,
+            tools=tools,
+            allowed_tools=allowed,
             cwd=root,
             backend="cli",
             timeout=timeout,
@@ -143,6 +153,54 @@ class Reply:
     text: str
     model: str
     prompt_sha: str
+
+
+AGENT_TIMEOUT = 1800  # it runs the suite itself, several times
+AGENT_EFFORT = "medium"  # owner, 2026-11-05: Opus 5.5 medium
+AGENT_TOOLS = "Read,Grep,Glob,Edit,Write,Bash"
+# Bash only for checking its own work; anything else is denied without asking (-p mode)
+AGENT_ALLOWED = (
+    "Read,Grep,Glob,Edit,Write,Bash(uv run pytest:*),Bash(uv run ruff:*),"
+    "Bash(git diff:*),Bash(git status:*)"
+)
+AGENT_SYSTEM = """You fix one finding in a Python repository. A cheaper model tried and failed;
+its failures are below. You work in a throwaway clone: edit the files directly, and check
+your work with `uv run pytest`, `uv run ruff check` and `git diff`. No person will review
+or ever revisit this change: an automated gate and one reviewer model decide whether it is
+merged, so a change you are not sure of is worse than none.
+
+Rules:
+- Change only what the finding needs: no drive-by edits, no new dependency, no new config.
+- Never silence a tool: no noqa, type: ignore, pragma: no cover, or per-file ignores.
+- Follow the repository's own conventions: where tests live, how they are named, the
+  fixtures and helpers it already has; extend an existing test file when one fits.
+- If the finding cannot be fixed within these rules, change nothing.
+Finish with one line: what you changed, or why you changed nothing."""
+
+
+def agent_prompt(f: Finding, gate_note: str, reasons: list[str]) -> str:
+    """The finding, how the gate will judge the change, and every failed attempt so far."""
+    failed = "\n\n".join(f"Attempt {i}:\n{r}" for i, r in enumerate(reasons, 1))
+    return (
+        f"Finding: {f.title}\nKind: {f.kind}, rule {f.rule}, at {f.path}:{f.line}\n"
+        f"Detail: {f.message}\n\nThe gate merges the change only if: {gate_note}\n\n"
+        f"What went wrong before:\n{failed}"
+    )
+
+
+def agent(prompt: str, model: str, root: Path) -> Reply:
+    """The escalation agent: it edits the clone itself; its reply is only a summary."""
+    res = _claude(
+        f"{AGENT_SYSTEM}\n\n{prompt}",
+        model,
+        AGENT_EFFORT,
+        root,
+        AGENT_TIMEOUT,
+        tools=AGENT_TOOLS,
+        allowed=AGENT_ALLOWED,
+    )
+    sha = hashlib.sha1((AGENT_SYSTEM + prompt).encode()).hexdigest()[:12]
+    return Reply(res.text, model, sha)
 
 
 def ask(system: str, prompt: str, model: str, root: Path) -> Reply:

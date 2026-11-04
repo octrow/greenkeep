@@ -40,7 +40,7 @@ systemd timer (hourly) / CLI / dashboard button
   ├─ 19 Gate ............... scope, no suppressions, no new lint, suite green, kind check
   ├─ 20 Review ............. Opus reads the diff in the clone (LLM changes only)
   ├─ 21 Land ............... commit, push, PR, squash-merge
-  ├─ 22 Failure ............ count the attempt, park, cool the repo down
+  ├─ 22 Failure ............ count the attempt, park, agent, give up, cool the repo down
   │   after the repo's own work:
   ├─ 23 Dependabot ......... merge its same-major PRs on a green local suite
   │
@@ -323,8 +323,9 @@ Branches:
 - Claude unavailable (`llm.unavailable`: `UsageLimitError`, `NotLoggedInError`, or a Claude error with an API 5xx, overload or connection failure) → not counted, raised (step 24);
 - any other Claude error (timeout, API 4xx such as "prompt is too long", unreadable reply) → counted like a bad change;
 - counted: attempts + 1, next attempt at once; dependency kinds park at once (`retries = False`); others park at 3;
-- parked → digest "Gave up", HEAD kept as `parked_head`, issue labelled `greenkeep-gave-up` and closed with this run's one-line reasons, issue cleared in state;
-- timeout → counted, then stop this finding for the run, try the next candidate;
+- parked, kind escalates (all but dependency kinds) and fewer than 2 escalations this run (`MAX_ESCALATIONS`, counted in the digest) → the agent: `AGENT_MODEL` (Opus 5.5) at medium effort, 30 min, Claude Code with `Read,Grep,Glob,Edit,Write` and Bash only for `uv run pytest`, `uv run ruff`, `git diff`, `git status`, in the reset clone; its prompt has the finding, the kind's gate note and every failure of this run. Then its caches and an untracked `uv.lock` are cleaned; no change → failure "the agent changed nothing: <its last line>"; otherwise the same gate (step 19), review (step 20) and land (step 21). Merged → done. Failed (not unavailable) → its reason joins the list;
+- parked and not merged by the agent → digest "Gave up", HEAD kept as `parked_head`, issue labelled `greenkeep-gave-up` and closed with this run's one-line reasons (the agent's last), issue cleared in state;
+- timeout → counted, then stop this finding for the run (to the agent if that was the last attempt), try the next candidate;
 - 2 parked in this repo in this run → cool-down 7 days (step 7), no more findings; Dependabot still runs.
 Module: `run`, `state`, `github`
 

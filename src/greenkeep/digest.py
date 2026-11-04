@@ -18,6 +18,7 @@ CHAT_ENV = "GREENKEEP_TG_CHAT_ID"
 class Digest:
     merged: list[str] = field(default_factory=list)
     parked: list[str] = field(default_factory=list)
+    escalated: list[str] = field(default_factory=list)  # findings the agent took this run
     problems: list[str] = field(default_factory=list)
     owner: list[str] = field(default_factory=list)  # what only the owner can settle
     billing: list[str] = field(default_factory=list)  # repos whose CI GitHub did not start

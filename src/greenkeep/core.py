@@ -17,6 +17,7 @@ from .workspace import TestRun, Workspace, ruff_json
 # pinned to its `claude` connection (a bare `claude-sonnet-*` there went to a free combo).
 DEFAULT_MODEL = "claude-sonnet-5-5"
 DEFAULT_REVIEW_MODEL = "claude-opus-5-5"
+AGENT_MODEL = "claude-opus-5-5"  # escalation, at medium effort (owner, 2026-11-05)
 
 
 class GateFailure(Exception):

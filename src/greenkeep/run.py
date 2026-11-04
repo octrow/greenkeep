@@ -14,7 +14,7 @@ from claude_cli import ClaudeCliError
 
 from . import dependabot, deps, github, hunt, llm, ready, reverts
 from .config import Target
-from .core import Baseline, Change, GateFailure, Job, Options, lint
+from .core import AGENT_MODEL, Baseline, Change, GateFailure, Job, Options, lint
 from .digest import Digest
 from .edits import EditError
 from .findings import Finding, added_lint, is_vendored, untested_findings
@@ -45,6 +45,15 @@ BOOST_ONLY_CLOSE = (
     "them; greenkeep works it only during a boost. Closing until then."
 )
 FEEDBACK_CHARS = 1500
+MAX_ESCALATIONS = 2  # agent runs per greenkeep run: up to 30 minutes each
+# what the agent's own pytest, ruff and `uv run` leave behind, ignored by the repo or not;
+# `git clean` never touches a tracked file, so a repo's own uv.lock stays
+CACHES = (
+    ":(glob)**/__pycache__/**",
+    ":(glob)**/.pytest_cache/**",
+    ":(glob)**/.ruff_cache/**",
+    "uv.lock",
+)
 PYTEST_TOTALS = re.compile(
     r"^=*\s*(\d+ (?:failed|passed|errors?)\b[^\n]*? in [\d.]+s)", re.MULTILINE
 )
@@ -262,18 +271,47 @@ def _review(job: Job, f: Finding, change: Change) -> Change:
     return replace(change, reviewer=verdict.model)
 
 
-def _record_failure(job: Job, f: Finding, reasons: list[str]) -> None:
-    """`reasons`: this run's failures of the finding, the latest last."""
-    reason, retries = reasons[-1], kind_of(f).retries
+def _record_failure(job: Job, f: Finding, reason: str) -> None:
+    """Count the attempt; the last one parks the finding."""
+    retries = kind_of(f).retries
     job.state.add_attempt(job.ws.name, f.fingerprint, last=not retries)
     n = job.state.attempts(job.ws.name, f.fingerprint)
     log.info(
         "  attempt %d/%d failed: %s", n, MAX_ATTEMPTS if retries else 1, reason.splitlines()[0]
     )
     log.debug("  full failure:\n%s", reason)
-    if retries and n < MAX_ATTEMPTS:
-        return
-    issue = job.state.issue(job.ws.name, f.fingerprint)
+
+
+def _escalate(job: Job, f: Finding, issue: int | None, reasons: list[str]) -> bool:
+    """One try by the agent before greenkeep gives up (ADR 0004): it edits the clone itself,
+    and its change passes the same gate and review. True once merged."""
+    if not kind_of(f).escalates or len(job.digest.escalated) >= MAX_ESCALATIONS:
+        return False
+    job.digest.escalated.append(f"{job.ws.name}: {f.title}")
+    log.info("  escalating to the agent (%s)", AGENT_MODEL)
+    try:
+        job.ws.reset()
+        prompt = llm.agent_prompt(f, kind_of(f).gate_note, reasons)
+        reply = llm.agent(prompt, AGENT_MODEL, job.ws.root)
+        job.ws.git("clean", "-fdxq", "--", *CACHES)
+        if not job.ws.changed():
+            said = (reply.text.strip().splitlines() or ["no reason given"])[-1]
+            raise GateFailure(f"the agent changed nothing: {said}")
+        paths = gate(job, f)
+        change = _review(job, f, Change(paths, f"{reply.model} (agent)", reply.prompt_sha))
+        _land(job, Fix(f, change, paths, issue))
+        return True
+    except ATTEMPT_FAILURES as exc:
+        if llm.unavailable(exc):
+            raise
+        reason = clip(redact(str(exc), job.ws.secrets()))
+        reasons.append(f"agent: {reason}")
+        log.info("  agent failed: %s", reason.splitlines()[0])
+        return False
+
+
+def _give_up(job: Job, f: Finding, issue: int | None, reasons: list[str]) -> None:
+    """Parked for good until its file changes: nobody comes back to it (ADR 0004)."""
     job.digest.parked.append(f"{job.ws.name}: {f.title}" + (f" (issue #{issue})" if issue else ""))
     job.state.set(job.ws.name, f.fingerprint, parked_head=job.ws.git("rev-parse", "HEAD").strip())
     if issue and github.give_up(job.ws, issue, reasons):
@@ -312,9 +350,14 @@ def work(job: Job, f: Finding) -> bool:
                 raise
             feedback = clip(redact(str(exc), job.ws.secrets()))
             reasons.append(feedback)
-            _record_failure(job, f, reasons)
+            _record_failure(job, f, feedback)
             if _timed_out(exc):
-                return False  # up to 10 minutes each: the next attempt waits for tomorrow
+                break  # up to 10 minutes each: the next attempt waits for tomorrow
+    if job.state.status(job.ws.name, f.fingerprint) != "parked":
+        return False
+    if _escalate(job, f, issue, reasons):
+        return True
+    _give_up(job, f, issue, reasons)
     return False
 
 

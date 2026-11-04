@@ -77,6 +77,8 @@ def fake_llm(monkeypatch, patches: list[str], verdicts: list[str] = ()) -> FakeL
     fake = FakeLLM(patches, verdicts)
     monkeypatch.setattr(llm, "ask", fake)
     monkeypatch.setattr(llm, "run_claude", fake.review)
+    # the escalation agent changes nothing unless a test gives it files (fake_agent)
+    monkeypatch.setattr(llm, "agent", lambda p, model, root: llm.Reply("nothing", model, "-"))
     return fake
 
 
@@ -580,16 +582,16 @@ def test_issues_of_parked_findings_are_closed_as_given_up(monkeypatch):
     assert state.status("demo", "untested:old.py") == "parked"
 
 
-def test_the_last_failed_attempt_closes_the_issue_with_every_reason(tmp_path, monkeypatch):
+def test_giving_up_closes_the_issue_with_every_reason(tmp_path, monkeypatch):
     src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
     state = run.State(Path(":memory:"))
     f = Finding("untested", "coverage", "demo.py", 1, "m", "untested:demo.py", title="t")
-    state.set("demo", f.fingerprint, issue=7, attempts=run.MAX_ATTEMPTS - 1)
+    state.set("demo", f.fingerprint, issue=7, status="parked", attempts=run.MAX_ATTEMPTS)
     given = {}
     monkeypatch.setattr(github, "give_up", lambda ws, n, why: given.update({n: why}) or True)
     ws = workspace.Workspace("demo", src, tmp_path)
     job = SimpleNamespace(ws=ws, state=state, digest=Digest())
-    run._record_failure(job, f, ["no SEARCH/REPLACE blocks", "test suite failed: 1 failed"])
+    run._give_up(job, f, 7, ["no SEARCH/REPLACE blocks", "test suite failed: 1 failed"])
     assert given == {7: ["no SEARCH/REPLACE blocks", "test suite failed: 1 failed"]}
     assert (
         state.status("demo", f.fingerprint) == "parked"
@@ -612,3 +614,51 @@ def test_a_parked_finding_is_tried_again_once_its_file_changes(tmp_path, monkeyp
         run.revive_parked(job)
         assert state.is_workable("demo", f.fingerprint) is revived
     assert state.attempts("demo", f.fingerprint) == 0
+
+
+def fake_agent(monkeypatch, files: dict[str, str]) -> list[str]:
+    """The escalation agent edits the clone itself; this one writes `files` there."""
+    prompts = []
+
+    def agent(prompt: str, model: str, root: Path) -> llm.Reply:
+        prompts.append(prompt)
+        for rel, text in files.items():
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(text)
+        return llm.Reply("wrote the tests", model, "sha")
+
+    monkeypatch.setattr(llm, "agent", agent)
+    return prompts
+
+
+def test_a_finding_the_patcher_gave_up_on_gets_the_agent(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
+    fake = fake_llm(monkeypatch, ["no"])
+    code = CHAR_TEST.removeprefix("```python\n").removesuffix("```")
+    # what its own pytest and `uv run` leave behind must not count as its change
+    junk = {"tests/__pycache__/x.pyc": "", "uv.lock": "version = 1\n"}
+    prompts = fake_agent(monkeypatch, {"tests/test_demo.py": code, **junk})
+    state, clone = dry_run(src)
+    assert len(fake.patch_prompts) == run.MAX_ATTEMPTS and len(prompts) == 1
+    assert "no SEARCH/REPLACE" in prompts[0] or "code block" in prompts[0]  # what failed
+    assert state.status("demo", "untested:demo.py") == "merged" and fake.reviews == 1
+    assert (clone / "tests/test_demo.py").is_file()
+
+
+def test_an_agent_that_changes_nothing_leaves_the_finding_parked(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
+    fake_llm(monkeypatch, ["no"])
+    prompts = fake_agent(monkeypatch, {})
+    state, _ = dry_run(src)
+    assert len(prompts) == 1 and state.status("demo", "untested:demo.py") == "parked"
+
+
+def test_a_run_escalates_at_most_twice(tmp_path, monkeypatch):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
+    fake_llm(monkeypatch, ["no"])
+    prompts = fake_agent(monkeypatch, {})
+    state = run.State(Path(":memory:"))
+    digest = Digest(escalated=["a: x", "b: y"])
+    opts = run.Options(push=False, budget=3, model="x", keep=True)
+    run.run_repo(Target(str(src)), opts, state, digest)
+    assert not prompts and state.status("demo", "untested:demo.py") == "parked"
