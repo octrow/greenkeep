@@ -51,6 +51,7 @@ greenkeep переехал на `oci-main` (Ubuntu 24.04, aarch64): user-тай�
 | S3 | tiktok-lazy-follower: `untested:` для `gui/videos.py` и `gui/run_page.py` (модули изменены 11-02, покрытие ниже порога, находки честные). Модель пишет новый `tests/test_<module>.py` на моках, а ревьюер требует `tests/test_gui_*.py` через nicegui `user`. Репо на cool-down до 11-11 | LOW | наблюдать | открыт |
 
 S2. Сделано: `findings.added_lint` считает находку новой, только если её отпечатка нет в базе и в файле стало больше находок этого правила. Тем же правилом пользуется гейт (`run._check_no_new_lint`) и добор исправимого lint после `ruff --fix` (`kinds`). Тесты в `tests/test_findings.py`.
+   Решено (владелец, 2026-11-04): обе C408 finance-insights возвращены в `open`, attempts=0, cool-down снят; исправление на сервере (`git pull`). Бэкап: `oci-main:~/.local/share/greenkeep/state.db.bak-2026-11-04`. Проверить прогон 2026-11-05.
 S3. Если повторится на других репо: в промпте теста назвать существующие тестовые файлы модуля.
 
 ## Закрыто
