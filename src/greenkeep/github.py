@@ -72,6 +72,13 @@ def close_issue(ws: Workspace, issue: int, reason: str) -> bool:
     )
 
 
+def abandon(ws: Workspace, branch: str) -> bool:
+    """Close the PR of a branch whose merge was refused and delete the branch."""
+    return (
+        sh(["gh", "pr", "close", branch, "--delete-branch"], ws.root, check=False).returncode == 0
+    )
+
+
 def _repo(ws: Workspace) -> str:
     # named, not `{owner}/{repo}`: gh resolves those to an `upstream` remote when there is one
     return web_url(ws.origin).removeprefix("https://github.com/")

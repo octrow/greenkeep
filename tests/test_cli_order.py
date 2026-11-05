@@ -214,3 +214,24 @@ def test_a_scheduled_run_backs_the_state_up_and_reports_a_failed_backup(monkeypa
         monkeypatch, tmp_path, sent, run_all=lambda *_: Digest(reached=1), backup=tmp_path
     )
     assert saved == [tmp_path] and "state backup failed: git push exit 128" in sent[0]
+
+
+def test_a_claude_stop_keeps_the_unstarted_repos_first_and_named_runs_leave_the_mark(monkeypatch):
+    from claude_cli import ClaudeCliError
+
+    seen = []
+
+    def run_repo(t, *_):
+        seen.append(t.name)
+        if t.name == "a" and len(seen) == 1:
+            raise ClaudeCliError("Not logged in")
+
+    monkeypatch.setattr(cli, "run_repo", run_repo)
+    monkeypatch.setattr(cli, "unavailable", lambda exc: True)
+    state = State(Path(":memory:"))
+    targets = [Target("octrow/a"), Target("octrow/b"), Target("octrow/c")]
+    opts = Options(False, 3, None, False, None)
+    cli._run_all(targets, opts, state)
+    assert state.mark(cli.UNREACHED) == "a,b,c"
+    cli._run_all([Target("octrow/c")], opts, state, False)  # a named run: the mark stays
+    assert state.mark(cli.UNREACHED) == "a,b,c"

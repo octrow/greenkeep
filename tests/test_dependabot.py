@@ -106,11 +106,14 @@ class Fake:
 
     def _run_tests(self, ws: Workspace) -> SimpleNamespace:
         self.tested.append(self.git[-1])
-        cov = {"totals": {"percent_covered": self.covered}}
+        # like the real one: a red run measures no coverage
+        cov = {"totals": {"percent_covered": self.covered}} if self.green else {}
         return SimpleNamespace(ok=self.green, output="1 failed", cov=cov)
 
     def run(self, push: bool = True) -> None:
-        dependabot.merge_safe(self.ws, Options(push, 3, None, False, None), self.state, self.digest)
+        baseline = {"totals": {"percent_covered": self.covered}}
+        opts = Options(push, 3, None, False, None)
+        dependabot.merge_safe(self.ws, opts, self.state, self.digest, baseline)
 
 
 @pytest.fixture
@@ -211,3 +214,9 @@ def test_one_failing_pr_does_not_stop_the_others(fake, monkeypatch):
     monkeypatch.setattr(github, "merge", merge)
     f.run()
     assert f.merged == [2]
+
+
+def test_a_red_pr_on_a_thinly_covered_baseline_is_not_adapted(fake):
+    f = fake([pr(1)], green=False, covered=40.0)
+    f.run()
+    assert f.adapted == [] and f.merged == []

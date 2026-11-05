@@ -105,7 +105,7 @@ def _config() -> Config | None:
         return None
 
 
-def _run_all(targets: list[Target], opts: Options, state: State) -> Digest:
+def _run_all(targets: list[Target], opts: Options, state: State, scheduled: bool = True) -> Digest:
     digest, start = Digest(), monotonic()
     # Focus repos first, then the ones the last run did not reach, then least recently
     # merged: activity spreads over the repos instead of piling up. ponytail: Focus can take
@@ -133,10 +133,12 @@ def _run_all(targets: list[Target], opts: Options, state: State) -> Digest:
                 log.warning("%s: %s; run stopped, the next hourly run tries again", t.name, exc)
                 digest.problems.append(f"Claude unavailable at {t.name}, run stopped: {first}")
                 digest.limited = True
+                unreached = [u.name for u in order[i:]]  # the next run starts with these
                 break
             log.exception("%s: run failed", t.name)
             digest.problems.append(f"{t.name}: {first}")
-    state.set_mark(UNREACHED, ",".join(unreached))
+    if scheduled:  # a run on named repos says nothing about the ones it did not name
+        state.set_mark(UNREACHED, ",".join(unreached))
     digest.minutes = round((monotonic() - start) / 60)
     return digest
 
@@ -173,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
     # a boost: the reviewer's model also plans each hard change before the patcher writes it
     planner = a.review_model if _boosting() else ""
     opts = Options(a.push, budget, a.model, a.keep, a.review_model, planner)
-    digest = _run_all(targets, opts, state)
+    digest = _run_all(targets, opts, state, scheduled)
     if scheduled and cfg and cfg.backup:
         _backup(state, cfg.backup, digest)
     _report(digest, opts, state)

@@ -17,7 +17,7 @@ from .core import Options
 from .digest import Digest
 from .kinds import OUTDATED_MIN_COVERAGE
 from .state import State
-from .workspace import TestRun, Workspace, WorkspaceError, run_tests, sync
+from .workspace import Workspace, WorkspaceError, run_tests, sync
 
 log = logging.getLogger("greenkeep")
 
@@ -88,8 +88,8 @@ def _merge(ws: Workspace, digest: Digest, pr: dict, head: str = "") -> None:
     digest.merged.append(f"{ws.name}: {pr['title']} (Dependabot #{pr['number']}{adapted})")
 
 
-def _covered(tests: TestRun) -> float:
-    return tests.cov.get("totals", {}).get("percent_covered", 0.0)
+def _covered(cov: dict) -> float:
+    return cov.get("totals", {}).get("percent_covered", 0.0)
 
 
 def _merge_on_checks(ws: Workspace, opts: Options, digest: Digest, pr: dict) -> None:
@@ -104,7 +104,9 @@ def _merge_on_checks(ws: Workspace, opts: Options, digest: Digest, pr: dict) -> 
     _merge(ws, digest, pr)
 
 
-def _test_and_merge(ws: Workspace, opts: Options, state: State, digest: Digest, pr: dict) -> None:
+def _test_and_merge(
+    ws: Workspace, opts: Options, state: State, digest: Digest, pr: dict, baseline_cov: dict
+) -> None:
     n, sha = pr["number"], pr["headRefOid"]
     if not opts.push:
         log.info("%s: would test and merge Dependabot #%d: %s", ws.name, n, pr["title"])
@@ -117,7 +119,9 @@ def _test_and_merge(ws: Workspace, opts: Options, state: State, digest: Digest, 
         tests = run_tests(ws)
         major = upgrade(pr["title"], pr["body"] or "") == "major"
         # an agent's green suite proves as little as a major's when the suite covers little
-        if (major or not tests.ok) and _covered(tests) < OUTDATED_MIN_COVERAGE:
+        # a red run measures no coverage: the repo's green baseline vouches for the suite
+        cov = tests.cov if tests.ok else baseline_cov
+        if (major or not tests.ok) and _covered(cov) < OUTDATED_MIN_COVERAGE:
             log.info("%s: Dependabot #%d: the suite covers too little to vouch for it", ws.name, n)
             head = ""
         elif tests.ok:
@@ -134,7 +138,9 @@ def _test_and_merge(ws: Workspace, opts: Options, state: State, digest: Digest, 
     _merge(ws, digest, pr, "" if head == sha else head)
 
 
-def merge_safe(ws: Workspace, opts: Options, state: State, digest: Digest) -> None:
+def merge_safe(
+    ws: Workspace, opts: Options, state: State, digest: Digest, baseline_cov: dict | None = None
+) -> None:
     """After greenkeep's own fixes, on a repo whose baseline suite is green. Dependabot
     merges neither spend the daily budget nor become findings."""
     if not github.web_url(ws.origin):
@@ -157,6 +163,6 @@ def merge_safe(ws: Workspace, opts: Options, state: State, digest: Digest) -> No
                 _merge_on_checks(ws, opts, digest, pr)
             elif tested < MAX_DEPENDABOT_PER_RUN:
                 tested += 1
-                _test_and_merge(ws, opts, state, digest, pr)
+                _test_and_merge(ws, opts, state, digest, pr, baseline_cov or {})
         except FAILURES as exc:
             log.warning("%s: Dependabot #%s skipped: %s", ws.name, pr.get("number"), exc)

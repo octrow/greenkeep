@@ -98,6 +98,9 @@ def heal(ws: Workspace, tests: TestRun, opts: Options, state: State, digest: Dig
     key = f"heal:{ws.name}"
     if tests.crashed or state.mark(key) == head or not room(digest):
         return False
+    if sum(counts(tests.output)) == 0:  # a hang: no count to hold the fix to, no test to keep
+        log.info("%s: the suite is red without a test count (a hang?), not healed", ws.name)
+        return False
     digest.escalated.append(f"{ws.name}: red test suite")
     f = Finding(
         "red",
@@ -122,7 +125,15 @@ def heal(ws: Workspace, tests: TestRun, opts: Options, state: State, digest: Dig
         f"{summary(tests.output)}.\nFixed by `{AGENT_MODEL}` (agent), reviewed by "
         f"`{opts.review_model}`.\nGate: {GATE_NOTE}"
     )
-    pr = _land(ws, opts, f"greenkeep/heal-{head[:10]}", body)
+    branch = f"greenkeep/heal-{head[:10]}"
+    try:
+        pr = _land(ws, opts, branch, body)
+    except FAILURES as exc:  # a refused merge: do not leave the PR and branch hanging
+        log.warning("%s: the heal was not merged: %s", ws.name, str(exc).splitlines()[0])
+        if opts.push:
+            github.abandon(ws, branch)
+        ws.reset()
+        return False
     digest.merged.append(f"{ws.name}: {f.title} (agent" + (f", PR #{pr})" if pr else ")"))
     return True
 

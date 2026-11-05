@@ -90,13 +90,13 @@ All entry points call `cli.main`. They differ in defaults.
 | CLI `greenkeep` | config | no (dry run) | config | from config | see "Dry run" below |
 | CLI `greenkeep owner/name …` | named; config entry kept if listed | flag | `--budget` or the config's; **3** if the config does not load | from config, if it loads | no once-a-day guard; push mode counts today's merges of every repo against the budget |
 | dashboard "Dry run now" | config | no | config | from config | `uv run --project <checkout> greenkeep`; does nothing while PAUSE exists |
-| dashboard "Run with options…" | dialog (empty: config) | dialog switch (a push asks for confirmation first) | dialog (empty: config) | dialog (cli defaults prefilled) | the same command with the CLI flags; `--keep` is a checkbox |
+| dashboard "Run with options…" | dialog (empty: config) | dialog switch (a push asks for confirmation first) | dialog (empty: config) | from config | the same command with the CLI flags; models prefilled with the CLI defaults; `--keep` is a checkbox; push with no repos is a scheduled run: after the day's run it exits with a DEBUG line only, so the dialog shows a notice for it (#26) |
 
-Dry run: an in-memory state, so it starts with no merges, attempts, cool-downs, hunt marks or reverts, and may "merge" a full budget whatever the real day did.
-It still spends the subscription (patcher, planner, review, hunt), sweeps old clones, clones and syncs, calls PyPI, pip-audit and `gh pr list`, and writes the shared log.
+Dry run: an in-memory state, so it starts with no merges, attempts, cool-downs, hunt, heal or Dependabot marks, or reverts, and may "merge" a full budget whatever the real day did; it never writes state.db.
+It still spends the subscription (patcher, planner, review, hunt, and the agent for escalations and heal), sweeps old clones, clones and syncs, calls PyPI, pip-audit, `gh api` (CI checks) and `gh pr list`, and writes the shared log.
 
 `--model` (default `claude-sonnet-5-5`) writes patches, README and description text, and hunts; `--review-model` (default `claude-opus-5-5`) reviews, doubts hunt claims and, in a boost, plans.
-Every Claude call is `claude -p`, read-only tools `Read,Grep,Glob`, no user settings. Without `login_hours` in the config, or inside them (local time, whole hours within one week), it is direct and the account Claude Code is logged in to pays; outside them it goes through `omniroute run claude` with the model as `claude/<model>`, so OmniRoute's `claude` connection pays (`llm.on_login`).
+Every Claude call is `claude -p` with no user settings; all but the agent's (step 22) get read-only tools `Read,Grep,Glob`. Without `login_hours` in the config, or inside them (local time, whole hours within one week), it is direct and the account Claude Code is logged in to pays; outside them it goes through `omniroute run claude` with the model as `claude/<model>`, so OmniRoute's `claude` connection pays (`llm.on_login`).
 
 Module: `cli`, `ui`, `config`
 
@@ -163,6 +163,7 @@ Branches:
 - no cool-down mark → work it;
 - `today < until` and origin HEAD unchanged (or unreachable) and greenkeep's own HEAD unchanged → count "in cool-down", clone it anyway: only budget-exempt findings (`vuln`) are worked, no hunt, then Dependabot (step 23);
 - otherwise → lift the mark, work it.
+A cooling repo still gets the revert check (step 9), heal on a red suite (step 10), revival and issue closing (step 17).
 Cost: one `git ls-remote` per cooling repo, plus the clone, sync and baseline suite.
 Module: `run`, `state`, `workspace`
 
@@ -184,10 +185,11 @@ Module: `workspace`, `config`, `github`
 Decides: whether the gate let something wrong through.
 Branches:
 - a commit on the base branch says "This reverts commit <sha>" for a recorded greenkeep merge → mark it `reverted`;
-- a merge from the last 3 days (`CI_WATCH`) whose commit has a failed check run, while the commit before it has none and GitHub did start CI (not billing) → push: `git revert` it on `greenkeep/revert-<sha>`, publish and merge that PR (no model), mark it `reverted`; dry run: a "would revert" line only;
+- a merge from the last 3 days (`CI_WATCH`) whose commit has a failed check run, while the commit before it has none (no CI run there counts the same) and GitHub did start CI (not billing) → push: `git revert` it on `greenkeep/revert-<sha>`, publish and merge that PR (no model), mark it `reverted`; dry run: a "would revert" line only;
 - a merge without a stored sha (push) → fetch it from GitHub first (backfill);
 - any of the above → one digest problem line each, cool-down of the repo from its remote HEAD (ends early on the next commit or a greenkeep update), the repo is not worked this run. A `reverted` finding is never tried again.
 CI still running, or red only because the commit before was red too → nothing; the next run looks again.
+Only merges stored as `finding` rows (step 21) are watched and recognised as reverted; the heal commit (step 10), adapted Dependabot PRs and plain Dependabot merges (step 23) are not, by decision: a red main after them is the owner's to read (#22, decided: no auto-revert of merges nobody reviewed).
 Fails: the revert conflicts with later commits → `WorkspaceError`, a problem line (step 24); the next run tries again while the merge is in the 3 days.
 Dry run: the in-memory state has no merges, so the check never fires.
 Module: `reverts`, `state`, `github`
@@ -200,7 +202,7 @@ Branches:
 - no `pyproject.toml` → `WorkspaceError` (revival is not built);
 - `uv sync --all-extras --all-packages`; a test root with its own pyproject syncs there too;
 - suite crashed (`Fatal Python error`, a flaky segfault in Qt tests) → run once more; the log keeps the crash header and the repo's own frames, not library frames;
-- suite red or hangs 30 min, not a crash, this HEAD not tried before (mark `heal:<repo>`) and an agent slot left (`MAX_ESCALATIONS`, shared with step 22) → the agent (step 22's model, tools and cleanup) gets the end of the red output. Gate (`repair`): a change exists, no suppressions, no new lint in the changed files, full suite green with at least as many passing tests as passed plus failed before (no deleted or skipped test), the reviewer approves. Passed → commit "fix: make the test suite green again" on `greenkeep/heal-<head>`, publish and merge (push), "Merged" line, the repo stops here and the next run works it green. Failed (not unavailable) → HEAD marked, fall through;
+- suite red or hangs 30 min, not a crash, a red output with a test count (a hung suite has none: not healed, #27), this HEAD not tried before (mark `heal:<repo>`) and an agent slot left (`MAX_ESCALATIONS`, shared with step 22) → the agent (step 22's model, tools and cleanup) gets the end of the red output. Gate (`repair`): a change exists, no suppressions, no new lint in the changed files, full suite green with at least as many passing tests as passed plus failed before (no deleted or skipped test), the reviewer approves. Passed → commit "fix: make the test suite green again" on `greenkeep/heal-<head>`, publish and merge (push), "Merged" line, the repo stops here and the next run works it green; a refused merge → the PR is closed and its branch deleted (push), the clone goes back to the base branch, the repo falls through (#25). Failed (not unavailable) → HEAD marked, fall through;
 - suite still red → problem line "baseline tests are red", the repo stops here (no Dependabot either);
 - exit 5 (no tests) → green; coverage still reports never-imported modules at 0% (`--source=.`), which yields `untested` findings.
 Coverage: `coverage run --source=. --omit=tests/*,.venv/*`, pytest-cov and xdist options dropped from the repo's addopts.
@@ -215,9 +217,9 @@ Sources:
 - ruff JSON with the repo's own config (+ boost rules); fingerprint `ruff:<code>:<path>:<digest of the line text>`, no line number; identical lines in a file get `#1`, `#2`… in line order, the first keeps the plain one; the last line of ruff's range is kept (`end_line`);
 - `untested`: modules < 50% covered with ≥ 5 statements, if coverage measured anything or there are no tests; test code is never a target (`gate.is_test_path`: a `tests`/`test` folder or a variant like `tests_e2e`, `integration_tests`, a `test_*.py` file, `conftest.py`);
 - `vuln`: `uv export` → `pip-audit`, only with a tracked `uv.lock`; target = lowest version fixing every advisory that has a fixed release, same line preferred; advisories with none go to the message ("no fix yet"); fingerprint holds the fixable advisory ids;
-- `outdated`: `uv tree --outdated --depth 1` + PyPI, newest stable on the same major (minor for 0.x) that the specifiers in `pyproject.toml` and its uv workspace members allow (an `==` pin → no finding); skipped when `.github/dependabot.yml` (not `.yaml`) has a `uv`/`pip` ecosystem;
+- `outdated`: also only with a tracked `uv.lock`; `uv tree --outdated --depth 1` + PyPI, newest stable on the same major (minor for 0.x) that the specifiers in `pyproject.toml` and its uv workspace members allow (an `==` pin → no finding); skipped when `.github/dependabot.yml` (not `.yaml`) has a `uv`/`pip` ecosystem;
 - `ready`: pyproject `description`/`readme`/`urls`, README install/usage heading (a usage heading may also say Run, Running, Use or Using; a code block that imports or runs the package, install lines aside, counts as usage), CI badge.
-Fails: PyPI errors → no target, no finding; `uv export`/`uv tree` failure or non-JSON pip-audit output → the repo is a problem line (no fixes, no Dependabot).
+Fails: PyPI errors → no target, no finding; empty pip-audit output → no `vuln` findings, no log line; `uv export`/`uv tree` failure or non-JSON pip-audit output → the repo is a problem line (no fixes, no Dependabot).
 Module: `run`, `core`, `findings`, `deps`, `ready`, `workspace`
 
 ### 12. Owner notes
@@ -318,7 +320,7 @@ Branches:
 - push → force-push, reuse an open PR on that branch or create one, `gh pr merge --squash --delete-branch`; refused → poll `mergeStateStatus` while UNKNOWN (10 × 3 s); BLOCKED → `gh pr checks --watch --required --fail-fast` (30 min), asked again every 3 s (10 times) while gh says "no required checks reported" (a ruleset's checks appear seconds after the PR); then merge once more; still refused but `gh pr view` says MERGED → merged;
 - dry run → local commit only, diff to the log.
 State: `merged`, PR, merge sha. One merge per repo per run: the baseline is stale after it.
-Fails: a merge still refused (conflict, behind, a required review, red CI) or a gh/git error → an attempt, the change is made again next attempt; a `ValueError` from gh output → run-level (step 24), nothing counted.
+Fails: a merge still refused (conflict, behind, a required review, red CI) or a gh/git error → an attempt, the change is made again next attempt; the clone's HEAD stays on the fix commit until the next reset, and the PR and its branch stay open, also once the finding parks (#23, #25); a `ValueError` from gh output → run-level (step 24), nothing counted.
 Module: `run`, `github`, `state`
 
 ### 22. Failure
@@ -328,10 +330,10 @@ Branches:
 - Claude unavailable (`llm.unavailable`: `UsageLimitError`, `NotLoggedInError`, or a Claude error with an API 5xx, overload or connection failure) → not counted, raised (step 24);
 - any other Claude error (timeout, API 4xx such as "prompt is too long", unreadable reply) → counted like a bad change;
 - counted: attempts + 1, next attempt at once; dependency kinds park at once (`retries = False`); others park at 3;
-- parked, kind escalates (all but dependency kinds) and fewer than 2 escalations this run (`MAX_ESCALATIONS`, counted in the digest) → the agent: `AGENT_MODEL` (Opus 5.5) at medium effort, 30 min, Claude Code with `Read,Grep,Glob,Edit,Write` and Bash only for `uv run pytest`, `uv run ruff`, `git diff`, `git status`, in the reset clone; its prompt has the finding, the kind's gate note and every failure of this run. Then its caches and an untracked `uv.lock` are cleaned; no change → failure "the agent changed nothing: <its last line>"; otherwise the same gate (step 19), review (step 20) and land (step 21). Merged → done. Failed (not unavailable) → its reason joins the list;
-- parked and not merged by the agent → digest "Gave up", HEAD kept as `parked_head`, issue labelled `greenkeep-gave-up` and closed with this run's one-line reasons (the agent's last), issue cleared in state;
+- parked, kind escalates (all but dependency kinds) and fewer than 2 escalations this run (`MAX_ESCALATIONS`, counted in `Digest.escalated`, which the digest text does not show) → the agent: `AGENT_MODEL` (Opus 5.5) at medium effort, 30 min, Claude Code with `Read,Grep,Glob,Edit,Write` and Bash only for `uv run pytest`, `uv run ruff`, `git diff`, `git status`, in the reset clone; its prompt has the finding, the kind's gate note and every failure of this run. Then its caches and an untracked `uv.lock` are cleaned; no change → failure "the agent changed nothing: <its last line>"; otherwise the same gate (step 19), review (step 20) and land (step 21). Merged → done. Failed (not unavailable) → its reason joins the list;
+- parked and not merged by the agent → digest "Gave up", the clone is reset to the base branch (a refused merge left it on the fix commit), the PR of that branch closed and the branch deleted (push, #23, #25), the base HEAD kept as `parked_head`, issue labelled `greenkeep-gave-up` and closed with this run's one-line reasons (the agent's last), issue cleared in state;
 - timeout → counted, then stop this finding for the run (to the agent if that was the last attempt), try the next candidate;
-- 2 parked in this repo in this run → cool-down 7 days (step 7), no more findings; Dependabot still runs.
+- 2 parked in this repo in this run → cool-down 7 days (step 7) from the clone's HEAD, problem line "N findings parked in a row, cool-down until <date>", no more findings; Dependabot still runs.
 Module: `run`, `state`, `github`
 
 ### 23. Dependabot
@@ -343,9 +345,9 @@ Branches per PR:
 - no `from X to Y` outside `<details>`, or one that is not a version (a sha, a docker tag) → skip;
 - only `.github/` files → merge on CI's own green checks; no checks → wait;
 - else, up to 3 per run → check out the PR head, sync, full suite:
-  - a major (any pair leaves its major line; the minor line for 0.x) or a red suite, with total coverage under 60% (`OUTDATED_MIN_COVERAGE`) → mark the head;
+  - a major (any pair leaves its major line; the minor line for 0.x) or a red suite, with total coverage under 60% (`OUTDATED_MIN_COVERAGE`) → mark the head; a red run reports no coverage, so a red PR is judged by the repo's green baseline coverage;
   - green → merge with `--match-head-commit`;
-  - red, an agent slot left → `repair.adapt`: the agent adapts the code at the PR head under step 10's gate; passed → its commit is pushed (no force) onto the PR's own branch and the PR merged at that commit, "adapted by the agent" in the digest; failed or no slot → mark the head.
+  - red, the baseline covers enough, an agent slot left → `repair.adapt`: the agent adapts the code at the PR head under step 10's gate; passed → its commit is pushed (no force) onto the PR's own branch and the PR merged at that commit, "adapted by the agent" in the digest; failed or no slot → mark the head.
 A refused merge waits up to 30 min for required checks; a failure leaves no mark, so the PR is tested again next run.
 Dry run: logs "would merge", no suite run, no agent. No budget, no finding, no issue.
 Module: `dependabot`, `deps`, `github`, `repair`
@@ -354,9 +356,10 @@ Module: `dependabot`, `deps`, `github`, `repair`
 
 Decides: what one repo's exception does to the rest of the run.
 Branches:
-- Claude unavailable (step 22) → digest line "Claude unavailable at <repo>, run stopped: <reason>", `limited`, stop; the digest is sent, the day is not marked, the next hourly run tries again (and sends its digest too);
+- Claude unavailable (step 22) → digest line "Claude unavailable at <repo>, run stopped: <reason>", `limited`, stop; the digest is sent, the day is not marked, the next hourly run tries again (and sends its digest too); the `unreached` mark names this repo and every later one (#21);
 - anything else → log the traceback, first line to "Problems", next repo;
 - 3 h into the run (`RUN_DEADLINE`; systemd kills it at 4 h, and a killed run would start over every hour) → no further repo starts: problem line "run stopped after 3 h, not reached: <repos>", mark `unreached` (they go first next run), the day is still marked done.
+Only a scheduled run (push, no repos named) rewrites the `unreached` mark; a run on named repos leaves it, and a dry run writes only its in-memory state (#21).
 The clone is deleted after each repo unless `--keep`.
 Module: `cli`, `run`
 
@@ -365,7 +368,7 @@ Module: `cli`, `run`
 Decides: what the owner hears and whether the day counts as done.
 Text: counts and how long the run took (`took N min`), Merged (own and Dependabot), Gave up (parked), Needs you (owner notes), Problems (plus one line naming the repos whose CI GitHub did not start for billing), Quiet (clean, waiting, cooling), budget left.
 Branches:
-- push → Telegram if `GREENKEEP_TG_BOT_TOKEN`/`CHAT_ID` are set, else a desktop notification with the first line only; scheduled, not `limited`, and at least one repo cloned (or no repos) → mark `run` = the day the run started;
+- push → Telegram if `GREENKEEP_TG_BOT_TOKEN`/`CHAT_ID` are set and the send succeeds, else a desktop notification with the first line only; scheduled, not `limited`, and at least one repo cloned (or no repos) → mark `run` = the day the run started;
 - dry run → the log only.
 A run that cloned no repo (network down after boot or sleep) leaves the day open: the next hourly run tries again.
 Before the digest, a scheduled run with `backup` in the config writes state.db's SQL dump (`state.sql`) into that checkout, commits it if it changed and pushes; a git failure → problem line "state backup failed", the run is otherwise unaffected.
@@ -374,7 +377,7 @@ Module: `digest`, `cli`, `state`, `backup`
 ### Output
 
 GitHub: plan issues, squash-merged fix PRs, merged Dependabot PRs, `greenkeep-gave-up` labels on closed issues.
-`~/.local/share/greenkeep/state.db`: `finding` rows (status open/merged/parked/reverted, attempts, issue, PR, sha, parked_head) and `mark` rows (run, cool-down, hunt, told, dependabot).
+`~/.local/share/greenkeep/state.db`: `finding` rows (status open/merged/parked/reverted, attempts, issue, PR, sha, parked_head) and `mark` rows (run, unreached, config-error, cool-down, hunt, heal, told, dependabot).
 `~/.local/state/greenkeep/greenkeep.log`: INFO story plus DEBUG full failures and plans, 5 MB × 4 files.
 Module: `state`, `digest`, `cli`
 
@@ -390,4 +393,4 @@ Module: `ui`, `port`
 
 ## Known gaps
 
-None open. The Lean check of step 19 «Gate» (L1–L7) is fixed; earlier findings are fixed or decided (#6, the hunt during a boost, stays as is).
+None open. The Lean check of step 19 «Gate» (L1–L7) is fixed; earlier findings are fixed or decided (#6, the hunt during a boost, stays as is; #22, no auto-revert of heal and Dependabot merges).

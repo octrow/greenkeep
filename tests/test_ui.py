@@ -155,3 +155,14 @@ def test_repos_never_turn_into_flags():
 
     argv = run_argv(["o/r"], False, 0, "", "", False)
     assert argv[-4:] == ["--budget", "0", "--", "o/r"]
+
+
+def test_a_push_run_without_repos_warns_that_it_is_the_scheduled_run():
+    from greenkeep import ui
+    from greenkeep.core import DEFAULT_MODEL, DEFAULT_REVIEW_MODEL
+
+    base = ui.run_argv([], True, None, DEFAULT_MODEL, DEFAULT_REVIEW_MODEL, False)
+    assert "scheduled run" in ui.scheduled_notice(base)
+    named = ui.run_argv(["o/r"], True, None, DEFAULT_MODEL, DEFAULT_REVIEW_MODEL, False)
+    dry = ui.run_argv([], False, None, DEFAULT_MODEL, DEFAULT_REVIEW_MODEL, False)
+    assert ui.scheduled_notice(named) == "" and ui.scheduled_notice(dry) == ""

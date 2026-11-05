@@ -302,6 +302,10 @@ def _escalate(job: Job, f: Finding, issue: int | None, reasons: list[str]) -> bo
 def _give_up(job: Job, f: Finding, issue: int | None, reasons: list[str]) -> None:
     """Parked for good until its file changes: nobody comes back to it (ADR 0004)."""
     job.digest.parked.append(f"{job.ws.name}: {f.title}" + (f" (issue #{issue})" if issue else ""))
+    # a refused merge leaves the clone on the fix commit: park the base head, not that one
+    job.ws.reset()
+    if job.opts.push:  # the PR of a refused merge and its branch would hang for ever
+        github.abandon(job.ws, _branch(f))
     job.state.set(job.ws.name, f.fingerprint, parked_head=job.ws.git("rev-parse", "HEAD").strip())
     if issue and github.give_up(job.ws, issue, reasons):
         job.state.set(job.ws.name, f.fingerprint, issue=None)
@@ -489,7 +493,7 @@ def _tend(
         base = replace(base, findings=[f for f in base.findings if kind_of(f).exempt_from_budget])
     if base.findings or not cooling:
         _work_repo(Job(ws, base, opts, state, digest), target.hunt and not cooling)
-    dependabot.merge_safe(ws, opts, state, digest)  # greenkeep's own fixes go first
+    dependabot.merge_safe(ws, opts, state, digest, base.tests.cov)  # greenkeep's own fixes go first
 
 
 def _upkeep(job: Job) -> None:

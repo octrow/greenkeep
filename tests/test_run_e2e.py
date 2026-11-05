@@ -605,8 +605,8 @@ def test_giving_up_closes_the_issue_with_every_reason(tmp_path, monkeypatch):
     state.set("demo", f.fingerprint, issue=7, status="parked", attempts=run.MAX_ATTEMPTS)
     given = {}
     monkeypatch.setattr(github, "give_up", lambda ws, n, why: given.update({n: why}) or True)
-    ws = workspace.Workspace("demo", src, tmp_path)
-    job = SimpleNamespace(ws=ws, state=state, digest=Digest())
+    ws = workspace.Workspace("demo", src, tmp_path, "main")
+    job = SimpleNamespace(ws=ws, state=state, digest=Digest(), opts=SimpleNamespace(push=False))
     run._give_up(job, f, 7, ["no SEARCH/REPLACE blocks", "test suite failed: 1 failed"])
     assert given == {7: ["no SEARCH/REPLACE blocks", "test suite failed: 1 failed"]}
     assert (
@@ -717,3 +717,24 @@ def test_an_agent_that_drops_the_failing_test_is_rejected_once_per_commit(tmp_pa
     assert digest.problems == ["demo: baseline tests are red in a clean clone"]
     red_run(src, state)
     assert len(prompts) == 1  # the same commit gets no second try
+
+
+def test_giving_up_after_a_refused_merge_parks_the_base_head_not_the_fix_commit(
+    tmp_path, monkeypatch
+):
+    src = make_repo(tmp_path, monkeypatch, {"demo.py": BIG})
+    base_head = git(src, "rev-parse", "HEAD").strip()
+    state = run.State(Path(":memory:"))
+    f = Finding("untested", "coverage", "demo.py", 1, "m", "untested:demo.py", title="t")
+    state.set("demo", f.fingerprint, status="parked")
+    ws = workspace.Workspace("demo", src, tmp_path, "main")
+    (src / "demo.py").write_text("fix = 1\n")
+    ws.git("add", "-A")  # what run.commit leaves behind when the merge is then refused
+    ws.git("checkout", "-q", "-B", "greenkeep/x")
+    ws.git("commit", "-qam", "fix")
+    abandoned = []
+    monkeypatch.setattr(github, "abandon", lambda ws, branch: abandoned.append(branch))
+    job = SimpleNamespace(ws=ws, state=state, digest=Digest(), opts=SimpleNamespace(push=True))
+    run._give_up(job, f, None, ["merge refused"])
+    assert abandoned == [run._branch(f)]  # the PR and its branch do not hang
+    assert state.parked_heads("demo", "other") == {f.fingerprint: base_head}

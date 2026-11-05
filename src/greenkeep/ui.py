@@ -171,6 +171,17 @@ def run_argv(
     return argv + ["--keep"] * keep + (["--", *repos] if repos else [])
 
 
+def scheduled_notice(argv: list[str]) -> str:
+    """A push run with no repos named is the scheduled run: it exits quietly after the day's."""
+    named = "--" in argv
+    return (
+        ""
+        if named or "--push" not in argv
+        else "A push run without repos is the scheduled run: it does nothing if one already "
+        "finished today."
+    )
+
+
 def _start(argv: list[str], push: bool) -> None:
     label = "greenkeep run (push)" if push else "greenkeep dry run"
     if run_pool.submit(argv, label=label, cwd=PROJECT) is None:
@@ -235,6 +246,8 @@ def _options_dialog() -> ui.dialog:
                 keep.value,
             )
             dialog.close()
+            if notice := scheduled_notice(argv):
+                ui.notify(notice, type="info")
             _start(argv, push.value)
 
         with layout.actions_row():
