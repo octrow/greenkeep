@@ -81,7 +81,7 @@ greenkeep --push                             # the scheduled run, over the repos
 | `--review-model NAME` | `claude-opus-5-5` | Claude Code model that reviews each patch inside the clone |
 | `--keep` | off | Keep the throwaway clones in `~/.cache/greenkeep` for inspection |
 
-A run makes at most one fix per repo, so run it on a schedule. State lives in `~/.local/share/greenkeep/state.db`. A dry run never writes it. Log: `~/.local/state/greenkeep/greenkeep.log`.
+A run makes at most one fix per repo, so run it on a schedule. State lives in `~/.local/share/greenkeep/state.db`. A dry run never writes it. Logs: [docs/configuration.md](docs/configuration.md#logs).
 
 Config file, systemd timer, Telegram digest, pause and dashboard: [docs/configuration.md](docs/configuration.md).
 

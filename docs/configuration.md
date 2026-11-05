@@ -52,3 +52,19 @@ greenkeep-ui            # http://127.0.0.1:8095
 ```
 
 If the port belongs to another app it moves to the next free one; if a greenkeep dashboard already runs there it asks whether to restart it (default No) and prints its link.
+
+## Logs
+
+Everything is in `~/.local/state/greenkeep/`, 200 MB in total:
+
+| File | What | Cap |
+|---|---|---|
+| `greenkeep.log` | the scheduled run (`greenkeep --push`): INFO and up, one line per record | 20 MB × 5 files = 100 MB |
+| `events.jsonl` | one JSON line per repo run (outcome, merged, failures with the reason, Claude and `gh` calls with ms, `git_sha`, `run`) | 5 MB × 6 files = 30 MB |
+| `<time>-manual.log` | any other run (dry run, named repos); its event line is in the same file | 10 MB × 2 each, the rest of the 200 MB; older than 14 days or over the budget are deleted at start |
+
+Tokens (`GREENKEEP_TG_BOT_TOKEN`, the `.env` values of a tended repo) are masked in every file. Uncaught errors go through the same logger.
+
+One repo run: `jq -c 'select(.repo=="owner-name")' ~/.local/state/greenkeep/events.jsonl` (or `select(.run=="20261105-231207")` for a whole run, `select(.outcome=="error")` for failures). In a `*-manual.log` the event is a line with `"kind": "repo_run"`: `grep '"kind": "repo_run"' FILE | sed 's/^[^{]*//' | jq .`
+
+Manual step, needs sudo: the service's console goes to journald, which has its own limit. Set `SystemMaxUse=200M` in `/etc/systemd/journald.conf` (and `journalctl --user` shares it), then `sudo systemctl restart systemd-journald`.

@@ -10,7 +10,6 @@ import argparse
 import logging
 from dataclasses import replace
 from datetime import date, datetime, timedelta
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from time import monotonic
 
@@ -19,15 +18,14 @@ from .config import DEFAULT_BUDGET, PAUSE_FILE, Config, ConfigError, Target, loa
 from .core import DEFAULT_MODEL, DEFAULT_REVIEW_MODEL, Options
 from .digest import Digest, send
 from .llm import unavailable
+from .logsetup import DAEMON_CMDS, DAEMON_LOG, LOGS, register_log_secrets, setup_logging
 from .run import run_repo
 from .state import State
 from .workspace import WorkspaceError, sweep
 
 log = logging.getLogger("greenkeep")
 
-LOG_FILE = Path.home() / ".local/state/greenkeep/greenkeep.log"
-LOG_BYTES = 5_000_000
-LOG_BACKUPS = 3
+LOG_FILE = LOGS / DAEMON_LOG  # the scheduled run's log; the dashboard tails it
 PROBLEM_CHARS = 200
 # systemd kills the run at 4 h (TimeoutStartSec): a killed run leaves the day open and the
 # next hourly run starts it all over again; one more repo after this fits in the last hour
@@ -58,14 +56,10 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-def _setup_logging() -> None:
-    """Console gets the story, the file gets every failure in full (issues point to it)."""
-    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    console = logging.StreamHandler()
-    console.setLevel(logging.INFO)
-    file = RotatingFileHandler(LOG_FILE, maxBytes=LOG_BYTES, backupCount=LOG_BACKUPS)
-    file.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-    logging.basicConfig(level=logging.DEBUG, format="%(message)s", handlers=[console, file])
+def _setup_logging(scheduled: bool = False) -> None:
+    """The scheduled run owns the rotating files; every other run writes its own log."""
+    setup_logging(DAEMON_CMDS[0] if scheduled else "manual")
+    register_log_secrets()  # the env tokens; a clone's .env values follow in run_repo
 
 
 def _targets(a: argparse.Namespace) -> tuple[list[Target], int]:
@@ -127,7 +121,7 @@ def _run_all(targets: list[Target], opts: Options, state: State, scheduled: bool
             break
         try:
             run_repo(t, opts, state, digest)
-        except Exception as exc:  # one broken repo must not cost the others their run
+        except Exception as exc:  # noqa: BLE001  one broken repo must not cost the others; its event has the traceback
             first = (str(exc).splitlines() or [type(exc).__name__])[0][:PROBLEM_CHARS]
             if unavailable(exc):  # every later repo would hit the same wall
                 log.warning("%s: %s; run stopped, the next hourly run tries again", t.name, exc)
@@ -135,7 +129,6 @@ def _run_all(targets: list[Target], opts: Options, state: State, scheduled: bool
                 digest.limited = True
                 unreached = [u.name for u in order[i:]]  # the next run starts with these
                 break
-            log.exception("%s: run failed", t.name)
             digest.problems.append(f"{t.name}: {first}")
     if scheduled:  # a run on named repos says nothing about the ones it did not name
         state.set_mark(UNREACHED, ",".join(unreached))
@@ -153,7 +146,7 @@ def _backup(state: State, checkout: Path, digest: Digest) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     a = _parse_args(argv)
-    _setup_logging()
+    _setup_logging(a.push and not a.repos)
     if paused():
         log.info("paused: %s exists", PAUSE_FILE)
         return 0

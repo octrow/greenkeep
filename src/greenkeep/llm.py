@@ -9,7 +9,6 @@ pinned models and prompts.
 from __future__ import annotations
 
 import hashlib
-import logging
 import re
 import time
 from dataclasses import dataclass
@@ -19,6 +18,7 @@ from pathlib import Path
 from claude_cli import ClaudeCliError, NotLoggedInError, UsageLimitError, run_claude
 from claude_cli.parsing import extract_json_or_none
 
+from .events import add_call
 from .findings import Finding
 
 LLM_TIMEOUT = 600  # claude -p on a 20k-char prompt has hit 300s
@@ -45,8 +45,6 @@ NO_ANSWER = re.compile(
 # ponytail: a module setting the CLI fills once; pass it down if a second caller appears
 LOGIN_HOURS: tuple[tuple[int, int], tuple[int, int]] | None = None
 VIA_OMNIROUTE = "claude/"
-
-log = logging.getLogger("greenkeep")
 
 
 def _now() -> datetime:
@@ -80,11 +78,10 @@ def _claude(
     allowed: str | None = None,
 ):
     """One Claude Code call in the clone, read-only unless `tools` says otherwise; its
-    duration goes to the log."""
-    start = time.monotonic()
-    login = on_login(_now())
+    duration goes into the repo's event."""
+    start, login, ok = time.monotonic(), on_login(_now()), False
     try:
-        return run_claude(
+        reply = run_claude(
             prompt,
             model=model if login else VIA_OMNIROUTE + model,
             effort=effort,
@@ -96,8 +93,17 @@ def _claude(
             setting_sources=SETTING_SOURCES,
             direct=login,
         )
+        ok = True
+        return reply
     finally:
-        log.debug("  %s (%s) took %.0fs", model, effort, time.monotonic() - start)
+        add_call(
+            service="claude",
+            model=model,
+            effort=effort,
+            login=login,
+            ok=ok,
+            ms=round((time.monotonic() - start) * 1000),
+        )
 
 
 EXCERPT_RADIUS = 40

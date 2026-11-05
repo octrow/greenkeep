@@ -27,9 +27,11 @@ from .core import (
 )
 from .digest import Digest
 from .edits import EditError
+from .events import RUN_ID, add, append, bump, wide
 from .findings import Finding, added_lint, is_vendored, untested_findings
 from .gate import suppressions
 from .kinds import kind_of
+from .logsetup import register_log_secrets
 from .state import MAX_ATTEMPTS, State
 from .workspace import (
     BOOST_RULES,
@@ -109,7 +111,7 @@ def close_vanished(job: Job) -> None:
         else:
             continue
         if github.close_issue(job.ws, issue, why):
-            log.info("  closed issue #%d: %s", issue, fp)
+            bump("closed_issues")
             job.state.set(job.ws.name, fp, issue=None)
 
 
@@ -118,7 +120,7 @@ def close_parked(job: Job) -> None:
     those whose closing failed (offline). The finding stays parked."""
     for fp, issue in job.state.parked_issues(job.ws.name):
         if github.give_up(job.ws, issue, ["parked earlier; nobody comes back to it"]):
-            log.info("  closed parked issue #%d: %s", issue, fp)
+            bump("closed_issues")
             job.state.set(job.ws.name, fp, issue=None)
 
 
@@ -134,7 +136,7 @@ def revive_parked(job: Job) -> None:
         # exit 1: the file differs; 128: `since` is not in this clone, nothing to compare
         diff = ["git", "diff", "--quiet", since, head, "--", f.path]
         if sh(diff, job.ws.root, check=False).returncode == 1:
-            log.info("  %s changed since it was parked, trying again: %s", f.path, f.title)
+            bump("revived")
             job.state.revive(job.ws.name, f.fingerprint)
 
 
@@ -265,10 +267,15 @@ def _record_failure(job: Job, f: Finding, reason: str) -> None:
     retries = kind_of(f).retries
     job.state.add_attempt(job.ws.name, f.fingerprint, last=not retries)
     n = job.state.attempts(job.ws.name, f.fingerprint)
-    log.info(
-        "  attempt %d/%d failed: %s", n, MAX_ATTEMPTS if retries else 1, reason.splitlines()[0]
+    append(
+        "failures",
+        {
+            "finding": f.title,
+            "step": "attempt",
+            "n": f"{n}/{MAX_ATTEMPTS if retries else 1}",
+            "reason": reason,
+        },
     )
-    log.debug("  full failure:\n%s", reason)
 
 
 def _escalate(job: Job, f: Finding, issue: int | None, reasons: list[str]) -> bool:
@@ -277,7 +284,7 @@ def _escalate(job: Job, f: Finding, issue: int | None, reasons: list[str]) -> bo
     if not kind_of(f).escalates or len(job.digest.escalated) >= MAX_ESCALATIONS:
         return False
     job.digest.escalated.append(f"{job.ws.name}: {f.title}")
-    log.info("  escalating to the agent (%s)", AGENT_MODEL)
+    bump("escalations")
     try:
         job.ws.reset()
         prompt = llm.agent_prompt(f, kind_of(f).gate_note, reasons)
@@ -295,7 +302,7 @@ def _escalate(job: Job, f: Finding, issue: int | None, reasons: list[str]) -> bo
             raise
         reason = clip(redact(str(exc), job.ws.secrets()))
         reasons.append(f"agent: {reason}")
-        log.info("  agent failed: %s", reason.splitlines()[0])
+        append("failures", {"finding": f.title, "step": "agent", "reason": reason})
         return False
 
 
@@ -320,8 +327,8 @@ def _land(job: Job, fix: Fix) -> None:
     else:
         pr, sha = None, job.ws.git("rev-parse", "HEAD").strip()
     job.state.set(job.ws.name, fix.finding.fingerprint, status="merged", pr=pr, sha=sha)
-    log.info(
-        "  merged %s via %s%s", fix.finding.title, fix.change.model, f" (PR #{pr})" if pr else ""
+    append(
+        "merged", {"finding": fix.finding.title, "model": fix.change.model, "pr": pr, "sha": sha}
     )
     job.digest.merged.append(f"{job.ws.name}: {fix.finding.title}" + (f" (PR #{pr})" if pr else ""))
     if not job.opts.push:
@@ -395,7 +402,7 @@ def _hunted(job: Job, enabled: bool) -> list[Finding]:
     except ATTEMPT_FAILURES as exc:
         if llm.unavailable(exc):
             raise
-        log.warning("%s: bug hunt failed: %s", job.ws.name, exc)
+        append("failures", {"step": "hunt", "reason": str(exc)})
         return []
 
 
@@ -409,7 +416,7 @@ def _work_repo(job: Job, hunting: bool = False) -> None:
         if not _within_budget(job, f):
             continue  # a later finding may still be budget-exempt (security)
         worked = True
-        log.info("%s: %s", job.ws.name, f.title)
+        bump("worked")
         if work(job, f):
             # ponytail: one merge per repo per run, the baseline is stale after it;
             # re-run the baseline here if one fix per repo per day proves too slow
@@ -439,7 +446,7 @@ def _cooling(target: Target, state: State) -> bool:
     head = remote_head(target)
     if date.today() < cd.until and head in ("", cd.repo_head) and tool_head() == cd.tool_head:
         return True
-    log.info("%s: cool-down lifted", target.name)
+    add(cooldown_lifted=True)
     state.lift_cool_down(target.name)
     return False
 
@@ -454,18 +461,28 @@ def _tell_owner(ws: Workspace, state: State, digest: Digest) -> None:
 
 
 def run_repo(target: Target, opts: Options, state: State, digest: Digest) -> None:
-    cooling = _cooling(target, state)
-    if cooling:
-        digest.cooling += 1
-    ws = clone(target)
-    digest.reached += 1
-    if github.ci_not_started(ws, ws.git("rev-parse", "HEAD").strip()):
-        digest.billing.append(ws.name)  # greenkeep's gate is then the only check its merges get
-    try:
-        _tend(ws, target, cooling, opts, state, digest)
-    finally:
-        if not opts.keep:
-            discard(ws)
+    """One repo's run: the unit of work, one wide event."""
+    with wide("repo_run", ref=f"{RUN_ID}:{target.name}", repo=target.name, push=opts.push) as ev:
+        n_merged, n_parked = len(digest.merged), len(digest.parked)
+        ev["cooling"] = cooling = _cooling(target, state)
+        if cooling:
+            digest.cooling += 1
+        ws = clone(target)
+        register_log_secrets(*ws.secrets())  # the clone's .env values, by value
+        digest.reached += 1
+        if github.ci_not_started(ws, ws.git("rev-parse", "HEAD").strip()):
+            digest.billing.append(ws.name)  # greenkeep's gate is then the only check its merges get
+        try:
+            _tend(ws, target, cooling, opts, state, digest)
+        finally:
+            ev["repo_head"] = ws.git("rev-parse", "--short", "HEAD").strip()
+            if not opts.keep:
+                discard(ws)
+        ev["merged_n"] = len(digest.merged) - n_merged
+        ev["parked_n"] = len(digest.parked) - n_parked
+        ev.setdefault(
+            "outcome", "merged" if ev["merged_n"] else "parked" if ev["parked_n"] else "ok"
+        )
 
 
 def _tend(
@@ -481,7 +498,7 @@ def _tend(
     if not tests.ok:
         if repair.heal(ws, tests, opts, state, digest):
             return  # merged: the next run works the repo on a green suite
-        log.warning("%s: baseline tests are red, skipping\n%s", ws.name, tests.output)
+        add(outcome="baseline_red", tests_tail=tests.output[-FEEDBACK_CHARS:])
         digest.problems.append(f"{ws.name}: baseline tests are red in a clean clone")
         return
     if opts.push:

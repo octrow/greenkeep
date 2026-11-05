@@ -6,6 +6,7 @@ import re
 import time
 from datetime import UTC, datetime, timedelta
 
+from .events import add_call
 from .workspace import Workspace, WorkspaceError, sh
 
 LABEL = "greenkeep"
@@ -31,7 +32,15 @@ def web_url(origin: str) -> str:
 
 
 def _gh(ws: Workspace, *args: str) -> str:
-    return sh(["gh", *args], ws.root).stdout.strip()
+    start, ok = time.monotonic(), False
+    try:
+        out = sh(["gh", *args], ws.root).stdout.strip()
+        ok = True
+        return out
+    finally:
+        add_call(
+            service="gh", cmd=" ".join(args[:2]), ok=ok, ms=round((time.monotonic() - start) * 1000)
+        )
 
 
 def _number(url: str) -> int:

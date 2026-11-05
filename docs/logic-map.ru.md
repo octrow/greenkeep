@@ -371,7 +371,7 @@ Module: `digest`, `cli`, `state`, `backup`
 
 GitHub: issue плана, squash-слитые fix PR, слитые PR Dependabot, метки `greenkeep-gave-up` на закрытых issues.
 `~/.local/share/greenkeep/state.db`: строки `finding` (статус open/merged/parked/reverted, попытки, issue, PR, sha, parked_head) и `mark` (run, cool-down, hunt, told, dependabot).
-`~/.local/state/greenkeep/greenkeep.log`: история INFO и полные провалы и планы в DEBUG, 5 МБ × 4 файла.
+`~/.local/state/greenkeep/greenkeep.log` (INFO, 20 МБ × 5) и `events.jsonl` (одно событие на прогон репо, 5 МБ × 6; полные провалы внутри); всего 200 МБ, см. docs/configuration.md#logs.
 Module: `state`, `digest`, `cli`
 
 ## Побочные потоки
