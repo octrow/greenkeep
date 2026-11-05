@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.5 - 2026-11-05
+
+Docs only, no change in what a run does.
+
+- README refresh: shorter and in plain language.
+
 ## 0.2.4 - 2026-11-05
 
 - The cap of 3 parked test findings per repo counts only findings the repo still has: a module tested or deleted since no longer keeps the repo from getting tests.
