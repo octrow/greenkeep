@@ -11,6 +11,7 @@ MAX_ATTEMPTS = 3
 COLUMNS = frozenset(
     {"status", "attempts", "issue", "pr", "sha", "title", "url", "parked_head"}
 )  # what set() may write
+BUSY_TIMEOUT_S = 60  # a writer (run, dashboard) waits this long for the other, not sqlite's 5 s
 DEFAULT_DB = Path.home() / ".local/share/greenkeep/state.db"
 SCHEMA = """CREATE TABLE IF NOT EXISTS finding (
     repo TEXT, fp TEXT, status TEXT DEFAULT 'open', attempts INT DEFAULT 0,
@@ -46,7 +47,8 @@ class CoolDown:
 class State:
     def __init__(self, path: Path = DEFAULT_DB) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(path)
+        self.db = sqlite3.connect(path, timeout=BUSY_TIMEOUT_S)
+        self.db.execute("PRAGMA journal_mode=WAL")  # the dashboard reads while a run writes
         self.db.execute(SCHEMA)
         self.db.execute(MARKS)
         columns = {row[1] for row in self.db.execute("PRAGMA table_info(finding)")}

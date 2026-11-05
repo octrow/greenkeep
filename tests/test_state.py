@@ -112,3 +112,11 @@ def test_the_run_mark_holds_the_day_the_run_started(tmp_path):
     s = State(tmp_path / "s.db")
     s.record_run(date.today() - timedelta(days=1))  # began before midnight
     assert not s.ran_today()
+
+
+def test_db_waits_for_a_busy_writer_and_uses_wal(tmp_path):
+    from greenkeep.state import BUSY_TIMEOUT_S
+
+    st = State(tmp_path / "s.db")
+    assert st.db.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+    assert st.db.execute("PRAGMA busy_timeout").fetchone()[0] == BUSY_TIMEOUT_S * 1000
