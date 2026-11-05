@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.4 - 2026-11-05
 
 - The cap of 3 parked test findings per repo counts only findings the repo still has: a module tested or deleted since no longer keeps the repo from getting tests.
 - Test helpers in folders like `tests_e2e/` or `integration_tests/` are test code: they no longer get characterization-test findings.
