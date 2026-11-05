@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.6 - 2026-11-05
+
+- Each repo run writes one JSON line to `events.jsonl`: outcome, Claude and `gh` calls, and the traceback on failure. Per-step log lines are folded into it.
+- Logs are capped at 200 MB in `~/.local/state/greenkeep/`, secrets are masked, and uncaught exceptions go to the log.
+
 ## 0.2.5 - 2026-11-05
 
 Docs only, no change in what a run does.
