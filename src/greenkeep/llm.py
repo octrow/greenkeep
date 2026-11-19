@@ -183,6 +183,7 @@ Rules:
   a test only where it plainly asserts something wrong.
 - Follow the repository's own conventions: where tests live, how they are named, the
   fixtures and helpers it already has; extend an existing test file when one fits.
+- Run pytest with at most 2 xdist workers (`-n 2`): the host has 2 cores.
 - If it cannot be fixed within these rules, or the cause is outside the code (a missing
   system package, the network, a secret), change nothing.
 Finish with one line: what you changed, or why you changed nothing."""
